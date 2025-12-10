@@ -18,7 +18,7 @@ type Database struct {
 	RoleStore *repository.RoleStore
 
 	KeyStore     *repository.KeyStore
-	ClientStore  *repository.ClientStore
+	AppStore     *repository.AppStore
 	RequestStore *repository.RequestStore
 }
 
@@ -42,7 +42,7 @@ func seedDatabase(db *Database) error {
 	slog.Info("creating default superuser with", "password", initPassword)
 	db.UserStore.CreateSuperUser(initPassword, superuser)
 
-	_, err = db.ClientStore.CreateStarClient()
+	_, err = db.AppStore.CreateStarApp()
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 		RoleStore: &repository.RoleStore{DB: db},
 
 		KeyStore:     &repository.KeyStore{DB: db, Config: config},
-		ClientStore:  &repository.ClientStore{DB: db, Config: config},
+		AppStore:     &repository.AppStore{DB: db, Config: config},
 		RequestStore: &repository.RequestStore{DB: db},
 	}
 

@@ -73,7 +73,11 @@ func StartAPIServer(server *state.Server) *fiber.App {
 
 	// Route handlers
 	app.Get("/healthz", route.Health)
-	app.Route("/user", route.UserRouter)
+	app.Route("/.well-known", route.WellKnownRouter)
+
+	api := app.Group("/api")
+	api.Route("/user", route.UserRouter)
+	api.Route("/app", route.AppRouter)
 
 	// Bind to port
 	bind := "0.0.0.0:" + strconv.Itoa(server.Config.Port)

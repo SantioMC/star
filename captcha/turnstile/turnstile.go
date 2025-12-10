@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 )
 
 type TurnstileValidator struct {
@@ -32,7 +33,11 @@ func NewTurnstileValidator(secret string) TurnstileValidator {
 }
 
 func (v *TurnstileValidator) ValidateToken(token string) bool {
-	if (len(token) > 2048) {
+	if strings.TrimSpace(token) == "" {
+		return false
+	}
+
+	if len(token) > 2048 {
 		slog.Warn("captcha token provided was too large")
 		return false
 	}

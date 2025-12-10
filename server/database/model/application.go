@@ -1,6 +1,8 @@
 package model
 
 import (
+	"strings"
+
 	"github.com/tubblelive/star/server/crypto"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
@@ -9,8 +11,9 @@ import (
 
 type Application struct {
 	BaseModel
-	Secret           string `json:"-"`
-	Internal         bool
+	Secret           string              `json:"secret"`
+	Slug             string              `json:"slug"`
+	Internal         bool                `json:"internal"`
 	RedirectURIs     []ClientRedirectURI `gorm:"many2many:client_redirect_uris"`
 	ApplicationType  op.ApplicationType
 	AuthMethod       oidc.AuthMethod
@@ -35,11 +38,14 @@ type ClientPostLogoutRedirectURI struct {
 }
 
 func NewApplication(name string) Application {
+	slug := strings.ReplaceAll(strings.ToLower(name), " ", "-")
+
 	return Application{
 		BaseModel: BaseModel{
 			ID: CreateTypedId("app", 12),
 		},
 		Secret:           crypto.CreateRandString(24),
+		Slug:             slug,
 		Internal:         false,
 		RedirectURIs:     []ClientRedirectURI{},
 		ApplicationType:  op.ApplicationTypeWeb,

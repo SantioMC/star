@@ -10,7 +10,12 @@ import (
 	"github.com/tubblelive/star/server/state/claims"
 )
 
-const clock_skew = time.Second * 5
+const (
+	clockSkew = time.Second * 5
+
+	JwtAlgorithm = jose.ES512
+	JwtKeyID = "star-signing-key"
+)
 
 type JWT string
 type JWTBody struct {
@@ -21,10 +26,15 @@ type JWTBody struct {
 func CreateJWT(body JWTBody, privateKey *ecdsa.PrivateKey) (JWT, error) {
 	signer, err := jose.NewSigner(
 		jose.SigningKey{
-			Algorithm: jose.ES512, 
+			Algorithm: JwtAlgorithm, 
 			Key: privateKey,
 		}, 
-		(&jose.SignerOptions{}).WithType("JWT"),
+		(&jose.SignerOptions{
+			ExtraHeaders: map[jose.HeaderKey]any{
+				"jku": "TODO/.well-known/jwks.json",
+				"kid": JwtKeyID,
+			},
+		}).WithType("JWT"),
 	)
 
 	if err != nil {
@@ -35,8 +45,8 @@ func CreateJWT(body JWTBody, privateKey *ecdsa.PrivateKey) (JWT, error) {
 		"iss": "star",
 		"iat": time.Now().Unix(),
 		"exp": time.Now().Add(body.Duration).Unix(),
-		"nbf": time.Now().Add(-clock_skew).Unix(),
-		"naf": time.Now().Add(body.Duration + clock_skew).Unix(),
+		"nbf": time.Now().Add(-clockSkew).Unix(),
+		"naf": time.Now().Add(body.Duration + clockSkew).Unix(),
 	}
 
 	for key, value := range body.Fields {

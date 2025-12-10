@@ -17,6 +17,7 @@ func UserRouter(r fiber.Router) {
 }
 
 func getAllUsers(c *fiber.Ctx) error {
+	// todo: delete
 	users, err := state.StarState.Database.UserStore.GetAllUsers()
 	if err != nil {
 		return err
@@ -27,15 +28,17 @@ func getAllUsers(c *fiber.Ctx) error {
 }
 
 func registerAccount(ctx *fiber.Ctx) error {
-	body := RegisterAccountRequest{}
-	err := ctx.BodyParser(&body)
-	if err != nil {
+	body := new(RegisterAccountRequest)
+	if err := ctx.BodyParser(body); err != nil {
 		return err
 	}
 
+
 	captcha := state.StarState.Config.CaptchaVerifier
 	if captcha != nil {
-		valid := captcha.ValidateToken(body.CaptchaToken)
+		token := ctx.Get("X-Turnstile-Token", "")
+		valid := captcha.ValidateToken(token)
+
 		if !valid {
 			return helper.NewHttpError(400, "Invalid captcha token provided")
 		}
@@ -111,5 +114,4 @@ type RegisterAccountRequest struct {
 	Email        string  `json:"email"`
 	Password     string  `json:"password"`
 	Fingerprint  *string `json:"fingerprint"`
-	CaptchaToken string  `json:"captcha_token"`
 }

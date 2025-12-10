@@ -3,7 +3,7 @@ package model
 import (
 	"math/rand"
 
-	"gorm.io/gorm"
+	"gorm.io/plugin/soft_delete"
 )
 
 var idAlphabet = []byte("0123456789abcdefghijklmnopqrstuvwxyz")
@@ -21,8 +21,8 @@ func CreateTypedId(prefix string, length int) string {
 }
 
 type BaseModel struct {
-	ID        string         `json:"id" gorm:"primaryKey"`
-	CreatedAt int64          `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt int64          `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	ID        string                `json:"id" gorm:"primaryKey"`
+	CreatedAt int64                 `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt int64                 `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt soft_delete.DeletedAt `json:"-" gorm:"index"`
 }

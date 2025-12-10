@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -95,8 +96,18 @@ func (store *UserStore) GetUserByEmail(email string) (*model.User, error) {
 	return &user, nil
 }
 
+func (store *UserStore) GetUserByUsernameOrEmail(query string) (*model.User, error) {
+	user := model.User{}
+
+	if err := store.DB.Where("email = ? OR username = ?", query, query).Preload(clause.Associations).First(&user).Error; err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 func (store *UserStore) ValidateLogin(username, password string) (*model.User, error) {
-	user, err := store.GetUserByUsername(username)
+	user, err := store.GetUserByUsernameOrEmail(username)
 	if err != nil {
 		return nil, err
 	}
@@ -184,9 +195,7 @@ func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Applicat
 
 	refreshToken.Token = encryptedToken
 	err = store.DB.Transaction(func(tx *gorm.DB) error {
-		if err := store.DB.Where("user_id = ?", user.ID).Delete(&refreshToken).Error; err != nil {
-			return err
-		}
+		gorm.G[model.RefreshToken](store.DB.Unscoped()).Where("user_id = ? AND application_id = ?", user.ID, app.ID).Delete(context.Background())
 		
 		if err := store.DB.Create(&refreshToken).Error; err != nil {
 			return err

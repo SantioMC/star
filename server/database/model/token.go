@@ -19,7 +19,7 @@ type RefreshToken struct {
 }
 
 func NewRefreshToken(duration time.Duration) RefreshToken {
-	token := crypto.CreateRandString(24)
+	token := crypto.CreateRandString(48)
 
 	return RefreshToken{
 		BaseModel: BaseModel{
