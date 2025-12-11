@@ -11,7 +11,7 @@ import (
 
 type Application struct {
 	BaseModel
-	Secret           string              `json:"secret"`
+	Secret           string              `json:"secret" encrypt:"true"`
 	Slug             string              `json:"slug"`
 	Internal         bool                `json:"internal"`
 	RedirectURIs     []ClientRedirectURI `gorm:"many2many:client_redirect_uris"`

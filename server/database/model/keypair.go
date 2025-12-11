@@ -21,8 +21,8 @@ type Keypair struct {
 	BaseModel
 	Name       string
 	Kind       KeypairKind
-	PublicKey  string
-	PrivateKey string
+	PublicKey  string `json:"-" encrypt:"true"`
+	PrivateKey string `json:"-" encrypt:"true"`
 }
 
 func (k *Keypair) GetPrivateKey() (*ecdsa.PrivateKey, error) {

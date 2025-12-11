@@ -7,6 +7,7 @@ import (
 	"github.com/tubblelive/star/config"
 	"github.com/tubblelive/star/server/crypto"
 	"github.com/tubblelive/star/server/database/model"
+	"github.com/tubblelive/star/server/database/plugin"
 	"github.com/tubblelive/star/server/database/repository"
 	"gorm.io/gorm"
 )
@@ -42,10 +43,12 @@ func seedDatabase(db *Database) error {
 	slog.Info("creating default superuser with", "password", initPassword)
 	db.UserStore.CreateSuperUser(initPassword, superuser)
 
-	_, err = db.AppStore.CreateStarApp()
+	app, err := db.AppStore.CreateStarApp()
 	if err != nil {
 		return err
 	}
+
+	slog.Info("created default application", "secret", app.Secret)
 
 	return nil
 }
@@ -56,6 +59,7 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 		return nil, err
 	}
 
+	plugin.EncryptionPlugin(db, config.AccessToken)
 	firstStart := !db.Migrator().HasTable(&model.User{})
 
 	db.AutoMigrate(&model.User{})

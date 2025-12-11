@@ -12,8 +12,8 @@ type RefreshToken struct {
 	User          *User
 	ApplicationID string
 	Application   *Application
-	Token         string
-	Fingerprint   *string
+	Token         string  `json:"token" encrypt:"true"`
+	Fingerprint   *string `json:"fingerprint" encrypt:"true"`
 	Duration      time.Duration
 	InvalidatedAt *int64
 }

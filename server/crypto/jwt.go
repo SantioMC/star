@@ -23,17 +23,22 @@ type JWTBody struct {
 	Fields map[string]any
 }
 
-func CreateJWT(body JWTBody, privateKey *ecdsa.PrivateKey) (JWT, error) {
+func CreateJWT(body JWTBody, jku *string, privateKey *ecdsa.PrivateKey) (JWT, error) {
+	headers := map[jose.HeaderKey]any{
+		"kid": JwtKeyID,
+	}
+
+	if jku != nil {
+		headers["jku"] = jku
+	}
+
 	signer, err := jose.NewSigner(
 		jose.SigningKey{
 			Algorithm: JwtAlgorithm, 
 			Key: privateKey,
 		}, 
 		(&jose.SignerOptions{
-			ExtraHeaders: map[jose.HeaderKey]any{
-				"jku": "TODO/.well-known/jwks.json",
-				"kid": JwtKeyID,
-			},
+			ExtraHeaders: headers,
 		}).WithType("JWT"),
 	)
 

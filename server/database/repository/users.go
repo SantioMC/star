@@ -17,20 +17,6 @@ type UserStore struct {
 	Config *config.Config
 }
 
-func decryptRefreshToken(token *model.RefreshToken, key [32]byte) (*model.RefreshToken, error) {
-	if token.Token == "" {
-		return token, nil
-	}
-
-	secret, err := crypto.DecryptAES(token.Token, key)
-	if err != nil {
-		return nil, err
-	}
-
-	token.Token = secret
-	return token, nil
-}
-
 func (store *UserStore) CreateSuperUser(password string, role *model.Role) (*model.User, error) {
 	user := model.NewUser("admin", "root@star")
 	user.EmailVerified = true
@@ -171,10 +157,16 @@ func (store *UserStore) CreateAccessToken(refreshToken *model.RefreshToken, app 
 		return "", time.Time{}, err
 	}
 
+	var jku *string = nil
+	if baseUrl := store.Config.Url; baseUrl != "" {
+		url := fmt.Sprintf("%s/.well-known/jwks.json", baseUrl)
+		jku = &url
+	}
+
 	jwt, err := crypto.CreateJWT(crypto.JWTBody{
 		Duration: expiresAfter,
 		Fields: fields,
-	}, privateKey)
+	},  jku, privateKey)
 
 	if err != nil {
 		return "", time.Time{}, err
@@ -188,13 +180,7 @@ func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Applicat
 	refreshToken.User = user
 	refreshToken.Application = app
 
-	encryptedToken, err := crypto.EncryptAES(refreshToken.Token, store.Config.AccessToken);	
-	if err != nil {
-		return nil, "", time.Time{}, err
-	}
-
-	refreshToken.Token = encryptedToken
-	err = store.DB.Transaction(func(tx *gorm.DB) error {
+	err := store.DB.Transaction(func(tx *gorm.DB) error {
 		gorm.G[model.RefreshToken](store.DB.Unscoped()).Where("user_id = ? AND application_id = ?", user.ID, app.ID).Delete(context.Background())
 		
 		if err := store.DB.Create(&refreshToken).Error; err != nil {
@@ -209,11 +195,6 @@ func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Applicat
 	}
 
 	jwt, expiresAt, err := store.CreateAccessToken(&refreshToken, app, false)
-	if err != nil {
-		return nil, "", time.Time{}, err
-	}
-
-	_, err = decryptRefreshToken(&refreshToken, store.Config.AccessToken)
 	if err != nil {
 		return nil, "", time.Time{}, err
 	}

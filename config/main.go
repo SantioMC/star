@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	Database        string
+	Url             string
 	Origins         []string
 	TrustProxy      bool
 	Port            int
@@ -24,6 +25,7 @@ type Config struct {
 func LoadFromEnv() (*Config, error) {
 	config := Config{
 		Database:    fromEnv("DATABASE", "sqlite://./data.db"),
+		Url:         fromEnv("URL", ""),
 		Origins:     []string{"*"},
 		TrustProxy:  false,
 		AccessToken: [32]byte{},
@@ -48,7 +50,7 @@ func LoadFromEnv() (*Config, error) {
 
 	if config.CaptchaVerifier == nil {
 		slog.Warn("running star without a captcha configured")
-	} 
+	}
 
 	return &config, nil
 }

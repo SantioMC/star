@@ -14,8 +14,8 @@ type Account struct {
 	User     *User
 	Username string
 	Provider string
-	Password *string `json:"-"`
-	Token    *string  `json:"-"`
+	Password *string `json:"-" encrypt:"true"`
+	Token    *string `json:"-" encrypt:"true"`
 }
 
 func NewAccountWithUserPass(user *User, username string, password string) Account {
