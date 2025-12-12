@@ -11,20 +11,8 @@ import (
 )
 
 func UserRouter(r fiber.Router) {
-	r.Get("/", getAllUsers)
 	r.Get("/me", getMe)
 	r.Post("/register", limiter.New(helper.HeavyLimiter), registerAccount)
-}
-
-func getAllUsers(c *fiber.Ctx) error {
-	// todo: delete
-	users, err := state.StarState.Database.UserStore.GetAllUsers()
-	if err != nil {
-		return err
-	}
-
-	c.JSON(users)
-	return nil
 }
 
 func registerAccount(ctx *fiber.Ctx) error {
@@ -32,7 +20,6 @@ func registerAccount(ctx *fiber.Ctx) error {
 	if err := ctx.BodyParser(body); err != nil {
 		return err
 	}
-
 
 	captcha := state.StarState.Config.CaptchaVerifier
 	if captcha != nil {
