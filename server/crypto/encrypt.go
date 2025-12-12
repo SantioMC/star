@@ -28,6 +28,7 @@ func EncryptBytesAES(plainText []byte, key [32]byte) ([]byte, error) {
 
 	cipherText := make([]byte, aes.BlockSize+len(plainText))
 	iv := cipherText[:aes.BlockSize]
+	
 	if _, err = io.ReadFull(rand.Reader, iv); err != nil {
 		return nil, err
 	}
@@ -43,10 +44,12 @@ func DecryptAES(data string, key [32]byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	decrypted, err := DecryptBytesAES(text, key)
 	if err != nil {
 		return "", err
 	}
+
 	return string(decrypted), nil
 }
 
@@ -59,6 +62,7 @@ func DecryptBytesAES(cipherText []byte, key [32]byte) ([]byte, error) {
 	if len(cipherText) < aes.BlockSize {
 		return nil, ErrCipherTextBlockSize
 	}
+
 	iv := cipherText[:aes.BlockSize]
 	cipherText = cipherText[aes.BlockSize:]
 

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/tubblelive/star/config"
 	"github.com/tubblelive/star/server/database/model"
@@ -45,10 +46,14 @@ func (store *AppStore) CreateStarApp() (*model.Application, error) {
 	app := model.NewApplication("Star")
 	app.Internal = true
 
+	slog.Info("creating star app", "secret", app.Secret)
+
 	err := store.SaveApp(&app)
 	if err != nil {
 		return nil, err
 	}
+
+	slog.Info("created star app (after)", "secret", app.Secret)
 	
 	return &app, nil
 }

@@ -14,7 +14,7 @@ type Account struct {
 	User     *User
 	Username string
 	Provider string
-	Password *string `json:"-" encrypt:"true"`
+	Password *string `json:"-"`
 	Token    *string `json:"-" encrypt:"true"`
 }
 

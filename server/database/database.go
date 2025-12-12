@@ -43,12 +43,10 @@ func seedDatabase(db *Database) error {
 	slog.Info("creating default superuser with", "password", initPassword)
 	db.UserStore.CreateSuperUser(initPassword, superuser)
 
-	app, err := db.AppStore.CreateStarApp()
+	_, err = db.AppStore.CreateStarApp()
 	if err != nil {
 		return err
 	}
-
-	slog.Info("created default application", "secret", app.Secret)
 
 	return nil
 }
