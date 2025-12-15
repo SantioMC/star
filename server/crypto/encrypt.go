@@ -10,6 +10,7 @@ import (
 )
 
 var ErrCipherTextBlockSize = errors.New("ciphertext block size is too short")
+const nonceSize = 12
 
 func EncryptAES(data string, key [32]byte) (string, error) {
 	encrypted, err := EncryptBytesAES([]byte(data), key)
@@ -26,17 +27,18 @@ func EncryptBytesAES(plainText []byte, key [32]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	cipherText := make([]byte, aes.BlockSize+len(plainText))
-	iv := cipherText[:aes.BlockSize]
-	
-	if _, err = io.ReadFull(rand.Reader, iv); err != nil {
+	stream, err := cipher.NewGCM(block)
+	if err != nil {
 		return nil, err
 	}
 
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(cipherText[aes.BlockSize:], plainText)
+	nonce := make([]byte, nonceSize)
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
 
-	return cipherText, nil
+	cipherText := stream.Seal(nil, nonce, plainText, nil)
+	return append(nonce, cipherText...), nil
 }
 
 func DecryptAES(data string, key [32]byte) (string, error) {
@@ -59,15 +61,15 @@ func DecryptBytesAES(cipherText []byte, key [32]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	if len(cipherText) < aes.BlockSize {
+	if len(cipherText) < nonceSize {
 		return nil, ErrCipherTextBlockSize
 	}
 
-	iv := cipherText[:aes.BlockSize]
-	cipherText = cipherText[aes.BlockSize:]
+	stream, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
 
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(cipherText, cipherText)
-
-	return cipherText, err
+	decoded, err := stream.Open(nil, cipherText[:nonceSize], cipherText[nonceSize:], nil)
+	return decoded, err
 }

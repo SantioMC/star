@@ -42,6 +42,8 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("ACCESS_TOKEN env is required")
 	} else {
 		config.AccessToken = sha256.Sum256([]byte(accessToken))
+		// There should be no reason for us to ever ask for it again, as bonus we only store the hash in memory
+		os.Unsetenv("ACCESS_TOKEN") 
 	}
 
 	config.Origins = strings.Split(fromEnv("ORIGINS", "*"), ",")

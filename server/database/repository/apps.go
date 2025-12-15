@@ -39,21 +39,20 @@ func (store *AppStore) GetAppBySlug(slug string) (*model.Application, error) {
 }
 
 func (store *AppStore) SaveApp(app *model.Application) error {
-	return store.DB.Save(app).Error
+	return store.DB.Debug().Save(app).Error
 }
 
 func (store *AppStore) CreateStarApp() (*model.Application, error) {
 	app := model.NewApplication("Star")
 	app.Internal = true
 
-	slog.Info("creating star app", "secret", app.Secret)
+	slog.Error("app current secret is", "secret", app.Secret)
 
 	err := store.SaveApp(&app)
 	if err != nil {
 		return nil, err
 	}
 
-	slog.Info("created star app (after)", "secret", app.Secret)
-	
+	slog.Error("app newest secret is", "secret", app.Secret)
 	return &app, nil
 }

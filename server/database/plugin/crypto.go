@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"context"
 	"log/slog"
 	"reflect"
 
@@ -11,43 +10,129 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-var encryptionKey [32]byte
+const (
+	encryptionTag = "encrypt"
+)
 
-func EncryptionPlugin(db *gorm.DB, key [32]byte) error {
-	encryptionKey = key
+var cryptoPlugin CryptoPlugin
 
-	_ = db.Callback().Create().Before("gorm:create").Register("star:before_create", encryptParamBeforeCreate)
-	_ = db.Callback().Create().After("gorm:create").Register("star:after_create", decryptModel)
+type CryptoPlugin struct {
+	encryptionKey [32]byte
+}
 
-	_ = db.Callback().Update().Before("gorm:update").Register("star:before_update", encryptParamBeforeUpdate)
+func CreateEncryptionPlugin(key [32]byte) CryptoPlugin {
+	return CryptoPlugin{encryptionKey: key}
+}
+
+func (p CryptoPlugin) Name() string {
+	return "CryptoPlugin"
+}
+
+func (p CryptoPlugin) Initialize(db *gorm.DB) error {
+	cryptoPlugin = p
 	
-	_ = db.Callback().Query().Before("gorm:query").Register("star:before_query", encryptParamBeforeQuery)
-	_ = db.Callback().Query().After("gorm:query").Register("star:after_query", decryptModel)
+	if err := db.Callback().Create().Before("gorm:create").Register("crypto:create_encrypt", encryptModel); err != nil {
+		return err
+	}
 	
+	if err := db.Callback().Create().After("gorm:create").Register("crypto:create_decrypt", decryptModel); err != nil {
+		return err
+	}
+	
+	if err := db.Callback().Create().Before("gorm:update").Register("crypto:update_encrypt", encryptUpdate); err != nil {
+		return err
+	}
+	
+	if err := db.Callback().Create().After("gorm:update").Register("crypto:update_decrypt", decryptModel); err != nil {
+		return err
+	}
+
+	if err := db.Callback().Query().Before("gorm:query").Register("crypto:query_encrypt", encryptQuery); err != nil {
+		return err
+	}
+
+	if err := db.Callback().Query().After("gorm:query").Register("crypto:query_decrypt", decryptModel); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-type CryptoValue struct {
-	Column string
-	Value  string
+func getFields(schem *schema.Schema) []*schema.Field {
+	if schem == nil {
+		return nil
+	}
+
+	var list []*schema.Field
+
+	fields := schem.FieldsByName
+	for k := range fields {
+		field := fields[k]
+		if field.Tag.Get("encrypt") != "true" {
+			continue
+		}
+
+		list = append(list, field)
+	}
+
+	return list
 }
 
-func NewCryptoValue(column string, val string) *CryptoValue {
-	return &CryptoValue{
-		Column: column,
-		Value:  val,
+func getReflectElem(iface interface{}) (reflect.Value, bool) {
+	destValue := reflect.ValueOf(iface)
+
+	if destValue.Kind() == reflect.Struct {
+		ptr := reflect.New(destValue.Type())
+		ptr.Elem().Set(destValue)
+		destValue = ptr.Elem()
+	}
+
+	slog.Info("destType kind", "kind", destValue.Kind())
+	for destValue.Kind() == reflect.Ptr {
+		destValue = destValue.Elem()
+		slog.Info("new destType kind", "kind", destValue.Kind())
+	}
+
+	if destValue.Kind() == reflect.Struct {
+		return destValue, true
+	}
+
+	return reflect.ValueOf(nil), false
+}
+
+func modifyValues(values []interface{}, fields []*schema.Field, callback func(string) string) {
+	for i, v := range values {
+		if v, ok := v.(string); ok {
+			values[i] = callback(v)
+		}
 	}
 }
 
-func encryptParamBeforeCreate(db *gorm.DB) {
-	fields := getSchemaCryptoFields(db.Statement.Schema)
-	names := make([]string, len(fields))
-	
-	for i, f := range fields {
-		names[i] = f.Name
-	}
+func modifyFields(reflectValue reflect.Value, fields []*schema.Field, db *gorm.DB, callback func(string) string) {
+	ctx := db.Statement.Context
+	for _, field := range fields {
+		if actualValue, isZero := field.ValueOf(ctx, reflectValue); !isZero {
+			value, ok := actualValue.(string); 
+			if !ok {
+				slog.Warn("Failed to modify field, it was not a string", "field", field.Name)
+				continue
+			}
 
-	if len(fields) == 0 {
+			newValue := callback(value)
+			if err := field.Set(ctx, reflectValue, newValue); err != nil {
+				panic(err)
+			}
+		} else {
+			continue
+		}
+	}
+}
+
+func encryptModel(db *gorm.DB) {
+	slog.Info("encrypting model")
+	schema := db.Statement.Schema
+	fields := getFields(schema)
+	if fields == nil {
 		return
 	}
 
@@ -55,322 +140,187 @@ func encryptParamBeforeCreate(db *gorm.DB) {
 	case reflect.Slice:
 		for i := 0; i < db.Statement.ReflectValue.Len(); i++ {
 			sliceV := db.Statement.ReflectValue.Index(i)
-			encryptFields(sliceV, fields, db)
+			modifyFields(sliceV, fields, db, func(value string) string {
+				encrypted, err := crypto.EncryptAES(value, cryptoPlugin.encryptionKey)
+				if err != nil {
+					slog.Error("failed to encrypt value", "err", err)
+					return value
+				}
+
+				return encrypted
+			})
 		}
 	case reflect.Struct:
-		encryptFields(db.Statement.ReflectValue, fields, db)
+		modifyFields(db.Statement.ReflectValue, fields, db, func(value string) string {
+			encrypted, err := crypto.EncryptAES(value, cryptoPlugin.encryptionKey)
+			if err != nil {
+				slog.Error("failed to encrypt value", "err", err)
+				return value
+			}
+
+			return encrypted
+		})
 	default:
 		return
 	}
 }
 
-func encryptParamBeforeQuery(db *gorm.DB) {
-	fields := getSchemaCryptoFields(db.Statement.Schema)
+func decryptModel(db *gorm.DB) {
+	slog.Info("decrypting model", "table", db.Statement.Table)
+
+	schema := db.Statement.Schema
+	fields := getFields(schema)
+	if fields == nil {
+		return
+	}
+
+	ref := db.Statement.ReflectValue
+
+	switch ref.Kind() {
+	case reflect.Struct:
+		modifyFields(ref, fields, db, func(encrypted string) string {
+			decrypted, err := crypto.DecryptAES(encrypted, cryptoPlugin.encryptionKey)
+			if err != nil {
+				slog.Error("failed to encrypt value", "err", err)
+				return encrypted
+			}
+
+			return decrypted
+		})
+	case reflect.Slice:
+		for i := 0; i < ref.Len(); i++ {
+			curVal := ref.Index(i)
+
+			if curVal.Kind() == reflect.Pointer {
+				curVal = curVal.Elem()
+			}
+
+			if curVal.Kind() == reflect.Struct {
+				modifyFields(ref, fields, db, func(encrypted string) string {
+					decrypted, err := crypto.DecryptAES(encrypted, cryptoPlugin.encryptionKey)
+					if err != nil {
+						slog.Error("failed to encrypt value", "err", err)
+						return encrypted
+					}
+
+					return decrypted
+				})
+			}
+		}
+	}
+}
+
+func encryptUpdate(db *gorm.DB) {
+	dbSchema := db.Statement.Schema
+	if dbSchema == nil {
+		return
+	}
+
+	if updateInfo, ok := db.Statement.Dest.(map[string]interface{}); ok {
+		for updateColumn := range updateInfo {
+			updateV := updateInfo[updateColumn]
+			updateField := dbSchema.LookUpField(updateColumn)
+
+			stringVal, ok := updateV.(string)
+			if !ok {
+				continue
+			}
+			
+			if updateField.Tag.Get(encryptionTag) != "true" {
+				continue
+			}
+
+			encrypted, err := crypto.EncryptAES(stringVal, cryptoPlugin.encryptionKey)
+			if err != nil {
+				slog.Error("failed to encrypt field", "field", updateColumn, "err", err)
+			}
+
+			updateInfo[updateColumn] = encrypted
+		}
+
+		return
+	}
+
+	destValue, ok := getReflectElem(db.Statement.Dest)
+	if !ok {
+		return
+	}
+
+	t := destValue.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fieldValue := destValue.Field(i)
+
+		if fieldValue.IsZero() {
+			continue
+		}
+
+		slog.Info("fieldValue", "kind", fieldValue.Kind(), "field", field.Name, "value", fieldValue)
+		if fieldValue.Kind() == reflect.Ptr {
+			fieldValue = fieldValue.Elem()
+		}
+
+		if field.Tag.Get(encryptionTag) != "true" {
+			continue
+		}
+
+		val := fieldValue.String()
+		if len(val) == 0 {
+			continue
+		}
+
+		encrypted, err := crypto.EncryptAES(val, cryptoPlugin.encryptionKey)
+		if err != nil {
+			slog.Error("failed to encrypt value", "value", val, "err", err)
+			continue
+		}
+
+		fieldValue.SetString(encrypted)
+	}
+}
+
+func encryptQuery(db *gorm.DB) {
+	fields := getFields(db.Statement.Schema)
 	if len(fields) == 0 {
 		return
 	}
 
-	if we := db.Statement.Clauses["WHERE"].Expression; we != nil {
-		exprs := we.(clause.Where).Exprs
-		for i, expr := range exprs {
-			switch expr := expr.(type) {
-			case clause.Eq:
-				if cf := findCryptFieldWithClauseColumn(expr.Column, fields); cf != nil {
-					encrypted, err := crypto.EncryptAES(expr.Value.(string), encryptionKey)
-					if err != nil {
-						panic(err)
-					}
+	where := db.Statement.Clauses["WHERE"].Expression
+	if where == nil {
+		return
+	}
 
-					exprs[i] = clause.Eq{
-						Column: expr.Column,
-						Value:  encrypted,
-					}
+	exprs := where.(clause.Where).Exprs
+
+	for i, expr := range exprs {
+		switch expr := expr.(type) {
+		case clause.Eq:
+			if cf := findCryptFieldWithClauseColumn(expr.Column, fields); cf != nil {
+				exprs[i] = clause.Eq{
+					Column: expr.Column,
+					Value:  cf.Strategy.Encrypt(expr.Value.(string), cf.Field, db),
 				}
-			case clause.IN:
-				if cf := findCryptFieldWithClauseColumn(expr.Column, fields); cf != nil {
-					values, err := encryptValues(expr.Values, cf, db)
-					if err != nil {
-						panic(err)
-					}
-
-					exprs[i] = clause.IN{
-						Column: expr.Column,
-						Values: values,
-					}
+			}
+		case clause.IN:
+			if cf := findCryptFieldWithClauseColumn(expr.Column, fields); cf != nil {
+				exprs[i] = clause.IN{
+					Column: expr.Column,
+					Values: modifyValues(expr.Values, cf, func(value) string {
+						return ""
+					}),
 				}
-			case clause.Expr:
-				if expr.Vars != nil {
-					for i, v := range expr.Vars {
-						if v, ok := v.(*CryptoValue); ok {
-							if cf := findCryptFieldWithClauseColumn(v.Column, fields); cf != nil {
-								encrypted, err := crypto.EncryptAES(v.Value, encryptionKey)
-								if err != nil {
-									panic(err)
-								}
-
-								expr.Vars[i] = encrypted
-							}
+			}
+		case clause.Expr:
+			if expr.Vars != nil {
+				for i, v := range expr.Vars {
+					if v, ok := v.(*CryptoValue); ok {
+						if cf := findCryptFieldWithClauseColumn(v.Column, fields); cf != nil {
+							expr.Vars[i] = cf.Strategy.Encrypt(v.Value, cf.Field, db)
 						}
 					}
 				}
 			}
-
-		}
-	}
-}
-
-func encryptParamBeforeUpdate(db *gorm.DB) {
-	slog.Info("wefewfwe schema", "table", db.Statement.Table)
-
-	// dbSchema := db.Statement.Schema
-	// if dbSchema == nil {
-	// 	return
-	// }
-
-	// // TODO: make all the lookups to check if the tag is true
-	// if updateInfo, ok := db.Statement.Dest.(map[string]interface{}); ok {
-	// 	for updateColumn := range updateInfo {
-	// 		updateV := updateInfo[updateColumn]
-	// 		updateField := dbSchema.LookUpField(updateColumn)
-	// 		if _, ok := updateField.Tag.Lookup("encrypt"); ok {
-	// 			stringVal, ok := updateV.(string)
-	// 			if !ok {
-	// 				continue
-	// 			}
-
-	// 			encrypted, err := crypto.EncryptAES(stringVal, encryptionKey)
-	// 			if err != nil {
-	// 				panic(err)
-	// 			}
-
-	// 			encryptionValue := encrypted
-	// 			updateInfo[updateColumn] = encryptionValue
-	// 		}
-	// 	}
-
-	// 	return
-	// }
-
-	// destType, destValue := getReflectElem(db.Statement.Dest)
-	// if destType != nil {
-	// 	for i := 0; i < destType.NumField(); i++ {
-	// 		field := destType.Field(i)
-	// 		fieldValue := destValue.Field(i)
-	// 		if _, ok := field.Tag.Lookup("encrypt"); ok {
-	// 			val := fieldValue.String()
-	// 			if len(val) == 0 {
-	// 				continue
-	// 			}
-
-	// 			encrypted, err := crypto.EncryptAES(val, encryptionKey)
-	// 			if err != nil {
-	// 				panic(err)
-	// 			}
-
-	// 			encryptionValue := encrypted
-	// 			fieldValue.SetString(encryptionValue)
-	// 		}
-	// 	}
-	// }
-}
-
-func getReflectElem(i interface{}) (reflect.Type, reflect.Value) {
-	destType := reflect.TypeOf(i)
-	destValue := reflect.ValueOf(i)
-	
-	if destType.Kind() == reflect.Struct {
-		ptr := reflect.New(destType)
-		ptr.Elem().Set(destValue)
-		destType = ptr.Elem().Type()
-		destValue = ptr.Elem()
-	}
-	
-	for destType.Kind() == reflect.Ptr {
-		destType = destType.Elem()
-		destValue = destValue.Elem()
-	}
-	
-	if destType.Kind() == reflect.Struct {
-		return destType, destValue
-	}
-	
-	return nil, reflect.ValueOf(nil)
-}
-
-func decryptModel(db *gorm.DB) {
-	fields := getSchemaCryptoFields(db.Statement.Schema)
-	if len(fields) == 0 {
-		return
-	}
-
-	refVal := reflect.ValueOf(db.Statement.Dest).Elem()
-	
-	switch refVal.Kind() {
-	case reflect.Struct:
-		err := decryptFields(refVal, fields, db)
-		if err != nil {
-			slog.Error("failed to decrypt model", "table", db.Statement.Table, "error", err)
-		}
-	case reflect.Slice:
-		if refVal.Len() >= 1 {
-			for i := 0; i < refVal.Len(); i++ {
-				curVal := refVal.Index(i)
-				
-				if curVal.Kind() == reflect.Pointer {
-					curVal = curVal.Elem()
-				}
-
-				if curVal.Kind() == reflect.Struct {
-					err := decryptFields(curVal, fields, db)
-					if err != nil {
-						slog.Error("failed to decrypt model", "table", db.Statement.Table, "error", err)
-					}
-				}
-			}
-		}
-	}
-}
-
-func getSchemaCryptoFields(schem *schema.Schema) []*schema.Field {
-	if schem == nil {
-		return nil
-	}
-
-	var fields []*schema.Field = []*schema.Field{}
-	fieldNames := schem.FieldsByName
-
-	for k := range fieldNames {
-		v := fieldNames[k]
-		if _, ok := v.Tag.Lookup("encrypt"); ok {
-			if v.FieldType.Kind() == reflect.String {
-				fields = append(fields, v)
-				continue
-			}
-
-			if v.FieldType.Kind() == reflect.Pointer && v.FieldType.Elem().Kind() == reflect.String {
-				fields = append(fields, v)
-				continue
-			}
-
-			slog.Warn("field is not a string, it will not be encrypted", "name", v.Name)
-		}
-	}
-
-	return fields
-}
-
-func encryptValues(values []interface{}, cf *schema.Field, db *gorm.DB) ([]interface{}, error) {
-	for i, v := range values {
-		if v, ok := v.(string); ok {
-			encrypted, err := crypto.EncryptAES(v, encryptionKey)
-			if err != nil {
-				return []interface{}{}, err
-			}
-
-			values[i] = encrypted
-		}
-	}
-
-	return values, nil
-}
-
-func findCryptFieldWithClauseColumn(column interface{}, fields []*schema.Field) *schema.Field {
-	if c, ok := (column).(string); ok {
-		return findCryptField(c, fields)
-	}
-	
-	if c, ok := (column).(clause.Column); ok {
-		return findCryptField(c.Name, fields)
-	}
-
-	return nil
-}
-
-func findCryptField(fieldName string, fields []*schema.Field) *schema.Field {
-	if fieldName == "" {
-		return nil
-	}
-
-	for _, f := range fields {
-		if f.DBName == fieldName {
-			return f
-		}
-	}
-	
-	return nil
-}
-
-func decryptFields(src reflect.Value, fields []*schema.Field, db *gorm.DB) error {
-	for _, field := range fields {
-		refValue := src.FieldByName(field.Name)
-		
-		if refValue.Kind() == reflect.Ptr {
-			refValue = refValue.Elem()
-		}
-
-		if !refValue.IsValid() {
-			continue
-		}
-
-		encryptValue := refValue.String()
-
-		if len(encryptValue) > 0 {
-			decrypted, err := crypto.DecryptAES(encryptValue, encryptionKey)
-			if err != nil {
-				return err
-			}
-
-			slog.Info("decrypted", "table", db.Statement.Table, "name", field.Name, "before", encryptValue, "after", decrypted)
-			field.Set(db.Statement.Context, src, decrypted)
-		}
-	}
-
-	return nil
-}
-
-func getFieldValue(field *schema.Field, ctx context.Context, value reflect.Value) (string, bool) {
-	reflected := value.FieldByName(field.Name)
-	if !reflected.IsValid() {
-		slog.Info("got value", "strat", "nil", "key", field.Name)
-		return "", false
-	}
-
-	slog.Info("got value", "strat", "struct", "struct", value.Type().Name(), "key", field.Name, "kind", reflected.Kind(), "value", reflected.Interface(), "fullStruct", value.Interface())
-
-	switch reflected.Kind() {
-		case reflect.Ptr:
-			elem := reflected.Elem()
-			if !elem.IsValid() || elem.IsNil() {
-				return "", true
-			}
-
-			slog.Info("got value", "strat", "ptr", "value", elem.String())
-			return elem.String(), true
-		case reflect.String:
-			slog.Info("got value", "strat", "reg", "key", field.Name, "kind", reflected.Kind(), "value", reflected.String())
-			return reflected.String(), true
-		default:
-			return "", false
-	}
-}
-
-func encryptFields(reflectValue reflect.Value, fields []*schema.Field, db *gorm.DB) {
-	dbCtx := db.Statement.Context
-	for _, field := range fields {
-		value, ok := getFieldValue(field, dbCtx, reflectValue)
-		if !ok {
-			slog.Warn("field is not a string, it will not be encrypted", "name", field.Name)
-			continue
-		}
-
-		encrypted, err := crypto.EncryptAES(value, encryptionKey)
-		if err != nil {
-			panic(err)
-		}
-
-		slog.Info("encrypted", "table", db.Statement.Table, "name", field.Name, "before", value, "after", encrypted)
-		if err := field.Set(dbCtx, reflectValue, encrypted); err != nil {
-			panic(err)
 		}
 	}
 }

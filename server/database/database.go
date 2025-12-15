@@ -57,7 +57,7 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 		return nil, err
 	}
 
-	plugin.EncryptionPlugin(db, config.AccessToken)
+	db.Use(plugin.CreateEncryptionPlugin(config.AccessToken))
 	firstStart := !db.Migrator().HasTable(&model.User{})
 
 	db.AutoMigrate(&model.User{})

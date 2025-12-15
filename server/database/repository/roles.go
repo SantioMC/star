@@ -12,7 +12,7 @@ type RoleStore struct {
 func (store *RoleStore) GetRoleByID(id string) (*model.Role, error) {
 	role := model.Role{}
 
-	if err := store.DB.Where("id = ?", id).First(&role).Error; err != nil {
+	if err := store.DB.Where("id = ?", id).First(id).Error; err != nil {
 		return nil, err
 	}
 

@@ -195,6 +195,7 @@ func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Applicat
 	}
 
 	jwt, expiresAt, err := store.CreateAccessToken(&refreshToken, app, false)
+	
 	if err != nil {
 		return nil, "", time.Time{}, err
 	}

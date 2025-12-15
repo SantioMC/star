@@ -46,13 +46,6 @@ func registerAccount(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "Invalid password, "+err.Error())
 	}
 
-	if fingerprint := body.Fingerprint; fingerprint != nil {
-		err = verifier.VerifyFingerprint(*fingerprint)
-		if err != nil {
-			return helper.NewHttpError(400, "Invalid fingerprint, "+err.Error())
-		}
-	}
-
 	userStore := state.StarState.Database.UserStore
 	existing, err := userStore.GetUserByEmail(email.Address)
 	
@@ -100,5 +93,4 @@ type RegisterAccountRequest struct {
 	Username     string  `json:"username"`
 	Email        string  `json:"email"`
 	Password     string  `json:"password"`
-	Fingerprint  *string `json:"fingerprint"`
 }
