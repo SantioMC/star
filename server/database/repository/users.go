@@ -75,7 +75,7 @@ func (store *UserStore) GetUserByUsername(username string) (*model.User, error) 
 func (store *UserStore) GetUserByEmail(email string) (*model.User, error) {
 	user := model.User{}
 
-	if err := store.DB.Where("email = ?", email).Preload(clause.Associations).First(&user).Error; err != nil {
+	if err := store.DB.Where("email = ? AND email_verified = ?", email, true).Preload(clause.Associations).First(&user).Error; err != nil {
 		return nil, err
 	}
 

@@ -39,11 +39,11 @@ func (p CryptoPlugin) Initialize(db *gorm.DB) error {
 		return err
 	}
 	
-	if err := db.Callback().Create().Before("gorm:update").Register("crypto:update_encrypt", encryptUpdate); err != nil {
+	if err := db.Callback().Update().Before("gorm:update").Register("crypto:update_encrypt", encryptUpdate); err != nil {
 		return err
 	}
 	
-	if err := db.Callback().Create().After("gorm:update").Register("crypto:update_decrypt", decryptModel); err != nil {
+	if err := db.Callback().Update().After("gorm:update").Register("crypto:update_decrypt", decryptModel); err != nil {
 		return err
 	}
 
@@ -87,10 +87,8 @@ func getReflectElem(iface interface{}) (reflect.Value, bool) {
 		destValue = ptr.Elem()
 	}
 
-	slog.Info("destType kind", "kind", destValue.Kind())
 	for destValue.Kind() == reflect.Ptr {
 		destValue = destValue.Elem()
-		slog.Info("new destType kind", "kind", destValue.Kind())
 	}
 
 	if destValue.Kind() == reflect.Struct {
@@ -100,7 +98,32 @@ func getReflectElem(iface interface{}) (reflect.Value, bool) {
 	return reflect.ValueOf(nil), false
 }
 
-func modifyValues(values []interface{}, fields []*schema.Field, callback func(string) string) {
+func findClauseField(column interface{}, fields []*schema.Field) *schema.Field {
+	name, ok := column.(string)
+	if !ok {
+		column, ok := column.(clause.Column)
+		if !ok {
+			return nil
+		}
+
+		name = column.Name
+	}
+	
+	if name == "" {
+		return nil
+	}
+
+	for _, f := range fields {
+		if f.DBName == name {
+			return f
+		}
+	}
+
+
+	return nil
+}
+
+func modifyValues(values []interface{}, callback func(string) string) {
 	for i, v := range values {
 		if v, ok := v.(string); ok {
 			values[i] = callback(v)
@@ -129,7 +152,6 @@ func modifyFields(reflectValue reflect.Value, fields []*schema.Field, db *gorm.D
 }
 
 func encryptModel(db *gorm.DB) {
-	slog.Info("encrypting model")
 	schema := db.Statement.Schema
 	fields := getFields(schema)
 	if fields == nil {
@@ -166,8 +188,6 @@ func encryptModel(db *gorm.DB) {
 }
 
 func decryptModel(db *gorm.DB) {
-	slog.Info("decrypting model", "table", db.Statement.Table)
-
 	schema := db.Statement.Schema
 	fields := getFields(schema)
 	if fields == nil {
@@ -256,7 +276,6 @@ func encryptUpdate(db *gorm.DB) {
 			continue
 		}
 
-		slog.Info("fieldValue", "kind", fieldValue.Kind(), "field", field.Name, "value", fieldValue)
 		if fieldValue.Kind() == reflect.Ptr {
 			fieldValue = fieldValue.Elem()
 		}
@@ -296,29 +315,39 @@ func encryptQuery(db *gorm.DB) {
 	for i, expr := range exprs {
 		switch expr := expr.(type) {
 		case clause.Eq:
-			if cf := findCryptFieldWithClauseColumn(expr.Column, fields); cf != nil {
+			value, ok := expr.Value.(string)
+			if (!ok) {
+				continue
+			}
+
+			if field := findClauseField(expr.Column, fields); field != nil {
+				encrypted, err := crypto.EncryptAES(value, cryptoPlugin.encryptionKey)
+				if err != nil {
+					slog.Error("failed to encrypt value", "vaue", value, "err", err)
+					continue
+				}
+
 				exprs[i] = clause.Eq{
 					Column: expr.Column,
-					Value:  cf.Strategy.Encrypt(expr.Value.(string), cf.Field, db),
+					Value:  encrypted,
 				}
 			}
+
 		case clause.IN:
-			if cf := findCryptFieldWithClauseColumn(expr.Column, fields); cf != nil {
+			if field := findClauseField(expr.Column, fields); field != nil {
+				modifyValues(expr.Values, func(value string) string {
+					encrypted, err := crypto.EncryptAES(value, cryptoPlugin.encryptionKey)
+					if err != nil {
+						slog.Error("failed to encrypt value", "vaue", value, "err", err)
+						return value
+					}
+
+					return encrypted
+				})
+
 				exprs[i] = clause.IN{
 					Column: expr.Column,
-					Values: modifyValues(expr.Values, cf, func(value) string {
-						return ""
-					}),
-				}
-			}
-		case clause.Expr:
-			if expr.Vars != nil {
-				for i, v := range expr.Vars {
-					if v, ok := v.(*CryptoValue); ok {
-						if cf := findCryptFieldWithClauseColumn(v.Column, fields); cf != nil {
-							expr.Vars[i] = cf.Strategy.Encrypt(v.Value, cf.Field, db)
-						}
-					}
+					Values: expr.Values,
 				}
 			}
 		}

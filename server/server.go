@@ -45,6 +45,13 @@ func StartServer(config *config.Config) {
 
 	go api.StartAPIServer(server)
 
+	user, err := server.Database.UserStore.GetUserByEmail("root@star")
+	if err != nil {
+		slog.Error("failed to get super user", "err", err)
+	} else {
+		slog.Info("got super user", "name", user.Username)
+	}
+
 	<-interrupt
 
 	println("")

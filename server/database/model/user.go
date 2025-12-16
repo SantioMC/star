@@ -12,7 +12,7 @@ const (
 type User struct {
 	BaseModel
 	Username      string    `json:"username" gorm:"uniqueIndex"`
-	Email         string    `json:"email" gorm:"uniqueIndex"`
+	Email         string    `json:"email" gorm:"uniqueIndex" encrypt:"true"`
 	EmailVerified bool      `json:"email_verified"`
 	EmailCode     string    `json:"-"`
 	Roles         []Role    `json:"-" gorm:"many2many:user_roles"`
