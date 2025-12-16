@@ -30,19 +30,19 @@ func (p CryptoPlugin) Name() string {
 
 func (p CryptoPlugin) Initialize(db *gorm.DB) error {
 	cryptoPlugin = p
-	
+
 	if err := db.Callback().Create().Before("gorm:create").Register("crypto:create_encrypt", encryptModel); err != nil {
 		return err
 	}
-	
+
 	if err := db.Callback().Create().After("gorm:create").Register("crypto:create_decrypt", decryptModel); err != nil {
 		return err
 	}
-	
+
 	if err := db.Callback().Update().Before("gorm:update").Register("crypto:update_encrypt", encryptUpdate); err != nil {
 		return err
 	}
-	
+
 	if err := db.Callback().Update().After("gorm:update").Register("crypto:update_decrypt", decryptModel); err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func findClauseField(column interface{}, fields []*schema.Field) *schema.Field {
 
 		name = column.Name
 	}
-	
+
 	if name == "" {
 		return nil
 	}
@@ -118,7 +118,6 @@ func findClauseField(column interface{}, fields []*schema.Field) *schema.Field {
 			return f
 		}
 	}
-
 
 	return nil
 }
@@ -135,7 +134,7 @@ func modifyFields(reflectValue reflect.Value, fields []*schema.Field, db *gorm.D
 	ctx := db.Statement.Context
 	for _, field := range fields {
 		if actualValue, isZero := field.ValueOf(ctx, reflectValue); !isZero {
-			value, ok := actualValue.(string); 
+			value, ok := actualValue.(string)
 			if !ok {
 				slog.Warn("Failed to modify field, it was not a string", "field", field.Name)
 				continue
@@ -245,7 +244,7 @@ func encryptUpdate(db *gorm.DB) {
 			if !ok {
 				continue
 			}
-			
+
 			if updateField.Tag.Get(encryptionTag) != "true" {
 				continue
 			}
@@ -316,7 +315,7 @@ func encryptQuery(db *gorm.DB) {
 		switch expr := expr.(type) {
 		case clause.Eq:
 			value, ok := expr.Value.(string)
-			if (!ok) {
+			if !ok {
 				continue
 			}
 
