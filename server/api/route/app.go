@@ -10,6 +10,9 @@ import (
 
 func AppRouter(r fiber.Router) {
 	r.Post("/:app/login", limiter.New(helper.HeavyLimiter), login)
+	
+	r.Get("/:app/callback/:provider", limiter.New(helper.HeavyLimiter), loginWithProvider)
+	r.Get("/:app/login/:provider", limiter.New(helper.HeavyLimiter), loginWithProvider)
 }
 
 func login(ctx *fiber.Ctx) error {
@@ -43,6 +46,20 @@ func login(ctx *fiber.Ctx) error {
 	})
 
 	return nil
+}
+
+func loginWithProvider(ctx *fiber.Ctx) error {
+	_, err := getAppFromCtx(ctx)
+	if err != nil {
+		return helper.NewHttpError(404, "Invalid application slug provided")
+	}
+
+	provider, err := state.StarState.Database.SocialStore.GetProviderByName(ctx.Params("provider", ""))
+	if err != nil {
+		return helper.NewHttpError(404, "Invalid provider name provided")
+	}
+
+	return ctx.Redirect(provider.GetLoginURL(), 301)
 }
 
 func getAppFromCtx(ctx *fiber.Ctx) (*model.Application, error) {

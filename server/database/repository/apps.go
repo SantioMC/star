@@ -37,15 +37,23 @@ func (store *AppStore) GetAppBySlug(slug string) (*model.Application, error) {
 	return &app, nil
 }
 
-func (store *AppStore) SaveApp(app *model.Application) error {
-	return store.DB.Save(app).Error
-}
-
 func (store *AppStore) CreateStarApp() (*model.Application, error) {
+	// Create internal Star app
 	app := model.NewApplication("Star")
 	app.Internal = true
 
-	err := store.SaveApp(&app)
+	if store.Config.Url != "" {
+		app.Url = store.Config.Url
+	}
+
+	err := store.DB.Save(&app).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Create OAuth2 provider for star app
+	provider := model.NewProvider(&app, model.OAuth2)
+	err = store.DB.Save(&provider).Error
 	if err != nil {
 		return nil, err
 	}

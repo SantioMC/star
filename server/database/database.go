@@ -20,6 +20,7 @@ type Database struct {
 
 	KeyStore     *repository.KeyStore
 	AppStore     *repository.AppStore
+	SocialStore  *repository.SocialStore
 	RequestStore *repository.RequestStore
 }
 
@@ -64,9 +65,11 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 	db.AutoMigrate(&model.Account{})
 	db.AutoMigrate(&model.Role{})
 	db.AutoMigrate(&model.RefreshToken{})
+	db.AutoMigrate(&model.SocialProvider{})
 	db.AutoMigrate(&model.Application{})
 	db.AutoMigrate(&model.AuthRequest{})
 	db.AutoMigrate(&model.Keypair{})
+	db.AutoMigrate(&model.Provider{})
 
 	database := &Database{
 		DB: db,
@@ -76,6 +79,7 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 
 		KeyStore:     &repository.KeyStore{DB: db, Config: config},
 		AppStore:     &repository.AppStore{DB: db, Config: config},
+		SocialStore:  &repository.SocialStore{DB: db, Config: config},
 		RequestStore: &repository.RequestStore{DB: db},
 	}
 
