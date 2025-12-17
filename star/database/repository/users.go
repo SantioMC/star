@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tubblelive/star/config"
-	"github.com/tubblelive/star/server/crypto"
-	"github.com/tubblelive/star/server/database/model"
+	"github.com/tubblelive/star/star/config"
+	"github.com/tubblelive/star/star/crypto"
+	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -117,8 +117,14 @@ func (store *UserStore) ValidateLogin(username, password string) (*model.User, e
 	return user, nil
 }
 
-func (store *UserStore) CreateAccessToken(refreshToken *model.RefreshToken, app *model.Application, impersonate bool) (string, time.Time, error) {
+func (store *UserStore) CreateAccessToken(
+	refreshToken *model.RefreshToken, 
+	app *model.Application, 
+	impersonate bool,
+) (string, time.Time, error) {
 	// todo: a better way of getting the key store
+	// todo: impl claims
+
 	expiresAfter := time.Hour * 2
 	keyStore := KeyStore{DB: store.DB, Config: store.Config}
 	signingKey, err := keyStore.GetSigningKey()
@@ -146,10 +152,6 @@ func (store *UserStore) CreateAccessToken(refreshToken *model.RefreshToken, app 
 
 	if impersonate {
 		fields["imp"] = true
-	}
-
-	if refreshToken.Fingerprint != nil {
-		fields["frp"] = refreshToken.Fingerprint
 	}
 
 	privateKey, err := signingKey.GetPrivateKey()

@@ -8,7 +8,7 @@ import (
 	"encoding/pem"
 	"fmt"
 
-	"github.com/tubblelive/star/server/crypto"
+	"github.com/tubblelive/star/star/crypto"
 )
 
 type KeypairKind string

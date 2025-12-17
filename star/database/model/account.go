@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/tubblelive/star/server/crypto"
+	"github.com/tubblelive/star/star/crypto"
 )
 
 type Account struct {

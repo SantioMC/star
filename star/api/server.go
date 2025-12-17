@@ -9,8 +9,8 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/tubblelive/star/server/api/route"
-	"github.com/tubblelive/star/server/state"
+	"github.com/tubblelive/star/star/api/route"
+	"github.com/tubblelive/star/star/state"
 )
 
 func StartAPIServer(server *state.Server) *fiber.App {

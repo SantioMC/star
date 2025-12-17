@@ -3,8 +3,8 @@ package repository
 import (
 	"fmt"
 
-	"github.com/tubblelive/star/config"
-	"github.com/tubblelive/star/server/database/model"
+	"github.com/tubblelive/star/star/config"
+	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
 )
 

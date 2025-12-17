@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tubblelive/star/config"
 	"github.com/tubblelive/star/oidc"
-	"github.com/tubblelive/star/server/database/model"
+	"github.com/tubblelive/star/star/config"
+	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
 )
 

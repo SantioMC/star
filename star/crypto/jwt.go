@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/tubblelive/star/server/state/claims"
+	"github.com/tubblelive/star/star/state/claims"
 )
 
 const (

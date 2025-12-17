@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"reflect"
 
-	"github.com/tubblelive/star/server/crypto"
+	"github.com/tubblelive/star/star/crypto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/schema"
@@ -58,16 +58,10 @@ func (p CryptoPlugin) Initialize(db *gorm.DB) error {
 	return nil
 }
 
-func getFields(schem *schema.Schema) []*schema.Field {
-	if schem == nil {
-		return nil
-	}
-
+func filterFilters(fields []*schema.Field) []*schema.Field {
 	var list []*schema.Field
 
-	fields := schem.FieldsByName
-	for k := range fields {
-		field := fields[k]
+	for _, field := range fields {
 		if field.Tag.Get("encrypt") != "true" {
 			continue
 		}
@@ -76,6 +70,20 @@ func getFields(schem *schema.Schema) []*schema.Field {
 	}
 
 	return list
+}
+
+func getFields(schem *schema.Schema) []*schema.Field {
+	if schem == nil {
+		return nil
+	}
+
+	var fields []*schema.Field
+
+	for _, field := range schem.FieldsByName {
+		fields = append(fields, field)
+	}
+
+	return filterFilters(fields)
 }
 
 func getReflectElem(iface interface{}) (reflect.Value, bool) {
@@ -133,19 +141,20 @@ func modifyValues(values []interface{}, callback func(string) string) {
 func modifyFields(reflectValue reflect.Value, fields []*schema.Field, db *gorm.DB, callback func(string) string) {
 	ctx := db.Statement.Context
 	for _, field := range fields {
-		if actualValue, isZero := field.ValueOf(ctx, reflectValue); !isZero {
-			value, ok := actualValue.(string)
-			if !ok {
-				slog.Warn("Failed to modify field, it was not a string", "field", field.Name)
-				continue
-			}
+		value := field.ReflectValueOf(ctx, reflectValue)
 
-			newValue := callback(value)
-			if err := field.Set(ctx, reflectValue, newValue); err != nil {
-				panic(err)
-			}
-		} else {
+		if value.IsZero() {
 			continue
+		}
+
+		if value.Kind() != reflect.String {
+			slog.Warn("Failed to modify field, it was not a string", "field", field.Name)
+			continue
+		}
+
+		newValue := callback(value.String())
+		if err := field.Set(ctx, reflectValue, newValue); err != nil {
+			panic(err)
 		}
 	}
 }
@@ -210,12 +219,12 @@ func decryptModel(db *gorm.DB) {
 		for i := 0; i < ref.Len(); i++ {
 			curVal := ref.Index(i)
 
-			if curVal.Kind() == reflect.Pointer {
+			if curVal.Kind() == reflect.Ptr {
 				curVal = curVal.Elem()
 			}
 
 			if curVal.Kind() == reflect.Struct {
-				modifyFields(ref, fields, db, func(encrypted string) string {
+				modifyFields(curVal, fields, db, func(encrypted string) string {
 					decrypted, err := crypto.DecryptAES(encrypted, cryptoPlugin.encryptionKey)
 					if err != nil {
 						slog.Error("failed to encrypt value", "err", err)

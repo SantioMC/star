@@ -1,9 +1,9 @@
 package state
 
 import (
-	"github.com/tubblelive/star/config"
-	"github.com/tubblelive/star/server/database"
-	"github.com/tubblelive/star/server/database/model"
+	"github.com/tubblelive/star/star/config"
+	"github.com/tubblelive/star/star/database"
+	"github.com/tubblelive/star/star/database/model"
 	"github.com/zitadel/oidc/v3/pkg/op"
 )
 

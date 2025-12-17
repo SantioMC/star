@@ -1,4 +1,4 @@
-package server
+package star
 
 import (
 	"log/slog"
@@ -6,10 +6,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tubblelive/star/config"
-	"github.com/tubblelive/star/server/api"
-	"github.com/tubblelive/star/server/database"
-	"github.com/tubblelive/star/server/state"
+	"github.com/tubblelive/star/star/api"
+	"github.com/tubblelive/star/star/config"
+	"github.com/tubblelive/star/star/database"
+	"github.com/tubblelive/star/star/state"
 )
 
 func StartServer(config *config.Config) {

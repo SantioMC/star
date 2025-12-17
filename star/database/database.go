@@ -4,11 +4,11 @@ import (
 	"encoding/hex"
 	"log/slog"
 
-	"github.com/tubblelive/star/config"
-	"github.com/tubblelive/star/server/crypto"
-	"github.com/tubblelive/star/server/database/model"
-	"github.com/tubblelive/star/server/database/plugin"
-	"github.com/tubblelive/star/server/database/repository"
+	"github.com/tubblelive/star/star/config"
+	"github.com/tubblelive/star/star/crypto"
+	"github.com/tubblelive/star/star/database/model"
+	"github.com/tubblelive/star/star/database/plugin"
+	"github.com/tubblelive/star/star/database/repository"
 	"gorm.io/gorm"
 )
 

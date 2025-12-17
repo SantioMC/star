@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"github.com/tubblelive/star/server/database/model"
+	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
 )
 

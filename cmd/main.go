@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
-	"github.com/tubblelive/star/config"
-	"github.com/tubblelive/star/server"
+	"github.com/tubblelive/star/star"
+	"github.com/tubblelive/star/star/config"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	server.StartServer(config)
+	star.StartServer(config)
 }
 
 func setupLogger() {

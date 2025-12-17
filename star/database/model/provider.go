@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/tubblelive/star/server/crypto"
+	"github.com/tubblelive/star/star/crypto"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
 	"gorm.io/datatypes"

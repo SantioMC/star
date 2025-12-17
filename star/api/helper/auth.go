@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/tubblelive/star/server/crypto"
-	"github.com/tubblelive/star/server/state"
-	"github.com/tubblelive/star/server/state/claims"
+	"github.com/tubblelive/star/star/crypto"
+	"github.com/tubblelive/star/star/state"
+	"github.com/tubblelive/star/star/state/claims"
 )
 
 func getBearerToken(ctx *fiber.Ctx) (string, error) {

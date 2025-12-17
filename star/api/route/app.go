@@ -3,9 +3,9 @@ package route
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/tubblelive/star/server/api/helper"
-	"github.com/tubblelive/star/server/database/model"
-	"github.com/tubblelive/star/server/state"
+	"github.com/tubblelive/star/star/api/helper"
+	"github.com/tubblelive/star/star/database/model"
+	"github.com/tubblelive/star/star/state"
 )
 
 func AppRouter(r fiber.Router) {

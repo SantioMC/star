@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/gofiber/fiber/v2"
-	"github.com/tubblelive/star/server/crypto"
-	"github.com/tubblelive/star/server/state"
+	"github.com/tubblelive/star/star/crypto"
+	"github.com/tubblelive/star/star/state"
 )
 
 func WellKnownRouter(r fiber.Router) {

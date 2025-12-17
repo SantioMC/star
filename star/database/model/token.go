@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"github.com/tubblelive/star/server/crypto"
+	"github.com/tubblelive/star/star/crypto"
 )
 
 type RefreshToken struct {
