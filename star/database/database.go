@@ -70,6 +70,7 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 	db.AutoMigrate(&model.AuthRequest{})
 	db.AutoMigrate(&model.Keypair{})
 	db.AutoMigrate(&model.Provider{})
+	db.AutoMigrate(&model.LoginState{})
 
 	database := &Database{
 		DB: db,

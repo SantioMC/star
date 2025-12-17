@@ -1,6 +1,10 @@
 package model
 
 import (
+	"fmt"
+	"net/url"
+	"strings"
+
 	"github.com/tubblelive/star/oidc"
 	"gorm.io/datatypes"
 )
@@ -17,6 +21,13 @@ type SocialProvider struct {
 	DiscoveryURL *string `json:"oidc_url"`
 	AuthURL      string  `json:"auth_url"`
 	TokenURL     string  `json:"token_url"`
+}
+
+type LoginState struct {
+	BaseModel
+
+	ApplicationID string
+	Application   *Application
 }
 
 // Reaches out to the oidc discovery endpoint to find the relevant information
@@ -55,6 +66,7 @@ func NewSocialProviderFromPreset(name string, config oidc.Configuration, clientI
 		DiscoveryURL: nil,
 		AuthURL:      config.AuthorizationURL,
 		TokenURL:     config.TokenURL,
+		Scopes:       datatypes.NewJSONType(config.DefaultScopes),
 	}, nil
 }
 
@@ -75,13 +87,29 @@ func NewSocialProvider(name string, authUrl string, tokenUrl string, clientId st
 	}, nil
 }
 
-func (p *SocialProvider) GetLoginURL() string {
-	// ?response_type=code&client_id=157730590492196864&scope=identify%20guilds.join&state=15773059ghq9183habn&redirect_uri=https%3A%2F%2Fnicememe.website&prompt=consent&integration_type=0
+func (p *SocialProvider) GetCallbackURL(hostname string, state string) string {
+	return fmt.Sprintf("%s/api/callback/%s", hostname, p.Name)
+}
 
-	url := p.AuthURL
-	url = url + "?response_type=code"
-	url = url + "&client_id=" + p.ClientID
-	url = url + "&scope=" + p.ClientID
+func (p *SocialProvider) GetLoginURL(state string, redirectUri string) string {
+	builder := strings.Builder{}
 
-	return url
+	builder.WriteString(p.AuthURL)
+	builder.WriteString("?response_type=code") // todo: We will probably want to support more
+	
+	builder.WriteString("&client_id=")
+	builder.WriteString(url.QueryEscape(p.ClientID))
+
+	builder.WriteString("&scope=")
+	builder.WriteString(url.QueryEscape(strings.Join(p.Scopes.Data(), " ")))
+
+	builder.WriteString("&state=")
+	builder.WriteString(url.QueryEscape(state))
+
+	builder.WriteString("&redirect_uri=")
+	builder.WriteString(url.QueryEscape(redirectUri))
+
+	builder.WriteString("&prompt=consent") // We might want to support others, not sure
+
+	return builder.String()
 }

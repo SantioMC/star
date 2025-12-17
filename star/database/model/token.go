@@ -16,9 +16,9 @@ type RefreshToken struct {
 	ApplicationID string
 	Application   *Application
 
-	Token       string                           `json:"token" encrypt:"true"`
-	Fingerprint *string                          `json:"fingerprint" encrypt:"true"`
-	Claims      datatypes.JSONType[[]oidc.Claim] `json:"claims"`
+	Token       string
+	Fingerprint *string
+	Claims      datatypes.JSONType[[]oidc.Claim]
 	Duration    time.Duration
 
 	InvalidatedAt *int64
