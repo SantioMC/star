@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
+	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/database/model"
@@ -120,6 +122,7 @@ func (store *UserStore) ValidateLogin(username, password string) (*model.User, e
 func (store *UserStore) CreateAccessToken(
 	refreshToken *model.RefreshToken, 
 	app *model.Application, 
+	claims []oidc.Claim,
 	impersonate bool,
 ) (string, time.Time, error) {
 	// todo: a better way of getting the key store
@@ -133,7 +136,10 @@ func (store *UserStore) CreateAccessToken(
 	}
 
 	roles := make([]interface{}, len(refreshToken.User.Roles))
+	var groups []string 
+
 	for idx, role := range refreshToken.User.Roles {
+		groups = append(groups, role.Name)
 		roles[idx] = map[string]any{
 			"id": role.ID,
 			"name": role.Name,
@@ -144,10 +150,20 @@ func (store *UserStore) CreateAccessToken(
 	fields := map[string]any{
 		"sub": refreshToken.User.ID,
 		"aud": app.ID,
-
 		"name": refreshToken.User.Username,
-		"email": refreshToken.User.Email,
-		"roles": roles,
+	}
+
+	if slices.Contains(claims, oidc.ClaimEmail) {
+		fields["email"] = refreshToken.User.Email
+		fields["email_verified"] = refreshToken.User.EmailVerified
+	}
+
+	if slices.Contains(claims, oidc.ClaimRoles) {
+		fields["roles"] = roles
+	}
+
+	if slices.Contains(claims, oidc.ClaimGroups) {
+		fields["groups"] = groups
 	}
 
 	if impersonate {
@@ -177,8 +193,8 @@ func (store *UserStore) CreateAccessToken(
 	return string(jwt), time.Now().Add(expiresAfter), nil
 }
 
-func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Application) (*model.RefreshToken, string, time.Time, error) {
-	refreshToken := model.NewRefreshToken(time.Hour * 24 * 7)
+func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Application, claims []oidc.Claim) (*model.RefreshToken, string, time.Time, error) {
+	refreshToken := model.NewRefreshToken(time.Hour * 24 * 7, claims)
 	refreshToken.User = user
 	refreshToken.Application = app
 
@@ -196,7 +212,7 @@ func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Applicat
 		return nil, "", time.Time{}, err
 	}
 
-	jwt, expiresAt, err := store.CreateAccessToken(&refreshToken, app, false)
+	jwt, expiresAt, err := store.CreateAccessToken(&refreshToken, app, claims, false)
 	
 	if err != nil {
 		return nil, "", time.Time{}, err
@@ -219,7 +235,7 @@ func (store *UserStore) RefreshAccessToken(refreshToken string) (string, time.Ti
 		return "", time.Time{}, fmt.Errorf("token is expired")
 	}
 
-	jwt, expiresAt, err := store.CreateAccessToken(&token, token.Application, false)
+	jwt, expiresAt, err := store.CreateAccessToken(&token, token.Application, token.Claims.Data(), false)
 	if err != nil {
 		return "", time.Time{}, err
 	}

@@ -3,10 +3,15 @@ package route
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/api/helper"
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/state"
 )
+
+var loginClaims []oidc.Claim = []oidc.Claim{
+	oidc.ClaimEmail, oidc.ClaimRoles,
+}
 
 func AppRouter(r fiber.Router) {
 	r.Post("/:app/login", limiter.New(helper.HeavyLimiter), login)
@@ -32,7 +37,7 @@ func login(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(401, "Invalid username or password")
 	}
 
-	refreshToken, accessToken, expiresAt, err := userStore.CreateRefreshToken(user, app)
+	refreshToken, accessToken, expiresAt, err := userStore.CreateRefreshToken(user, app, loginClaims)
 	if err != nil {
 		return err
 	}

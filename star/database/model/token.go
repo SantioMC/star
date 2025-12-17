@@ -3,22 +3,28 @@ package model
 import (
 	"time"
 
+	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/crypto"
+	"gorm.io/datatypes"
 )
 
 type RefreshToken struct {
 	BaseModel
+
 	UserID        string
 	User          *User
 	ApplicationID string
 	Application   *Application
-	Token         string  `json:"token" encrypt:"true"`
-	Fingerprint   *string `json:"fingerprint" encrypt:"true"`
-	Duration      time.Duration
+
+	Token       string                           `json:"token" encrypt:"true"`
+	Fingerprint *string                          `json:"fingerprint" encrypt:"true"`
+	Claims      datatypes.JSONType[[]oidc.Claim] `json:"claims"`
+	Duration    time.Duration
+
 	InvalidatedAt *int64
 }
 
-func NewRefreshToken(duration time.Duration) RefreshToken {
+func NewRefreshToken(duration time.Duration, claims []oidc.Claim) RefreshToken {
 	token := crypto.CreateRandString(48)
 
 	return RefreshToken{
@@ -27,6 +33,7 @@ func NewRefreshToken(duration time.Duration) RefreshToken {
 		},
 		Token:    token,
 		Duration: duration,
+		Claims:   datatypes.NewJSONType(claims),
 	}
 }
 
