@@ -77,6 +77,7 @@ func StartAPIServer(server *state.Server) *fiber.App {
 
 	api := app.Group("/api")
 	api.Route("/user", route.UserRouter)
+	api.Route("/callback", route.LoginRouter)
 	api.Route("/app", route.AppRouter)
 
 	// Bind to port

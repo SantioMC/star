@@ -43,12 +43,15 @@ func StartServer(config *config.Config) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
+	stopTicker := database.StartTicker(db)
 	go api.StartAPIServer(server)
-
+	
 	<-interrupt
 
 	println("")
 	slog.Info("star authorization server shutting down")
+	
+	stopTicker <- true
 	sqlDb, err := server.Database.DB.DB()
 
 	if err == nil {

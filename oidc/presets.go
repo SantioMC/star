@@ -10,14 +10,13 @@ type Configuration struct {
 	TokenURL         string   `json:"token_url"`
 	UserInfoURL      string   `json:"userinfo_url"`
 	DefaultScopes    []string `json:"scopes"`
-	Claims           string   `json:"claims"`
 }
 
 // The provider information for Discord
 var DiscordProvider = Configuration{
 	AuthorizationURL: "https://discord.com/oauth2/authorize",
 	TokenURL:         "https://discord.com/api/oauth2/token",
-	UserInfoURL:      "https://discord.com/api/users/@me",
+	UserInfoURL:      "https://discord.com/api/oauth2/userinfo",
 	DefaultScopes:    []string{"identify", "email"},
 }
 
@@ -43,7 +42,6 @@ var TwitchProvider = Configuration{
 	TokenURL:         "https://id.twitch.tv/oauth2/token",
 	UserInfoURL:      "https://id.twitch.tv/oauth2/userinfo",
 	DefaultScopes:    []string{"openid", "user:read:email"},
-	Claims:           "{\"userinfo\":{\"email\":null,\"picture\":null,\"preferred_username\":null}}",
 }
 
 // The provider information for Google

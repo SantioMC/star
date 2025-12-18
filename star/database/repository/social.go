@@ -1,13 +1,17 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/config"
+	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type SocialStore struct {
@@ -57,6 +61,15 @@ func (store *SocialStore) DiscoverAndCreateProvider(
 	return provider, nil
 }
 
+func (store *SocialStore) DoesProviderExist(name string) bool {
+	var exists bool
+	if err := store.DB.Model(&model.SocialProvider{}).Select("COUNT(*) > 0").Where("name = ?", name).First(&exists).Error; err != nil {
+		return false
+	}
+
+	return exists
+}
+
 func (store *SocialStore) CreateProviderFromPreset(
 	name string, 
 	clientId string, 
@@ -77,4 +90,34 @@ func (store *SocialStore) CreateProviderFromPreset(
 	}
 
 	return provider, nil
+}
+
+func (store *SocialStore) CreateState(app *model.Application) (string, error) {
+	state := crypto.CreateRandString(16)
+	model := model.LoginState{
+		State: state,
+		Application: app,
+	}
+
+	if err := store.DB.Save(&model).Error; err != nil {
+		return "", err
+	}
+
+	return state, nil
+}
+
+func (store *SocialStore) DeleteOldStates() error {
+	deleteBefore := time.Now().Add(time.Hour * -1)
+	_, err := gorm.G[model.LoginState](store.DB.Unscoped()).Where("created_at <= ?", deleteBefore.Unix()).Delete(context.Background())
+	return err
+}
+
+func (store *SocialStore) UseState(state string) (*model.Application, error) {
+	loginState := model.LoginState{}
+	if err := store.DB.Where("state = ?", state).Preload(clause.Associations).First(&loginState).Error; err != nil {
+		return nil, err
+	}
+
+	store.DB.Unscoped().Delete(&loginState)
+	return loginState.Application, nil
 }

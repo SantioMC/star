@@ -1,11 +1,7 @@
 package database
 
 import (
-	"encoding/hex"
-	"log/slog"
-
 	"github.com/tubblelive/star/star/config"
-	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/database/plugin"
 	"github.com/tubblelive/star/star/database/repository"
@@ -22,34 +18,6 @@ type Database struct {
 	AppStore     *repository.AppStore
 	SocialStore  *repository.SocialStore
 	RequestStore *repository.RequestStore
-}
-
-func seedDatabase(db *Database) error {
-	signingKey, err := model.NewKeypair("signing", model.KeypairKindSigning)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.KeyStore.CreateKeypair(signingKey.Name, signingKey.Kind)
-	if err != nil {
-		return err
-	}
-
-	superuser, err := db.RoleStore.CreateSuperUserRole()
-	if err != nil {
-		return err
-	}
-
-	initPassword := hex.EncodeToString(crypto.CreateRand(16))
-	slog.Info("creating default superuser with", "password", initPassword)
-	db.UserStore.CreateSuperUser(initPassword, superuser)
-
-	_, err = db.AppStore.CreateStarApp()
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error) {
@@ -84,10 +52,8 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 		RequestStore: &repository.RequestStore{DB: db},
 	}
 
-	if firstStart {
-		if err := seedDatabase(database); err != nil {
-			return nil, err
-		}
+	if err := seedDatabase(firstStart, database); err != nil {
+		return nil, err
 	}
 
 	return database, nil

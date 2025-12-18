@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-var ErrRequestFailed = fmt.Errorf("discovery url returned a non-200 status code")
+var ErrRequestFailed = fmt.Errorf("request returned a non-200 status code")
 
 // Not a complete model of the /.well-known/openid-configuration, but contains only the info we care about
 type OpenIDConfiguration struct {
@@ -18,6 +18,22 @@ type OpenIDConfiguration struct {
 	JwksEndpoint     string `json:"jwks_uri"`
 }
 
+type TokenExchange struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+}
+
+type UserInfo struct {
+	ID             string `json:"sub"`
+	Username       string `json:"preferred_username"`
+	FirstName      string `json:"given_name"`
+	LastName       string `json:"family_name"`
+	ProfilePicture string `json:"picture"`
+	Email          string `json:"email"`
+}
+
 func Discover(discoveryUri string) (*OpenIDConfiguration, error) {
 	res, err := http.Get(discoveryUri)
 	if err != nil {
@@ -26,7 +42,7 @@ func Discover(discoveryUri string) (*OpenIDConfiguration, error) {
 
 	defer res.Body.Close()
 
-	if (res.StatusCode != 200) {
+	if res.StatusCode != 200 {
 		return nil, ErrRequestFailed
 	}
 

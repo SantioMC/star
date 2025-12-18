@@ -57,7 +57,7 @@ func registerAccount(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(409, "The email provided is already in use")
 	}
 
-	user, err := userStore.CreateUser(
+	user, _, err := userStore.CreateUser(
 		body.Username, email.Address, body.Password,
 	)
 

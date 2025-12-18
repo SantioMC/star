@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/tubblelive/star/oidc"
@@ -24,18 +25,7 @@ func (store *UserStore) CreateSuperUser(password string, role *model.Role) (*mod
 	user.EmailVerified = true
 	user.Roles = []model.Role{*role}
 
-	account := model.NewAccountWithUserPass(&user, "admin", password)
-
-	if err := store.DB.Create(&account).Error; err != nil {
-		return nil, err
-	}
-
-	return &user, nil
-}
-
-func (store *UserStore) CreateUser(username string, email string, password string) (*model.User, error) {
-	user := model.NewUser(username, email)
-	account := model.NewAccountWithUserPass(&user, username, password)
+	account := model.NewInternalAccount(&user, "admin", password)
 
 	if err := store.DB.Create(&account).Error; err != nil {
 		return nil, err
@@ -77,7 +67,7 @@ func (store *UserStore) GetUserByUsername(username string) (*model.User, error) 
 func (store *UserStore) GetUserByEmail(email string) (*model.User, error) {
 	user := model.User{}
 
-	if err := store.DB.Where("email = ?", email).Preload(clause.Associations).First(&user).Error; err != nil {
+	if err := store.DB.Where("email = ?", strings.ToLower(email)).Preload(clause.Associations).First(&user).Error; err != nil {
 		return nil, err
 	}
 
@@ -94,15 +84,61 @@ func (store *UserStore) GetUserByUsernameOrEmail(query string) (*model.User, err
 	return &user, nil
 }
 
+func (store *UserStore) CreateUser(username string, email string, password string) (*model.User, *model.Account, error) {
+	var user model.User
+	if err := store.DB.Where("email = ?", email).Attrs(model.NewUser(username, email)).FirstOrCreate(&user).Error; err != nil {
+		return nil, nil, err
+	}
+
+	newAccount := model.NewInternalAccount(&user, username, password)
+
+	var account model.Account
+	if err := store.DB.Where("user_id = ? AND provider_id IS NULL", user.ID).Attrs(newAccount).FirstOrCreate(&account).Error; err != nil {
+		return &user, nil, err
+	}
+	
+	return &user, &account, nil
+}
+
+func (store *UserStore) CreateUserFromSocial(provider *model.SocialProvider, token string) (*model.User, *model.Account, error) {
+	userInfo, err := provider.GetUserInfo(token)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if userInfo.Email == "" {
+		return nil, nil, fmt.Errorf("cannot create account without valid email")
+	}
+
+	var user model.User
+	if err := store.DB.Where("email = ?", userInfo.Email).Attrs(model.NewUserFromInfo(userInfo)).FirstOrCreate(&user).Error; err != nil {
+		return nil, nil, err
+	}
+
+	newAccount := model.NewProviderAccount(&user, provider, userInfo)
+
+	var account model.Account
+	if err := store.DB.
+		Where("user_id = ? AND provider_id = ?", user.ID, provider.ID).
+		Assign(model.Account{ PlatformAvatar: userInfo.ProfilePicture, Username: userInfo.Username }).
+		Attrs(newAccount).
+		FirstOrCreate(&account).Error; 
+		err != nil {	
+			return &user, nil, err
+		}
+
+	return &user, &newAccount, nil
+}
+
 func (store *UserStore) ValidateLogin(username, password string) (*model.User, error) {
 	user, err := store.GetUserByUsernameOrEmail(username)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid user")
 	}
 
 	var internalAccount *model.Account
 	for _, account := range user.Accounts {
-		if account.Provider == "internal" {
+		if account.Provider == nil {
 			internalAccount = &account
 			break
 		}
@@ -126,8 +162,6 @@ func (store *UserStore) CreateAccessToken(
 	impersonate bool,
 ) (string, time.Time, error) {
 	// todo: a better way of getting the key store
-	// todo: impl claims
-
 	expiresAfter := time.Hour * 2
 	keyStore := KeyStore{DB: store.DB, Config: store.Config}
 	signingKey, err := keyStore.GetSigningKey()

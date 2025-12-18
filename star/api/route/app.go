@@ -5,7 +5,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/api/helper"
-	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/state"
 )
@@ -17,7 +16,6 @@ var loginClaims []oidc.Claim = []oidc.Claim{
 func AppRouter(r fiber.Router) {
 	r.Post("/:app/login", limiter.New(helper.HeavyLimiter), login)
 	r.Get("/:app/login/:provider", limiter.New(helper.HeavyLimiter), loginWithProvider)
-	r.Get("/callback/:provider", limiter.New(helper.HeavyLimiter), loginWithProvider)
 }
 
 func login(ctx *fiber.Ctx) error {
@@ -54,7 +52,7 @@ func login(ctx *fiber.Ctx) error {
 }
 
 func loginWithProvider(ctx *fiber.Ctx) error {
-	_, err := getAppFromCtx(ctx)
+	app, err := getAppFromCtx(ctx)
 	if err != nil {
 		return helper.NewHttpError(404, "Invalid application slug provided")
 	}
@@ -64,11 +62,24 @@ func loginWithProvider(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "Invalid provider name provided")
 	}
 
+	if !provider.IsValid() {
+		return helper.NewHttpError(404, "Invalid provider provided")
+	}
+
+	state, err := state.StarState.Database.SocialStore.CreateState(app)
+	if err != nil {
+		return err
+	}
+
 	hostname := string(ctx.Request().URI().Scheme()) + "://" + ctx.Hostname()
-	state := crypto.CreateRandString(16) // todo: bind state to app so we can provision RT/AT appropriately
 	redirect := provider.GetCallbackURL(hostname, provider.Name)
 
-	return ctx.Redirect(provider.GetLoginURL(state, redirect))
+	loginUrl, err := provider.GetLoginURL(state, redirect)
+	if err != nil {
+		return err
+	}
+
+	return ctx.Redirect(loginUrl)
 }
 
 func getAppFromCtx(ctx *fiber.Ctx) (*model.Application, error) {
