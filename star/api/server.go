@@ -2,13 +2,17 @@ package api
 
 import (
 	"log/slog"
+	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/tubblelive/star/frontend"
 	"github.com/tubblelive/star/star/api/route"
 	"github.com/tubblelive/star/star/state"
 )
@@ -34,14 +38,6 @@ func StartAPIServer(server *state.Server) *fiber.App {
 			}
 
 			return false
-		},
-	}))
-
-	app.Use(limiter.New(limiter.Config{
-		Max:        300,
-		Expiration: 1 * time.Minute,
-		LimitReached: func(c *fiber.Ctx) error {
-			return fiber.ErrTooManyRequests
 		},
 	}))
 
@@ -72,13 +68,57 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	})
 
 	// Route handlers
+
+	// Global
 	app.Get("/healthz", route.Health)
 	app.Route("/.well-known", route.WellKnownRouter)
 
-	api := app.Group("/api")
+	// API
+	api := app.Group("/api", limiter.New(limiter.Config{
+		Max:        300,
+		Expiration: 1 * time.Minute,
+		LimitReached: func(c *fiber.Ctx) error {
+			return fiber.ErrTooManyRequests
+		},
+	}))
+	
+	api.Route("/", route.LoginRouter)
 	api.Route("/user", route.UserRouter)
-	api.Route("/callback", route.LoginRouter)
 	api.Route("/app", route.AppRouter)
+
+	// Frontend
+	app.Use(
+		"/*",
+		func(ctx *fiber.Ctx) error {
+			path := ctx.Path()
+
+			// Redirect if url trails `/` (eg /login/ -> /login)
+			if path != "/" && strings.HasSuffix(path, "/") {
+				ctx.Redirect(strings.TrimSuffix(ctx.Request().URI().String(), "/"))
+			} else {
+				ctx.Next()
+			}
+
+			return nil
+		},
+		filesystem.New(filesystem.Config{
+			Root: http.FS(frontend.FrontendFS),
+			Browse: false,
+			MaxAge: 86400,
+			PathPrefix: "build",
+			Next: func(ctx *fiber.Ctx) bool {
+				// Auto add .html to extensionless paths (eg /login -> /login.html)
+				path := ctx.Path()
+				fileIndex := strings.LastIndex(path, "/")
+
+				if path != "/" && !strings.Contains(path[fileIndex:], ".") {
+					ctx.Path(path + ".html")
+				}
+
+				return false
+			},
+		}),
+	)
 
 	// Bind to port
 	bind := "0.0.0.0:" + strconv.Itoa(server.Config.Port)

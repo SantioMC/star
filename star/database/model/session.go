@@ -8,7 +8,7 @@ import (
 	"gorm.io/datatypes"
 )
 
-type RefreshToken struct {
+type Session struct {
 	BaseModel
 
 	UserID        string
@@ -24,10 +24,10 @@ type RefreshToken struct {
 	InvalidatedAt *int64
 }
 
-func NewRefreshToken(duration time.Duration, claims []oidc.Claim) RefreshToken {
+func NewSession(duration time.Duration, claims []oidc.Claim) Session {
 	token := crypto.CreateRandString(48)
 
-	return RefreshToken{
+	return Session{
 		BaseModel: BaseModel{
 			ID: CreateTypedId("rt", 12),
 		},
@@ -37,7 +37,7 @@ func NewRefreshToken(duration time.Duration, claims []oidc.Claim) RefreshToken {
 	}
 }
 
-func (t *RefreshToken) IsExpired() bool {
+func (t *Session) IsExpired() bool {
 	expiry := t.CreatedAt + int64(t.Duration.Seconds())
 	return time.Now().After(time.Unix(expiry, 0))
 }

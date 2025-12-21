@@ -7,13 +7,17 @@ const (
 	ClaimEmail Claim = "email"
 	// Includes the 'groups' claim (list of role names)
 	ClaimGroups Claim = "groups"
+	// Includes the profile claims (name, picture, etc.)
+	ClaimProfile Claim = "profile"
 	// Includes the 'roles' claim (list of role data)
 	ClaimRoles Claim = "star:roles"
+	// Includes the 'picture' claim (specified profile picture, or the generated default)
+	ClaimPicture Claim = "star:picture"
 )
 
 // Supported claims by Star
 var SupportedClaims []Claim = []Claim{
-	ClaimEmail, ClaimGroups, ClaimRoles,
+	ClaimEmail, ClaimGroups, ClaimRoles, ClaimProfile,
 }
 
 // Additional claims that can be requested for userinfo

@@ -72,7 +72,7 @@ func NewUserFromInfo(userInfo *oidc.UserInfo) User {
 			ID: CreateTypedId("usr", 12),
 		},
 
-		Username:       userInfo.Email,
+		Username:       userInfo.Username,
 		FirstName:      userInfo.FirstName,
 		LastName:       userInfo.LastName,
 		ProfilePicture: userInfo.ProfilePicture,

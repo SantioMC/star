@@ -2,8 +2,9 @@ package model
 
 type Role struct {
 	BaseModel
-	Name      string
-	SuperRole bool
+	Name      string `json:"name"`
+	SuperRole bool   `json:"super"`
+	Default   bool   `json:"default"`
 }
 
 func NewRole(name string) Role {

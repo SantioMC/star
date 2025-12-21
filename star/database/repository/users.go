@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/database/model"
+	"github.com/tubblelive/star/star/state/scopes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -48,6 +50,10 @@ func (store *UserStore) GetUserByID(id string) (*model.User, error) {
 	user := model.User{}
 
 	if err := store.DB.Where("id = ?", id).Preload(clause.Associations).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		
 		return nil, err
 	}
 
@@ -58,6 +64,10 @@ func (store *UserStore) GetUserByUsername(username string) (*model.User, error) 
 	user := model.User{}
 
 	if err := store.DB.Where("username = ?", username).Preload(clause.Associations).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		
 		return nil, err
 	}
 
@@ -68,6 +78,10 @@ func (store *UserStore) GetUserByEmail(email string) (*model.User, error) {
 	user := model.User{}
 
 	if err := store.DB.Where("email = ?", strings.ToLower(email)).Preload(clause.Associations).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		
 		return nil, err
 	}
 
@@ -78,10 +92,33 @@ func (store *UserStore) GetUserByUsernameOrEmail(query string) (*model.User, err
 	user := model.User{}
 
 	if err := store.DB.Where("email = ? OR username = ?", query, query).Preload(clause.Associations).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 
 	return &user, nil
+}
+
+func (store *UserStore) GetActiveSuspension(id string) (*model.Suspension, error) {
+	suspension := model.Suspension{}
+
+	if err := store.DB.Where("user_id = ?", id).First(&suspension).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return &suspension, nil
+}
+
+func (store *UserStore) SaveUser(user model.User) error {
+	_, err := gorm.G[model.User](store.DB).Where("id = ?", user.ID).Updates(context.Background(), user)
+	return err
 }
 
 func (store *UserStore) CreateUser(username string, email string, password string) (*model.User, *model.Account, error) {
@@ -132,7 +169,7 @@ func (store *UserStore) CreateUserFromSocial(provider *model.SocialProvider, tok
 
 func (store *UserStore) ValidateLogin(username, password string) (*model.User, error) {
 	user, err := store.GetUserByUsernameOrEmail(username)
-	if err != nil {
+	if err != nil || user == nil {
 		return nil, fmt.Errorf("invalid user")
 	}
 
@@ -155,25 +192,48 @@ func (store *UserStore) ValidateLogin(username, password string) (*model.User, e
 	return user, nil
 }
 
+func (store *UserStore) GetUserPermissions(user *model.User) ([]model.Permission, error) {
+	var roleIds []string
+	for _, role := range user.Roles {
+		roleIds = append(roleIds, role.ID)
+	}
+
+	return gorm.G[model.Permission](store.DB).
+		Where(
+			"application_id IN (?)", 
+			store.DB.Model(model.Permission{}).
+				Select("application_id").
+				Where("default = ? OR id IN ?", true, roleIds),
+		).Find(context.Background())
+}
+
 func (store *UserStore) CreateAccessToken(
-	refreshToken *model.RefreshToken, 
+	refreshToken *model.Session, 
 	app *model.Application, 
 	claims []oidc.Claim,
 	impersonate bool,
 ) (string, time.Time, error) {
-	// todo: a better way of getting the key store
-	expiresAfter := time.Hour * 2
+	// todo: a better way of getting the stores
 	keyStore := KeyStore{DB: store.DB, Config: store.Config}
+
+	expiresAfter := time.Hour * 2
 	signingKey, err := keyStore.GetSigningKey()
 	if err != nil {
 		return "", time.Time{}, err
 	}
 
 	roles := make([]interface{}, len(refreshToken.User.Roles))
+	isSuperUser := false
+
 	var groups []string 
+	var perms []scopes.Scope 
 
 	for idx, role := range refreshToken.User.Roles {
 		groups = append(groups, role.Name)
+		if role.SuperRole {
+			isSuperUser = true
+		}
+
 		roles[idx] = map[string]any{
 			"id": role.ID,
 			"name": role.Name,
@@ -184,12 +244,12 @@ func (store *UserStore) CreateAccessToken(
 	fields := map[string]any{
 		"sub": refreshToken.User.ID,
 		"aud": app.ID,
-		"name": refreshToken.User.Username,
 	}
 
 	if slices.Contains(claims, oidc.ClaimEmail) {
 		fields["email"] = refreshToken.User.Email
 		fields["email_verified"] = refreshToken.User.EmailVerified
+		perms = append(perms, scopes.ScopeReadEmail) // Allow apps to read email
 	}
 
 	if slices.Contains(claims, oidc.ClaimRoles) {
@@ -200,9 +260,43 @@ func (store *UserStore) CreateAccessToken(
 		fields["groups"] = groups
 	}
 
+	if slices.Contains(claims, oidc.ClaimPicture) {
+		fields["picture"] = refreshToken.User.GenerateProfilePicture()
+	}
+
+	if slices.Contains(claims, oidc.ClaimProfile) {
+		fields["name"] = refreshToken.User.Username
+		fields["nickname"] = refreshToken.User.Username
+		fields["given_name"] = refreshToken.User.FirstName
+		fields["family_name"] = refreshToken.User.LastName
+		fields["picture"] = refreshToken.User.GenerateProfilePicture()
+	}
+
 	if impersonate {
 		fields["imp"] = true
 	}
+
+	if app.Internal {
+		// If we're authenticating a management access token, we'll add scopes for it
+		if isSuperUser {
+			// Give token access admin endpoints
+			perms = append(perms, scopes.ScopeAll)
+		} else {
+			// Give token access to user endpoints
+			perms = append(perms, scopes.ScopeUserAll)
+		}
+	} else {
+		permissions, err := store.GetUserPermissions(refreshToken.User)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+
+		for _, perm := range permissions {
+			perms = append(perms, scopes.Scope(perm.Permission))
+		}
+	}
+
+	fields["scopes"] = perms
 
 	privateKey, err := signingKey.GetPrivateKey()
 	if err != nil {
@@ -227,13 +321,13 @@ func (store *UserStore) CreateAccessToken(
 	return string(jwt), time.Now().Add(expiresAfter), nil
 }
 
-func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Application, claims []oidc.Claim) (*model.RefreshToken, string, time.Time, error) {
-	refreshToken := model.NewRefreshToken(time.Hour * 24 * 7, claims)
+func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Application, claims []oidc.Claim) (*model.Session, string, time.Time, error) {
+	refreshToken := model.NewSession(time.Hour * 24 * 7, claims)
 	refreshToken.User = user
 	refreshToken.Application = app
 
 	err := store.DB.Transaction(func(tx *gorm.DB) error {
-		gorm.G[model.RefreshToken](store.DB.Unscoped()).Where("user_id = ? AND application_id = ?", user.ID, app.ID).Delete(context.Background())
+		gorm.G[model.Session](store.DB.Unscoped()).Where("user_id = ? AND application_id = ?", user.ID, app.ID).Delete(context.Background())
 		
 		if err := store.DB.Create(&refreshToken).Error; err != nil {
 			return err
@@ -256,7 +350,7 @@ func (store *UserStore) CreateRefreshToken(user *model.User, app *model.Applicat
 }
 
 func (store *UserStore) RefreshAccessToken(refreshToken string) (string, time.Time, error) {
-	var token model.RefreshToken
+	var token model.Session
 	if err := store.DB.Where("refresh_token = ?", refreshToken).Preload("User").First(&token).Error; err != nil {
 		return "", time.Time{}, err
 	}

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database/model"
@@ -45,6 +46,9 @@ func (store *AppStore) CreateStarApp() (*model.Application, error) {
 	if store.Config.Url != "" {
 		app.Url = store.Config.Url
 	}
+
+	// Set to `/callback` if no url is specified
+	app.Callback = strings.TrimSuffix(app.Url, "/") + "/callback"
 
 	err := store.DB.Save(&app).Error
 	if err != nil {

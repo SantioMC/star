@@ -7,6 +7,7 @@ import (
 	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/state"
 	"github.com/tubblelive/star/star/state/claims"
+	"github.com/tubblelive/star/star/state/scopes"
 )
 
 func getBearerToken(ctx *fiber.Ctx) (string, error) {
@@ -51,18 +52,25 @@ func GetUserId(ctx *fiber.Ctx) (string, error) {
 	return claims.Subject, nil
 }
 
-func EnforcePermission(ctx *fiber.Ctx, permission string) error {
+func HasPermission(ctx *fiber.Ctx, permission scopes.Scope) bool {
 	claims, err := GetUserClaims(ctx)
 	if err != nil {
-		return err
+		return false
 	}
 
-	// todo: add permissions
-	for _, role := range claims.Roles {
-		if role.SuperRole {
-			return nil
+	for _, scope := range claims.Scopes {
+		if scope.Permits(permission) {
+			return true
 		}
 	}
 
-	return NewHttpError(403, "Forbidden")
+	return false
+}
+
+func EnforcePermission(ctx *fiber.Ctx, permission scopes.Scope) error {
+	if !HasPermission(ctx, permission) {
+		return NewHttpError(403, "Forbidden")
+	}
+
+	return nil
 }

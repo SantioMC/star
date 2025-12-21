@@ -1,11 +1,14 @@
 package database
 
 import (
+	"log/slog"
+
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/database/plugin"
 	"github.com/tubblelive/star/star/database/repository"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type Database struct {
@@ -21,7 +24,13 @@ type Database struct {
 }
 
 func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error) {
-	db, err := gorm.Open(dialector, &gorm.Config{})
+	db, err := gorm.Open(dialector, &gorm.Config{
+		Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
+			IgnoreRecordNotFoundError: true,
+			LogLevel: logger.Warn,
+		}),
+	})
+	
 	if err != nil {
 		return nil, err
 	}
@@ -32,13 +41,14 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 	db.AutoMigrate(&model.User{})
 	db.AutoMigrate(&model.Account{})
 	db.AutoMigrate(&model.Role{})
-	db.AutoMigrate(&model.RefreshToken{})
+	db.AutoMigrate(&model.Session{})
 	db.AutoMigrate(&model.SocialProvider{})
 	db.AutoMigrate(&model.Application{})
 	db.AutoMigrate(&model.AuthRequest{})
 	db.AutoMigrate(&model.Keypair{})
 	db.AutoMigrate(&model.Provider{})
 	db.AutoMigrate(&model.LoginState{})
+	db.AutoMigrate(&model.Suspension{})
 
 	database := &Database{
 		DB: db,

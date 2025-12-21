@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,9 +11,12 @@ import (
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/database/model"
+	"github.com/tubblelive/star/star/verifier"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+var ErrProviderNameInUse = fmt.Errorf("a provider already exists with the provided name!")
 
 type SocialStore struct {
 	DB     *gorm.DB
@@ -37,10 +41,18 @@ func (store *SocialStore) GetProviderByName(name string) (*model.SocialProvider,
 	provider := model.SocialProvider{}
 
 	if err := store.DB.Where("name = ?", name).First(&provider).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 
 	return &provider, nil
+}
+
+func (store *SocialStore) GetProviders() ([]model.SocialProvider, error) {
+	return gorm.G[model.SocialProvider](store.DB).Find(context.Background())
 }
 
 func (store *SocialStore) DiscoverAndCreateProvider(
@@ -49,9 +61,22 @@ func (store *SocialStore) DiscoverAndCreateProvider(
 	clientId string, 
 	clientSecret string,
 ) (*model.SocialProvider, error) {
+	if err := verifier.VerifyProviderName(name); err != nil {
+		return nil, err
+	}
+
 	provider, err := model.NewSocialProviderFromDiscovery(name, discoveryUri, clientId, clientSecret)
 	if err != nil {
 		return nil, err
+	}
+
+	existing, err := store.GetProviderByName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if existing != nil {
+		return nil, ErrProviderNameInUse
 	}
 
 	if err := store.DB.Save(provider).Error; err != nil {
@@ -75,6 +100,10 @@ func (store *SocialStore) CreateProviderFromPreset(
 	clientId string, 
 	clientSecret string,
 ) (*model.SocialProvider, error) {
+	if err := verifier.VerifyProviderName(name); err != nil {
+		return nil, err
+	}
+
 	config, ok := oidc.Providers[strings.ToLower(name)]
 	if !ok {
 		return nil, fmt.Errorf("unknown preset provider %s", name)
@@ -83,6 +112,15 @@ func (store *SocialStore) CreateProviderFromPreset(
 	provider, err := model.NewSocialProviderFromPreset(name, config, clientId, clientSecret)
 	if err != nil {
 		return nil, err
+	}
+
+	existing, err := store.GetProviderByName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if existing != nil {
+		return nil, ErrProviderNameInUse
 	}
 
 	if err := store.DB.Save(provider).Error; err != nil {

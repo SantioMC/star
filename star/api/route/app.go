@@ -2,99 +2,43 @@ package route
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/tubblelive/star/oidc"
-	"github.com/tubblelive/star/star/api/helper"
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/state"
 )
 
-var loginClaims []oidc.Claim = []oidc.Claim{
-	oidc.ClaimEmail, oidc.ClaimRoles,
-}
-
 func AppRouter(r fiber.Router) {
-	r.Post("/:app/login", limiter.New(helper.HeavyLimiter), login)
-	r.Get("/:app/login/:provider", limiter.New(helper.HeavyLimiter), loginWithProvider)
+	r.Get("/:app/logins", getAppLogins)
 }
 
-func login(ctx *fiber.Ctx) error {
-	body := new(LoginRequest)
-	if err := ctx.BodyParser(body); err != nil {
-		return err
-	}
+func getAppLogins(ctx *fiber.Ctx) error {
+	database := state.StarState.Database
 
-	app, err := getAppFromCtx(ctx)
-	if err != nil {
-		return helper.NewHttpError(404, "Invalid application slug provided")
-	}
-
-	userStore := state.StarState.Database.UserStore
-	user, err := userStore.ValidateLogin(body.Username, body.Password)
-	if err != nil {
-		return helper.NewHttpError(401, "Invalid username or password")
-	}
-
-	refreshToken, accessToken, expiresAt, err := userStore.CreateRefreshToken(user, app, loginClaims)
+	_, err := getAppFromCtx(ctx)
 	if err != nil {
 		return err
 	}
 
-	ctx.JSON(LoginResponse{
-		AccessToken:   accessToken,
-		RefreshToken:  refreshToken.Token,
-		ExpiresAt:     expiresAt.Unix(),
-		ApplicationID: app.ID,
-		UserID:        user.ID,
+	// todo: restrict which providers can login to which apps
+	providers, err := database.SocialStore.GetProviders()
+	var logins []string
+
+	for _, provider := range providers {
+		logins = append(logins, provider.Name)
+	}
+
+	ctx.JSON(AppLoginsResponse{
+		Internal: true,
+		Providers: logins,
 	})
 
 	return nil
-}
-
-func loginWithProvider(ctx *fiber.Ctx) error {
-	app, err := getAppFromCtx(ctx)
-	if err != nil {
-		return helper.NewHttpError(404, "Invalid application slug provided")
-	}
-
-	provider, err := state.StarState.Database.SocialStore.GetProviderByName(ctx.Params("provider", ""))
-	if err != nil {
-		return helper.NewHttpError(404, "Invalid provider name provided")
-	}
-
-	if !provider.IsValid() {
-		return helper.NewHttpError(404, "Invalid provider provided")
-	}
-
-	state, err := state.StarState.Database.SocialStore.CreateState(app)
-	if err != nil {
-		return err
-	}
-
-	hostname := string(ctx.Request().URI().Scheme()) + "://" + ctx.Hostname()
-	redirect := provider.GetCallbackURL(hostname, provider.Name)
-
-	loginUrl, err := provider.GetLoginURL(state, redirect)
-	if err != nil {
-		return err
-	}
-
-	return ctx.Redirect(loginUrl)
 }
 
 func getAppFromCtx(ctx *fiber.Ctx) (*model.Application, error) {
 	return state.StarState.Database.AppStore.GetAppBySlug(ctx.Params("app", ""))
 }
 
-type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-type LoginResponse struct {
-	RefreshToken  string `json:"refresh_token"`
-	AccessToken   string `json:"access_token"`
-	ExpiresAt     int64  `json:"expires_at"`
-	ApplicationID string `json:"app_id"`
-	UserID        string `json:"user_id"`
+type AppLoginsResponse struct {
+	Internal  bool     `json:"user_pass_login"`
+	Providers []string `json:"providers"`
 }

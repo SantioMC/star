@@ -23,6 +23,11 @@ func seedDatabase(firstStart bool, db *Database) error {
 			return err
 		}
 
+		_, err = db.RoleStore.CreateDefaultRole()
+		if err != nil {
+			return err
+		}
+
 		superuser, err := db.RoleStore.CreateSuperUserRole()
 		if err != nil {
 			return err
@@ -38,7 +43,7 @@ func seedDatabase(firstStart bool, db *Database) error {
 		}
 	}
 
-	// Auto register oidcs in our environment
+	// Auto register providers in our environment
 	for id := range oidc.Providers {
 		clientId := os.Getenv(strings.ToUpper(id) + "_CLIENT_ID")
 		clientSecret := os.Getenv(strings.ToUpper(id) + "_CLIENT_SECRET")
@@ -53,7 +58,12 @@ func seedDatabase(firstStart bool, db *Database) error {
 		}
 
 		slog.Info("discovered a social provider from environment", "id", id, "clientId", clientId)
-		db.SocialStore.CreateProviderFromPreset(id, clientId, clientSecret)
+		
+		_, err := db.SocialStore.CreateProviderFromPreset(id, clientId, clientSecret)
+		if err != nil {
+			slog.Error("failed to create social provider", "id", id, "err", err)
+			break
+		}
 	}
 
 	return nil

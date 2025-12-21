@@ -7,11 +7,15 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/tubblelive/star/star/api/helper"
 	"github.com/tubblelive/star/star/state"
+	"github.com/tubblelive/star/star/state/scopes"
 	"github.com/tubblelive/star/star/verifier"
 )
 
 func UserRouter(r fiber.Router) {
 	r.Get("/me", getMe)
+	r.Patch("/me", patchMe)
+	r.Delete("/me", deleteMe)
+
 	r.Post("/register", limiter.New(helper.HeavyLimiter), registerAccount)
 }
 
@@ -48,7 +52,7 @@ func registerAccount(ctx *fiber.Ctx) error {
 
 	userStore := state.StarState.Database.UserStore
 	existing, err := userStore.GetUserByEmail(email.Address)
-	
+
 	if err != nil {
 		return err
 	}
@@ -67,8 +71,8 @@ func registerAccount(ctx *fiber.Ctx) error {
 
 	ctx.JSON(fiber.Map{
 		"username": body.Username,
-		"email": email.Address,
-		"id": user.ID,
+		"email":    email.Address,
+		"id":       user.ID,
 	})
 
 	return nil
@@ -85,12 +89,85 @@ func getMe(ctx *fiber.Ctx) error {
 		return err
 	}
 
+	if user == nil {
+		return helper.NewHttpError(500, "failed to find user by id")
+	}
+
+	if !helper.HasPermission(ctx, scopes.ScopeReadEmail) {
+		user.Email = ""
+		user.EmailVerified = true
+	}
+
 	ctx.JSON(user)
 	return nil
 }
 
+func patchMe(ctx *fiber.Ctx) error {
+	id, err := helper.GetUserId(ctx)
+	if err != nil {
+		return err
+	}
+
+	store := state.StarState.Database.UserStore
+	user, err := store.GetUserByID(id)
+	if err != nil {
+		return err
+	}
+
+	if user == nil {
+		return helper.NewHttpError(500, "failed to find user by id")
+	}
+
+	var body UpdateUserRequest
+	if err := ctx.BodyParser(&body); err != nil {
+		return err
+	}
+
+	if body.Username != nil {
+		existing, err := store.GetUserByUsername(*body.Username)
+		if err != nil {
+			return err
+		}
+
+		if existing != nil {
+			return helper.NewHttpError(400, "username is already in use")
+		}
+
+		user.Username = *body.Username
+	}
+
+	if body.FirstName != nil {
+		user.FirstName = *body.FirstName
+	}
+
+	if body.LastName != nil {
+		user.LastName = *body.LastName
+	}
+
+	err = store.SaveUser(*user)
+	if err != nil {
+		return err
+	}
+
+	ctx.JSON(user)
+	return nil
+}
+
+func deleteMe(ctx *fiber.Ctx) error {
+	helper.EnforcePermission(ctx, scopes.ScopeDeleteUser)
+
+	//todo: send email confirmation
+	return nil
+}
+
 type RegisterAccountRequest struct {
-	Username     string  `json:"username"`
-	Email        string  `json:"email"`
-	Password     string  `json:"password"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type UpdateUserRequest struct {
+	Username  *string `json:"username"`
+	FirstName *string `json:"given_name"`
+	LastName  *string `json:"family_name"`
 }
