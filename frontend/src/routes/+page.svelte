@@ -1,0 +1,120 @@
+<script lang="ts">
+	import { browser } from "$app/environment";
+	import Icon from "@/components/icon.svelte";
+	import * as Avatar from "@/components/ui/avatar";
+	import { Button } from "@/components/ui/button";
+	import * as Card from "@/components/ui/card";
+	import { Input } from "@/components/ui/input";
+	import { Label } from "@/components/ui/label";
+	import { getJWT, type JWTDetails } from "@/index";
+	import { onMount } from "svelte";
+
+	let details = $state<JWTDetails|null>()
+
+	onMount(() => {
+		if (!browser) return
+		details = getJWT();
+	})
+</script>
+
+{#if details}
+	<div class="flex flex-col md:w-3xl mx-auto py-24 gap-8">
+		<div>
+			<h1 class="leading-8 text-2xl font-semibold">Manage your account</h1>
+			<h2 class="leading-4 text-primary/70">Manage your account settings and preferences</h2>
+		</div>
+
+		<Card.Root class='min-w-1/3 w-full md:w-auto'>
+			<Card.CardHeader>
+				<Card.Title><Icon icon='user' /> Profile Information</Card.Title>
+			</Card.CardHeader>
+			<Card.Content class="flex flex-col gap-8">
+				<div class="flex gap-2 items-center">
+					<Avatar.Root>
+						<Avatar.Image src={details.picture} alt="{details.name}'s Profile Picture" />
+					</Avatar.Root>
+					<div class="flex flex-col gap-1 items-baseline">
+						<span class="leading-4 text-lg">
+							{#if details.given_name && details.family_name}
+								{details.given_name} {details.family_name}
+							{:else}
+								{details.name}
+							{/if}
+						</span>
+						<span class="leading-4 text-sm text-primary/70">
+							Not you? <a class="text-blue-200/70" href="/logout">Log out</a>
+						</span>
+					</div>
+				</div>
+
+				<form class="flex flex-col gap-6">
+					<div class="grid gap-2">
+						<Label for="username">Username</Label>
+						<Input id="username" type="text" required value={details.name} />
+					</div>
+
+					<div class="grid gap-2">
+						<Label for="email">Email</Label>
+						<Input id="email" type="email" value={details.email} disabled />
+					</div>
+
+					<div class="flex gap-2 sm:gap-8">
+						<div class="flex-1/2 gap-2 grid">
+							<Label for="givenName">Given Name</Label>
+							<Input id="givenName" type="text" value={details.given_name} />
+						</div>
+
+						<div class="flex-1/2 gap-2 grid">
+							<Label for="familyName">Family Name</Label>
+							<Input id="familyName" type="text" value={details.family_name} />
+						</div>
+					</div>
+				</form>
+			</Card.Content>
+			<Card.Footer>
+				<Button class='ml-auto'>Update</Button>
+			</Card.Footer>
+		</Card.Root>
+
+		<Card.Root class='min-w-1/3 w-full md:w-auto'>
+			<Card.CardHeader>
+				<Card.Title><Icon icon='lock' /> Change Password</Card.Title>
+			</Card.CardHeader>
+			<Card.Content class="flex flex-col gap-8">
+				<form class="flex flex-col gap-6">
+					<div class="grid gap-2">
+						<Label for="currentPassword">Current Password</Label>
+						<Input id="currentPassword" type="password" required placeholder={"••••••••••••••••"} />
+					</div>
+
+					<div class="grid gap-2">
+						<Label for="password">New Password</Label>
+						<Input id="password" type="password" />
+					</div>
+
+					<div class="grid gap-2">
+						<Label for="confirmPassword">Confirm Password</Label>
+						<Input id="confirmPassword" type="password" />
+					</div>
+				</form>
+			</Card.Content>
+			<Card.Footer>
+				<Button class='ml-auto'>Change Password</Button>
+			</Card.Footer>
+		</Card.Root>
+
+		<Card.Root class='min-w-1/3 w-full md:w-auto' >
+			<Card.CardHeader>
+				<Card.Title class="text-red-300"><Icon icon='trash' /> Delete Account</Card.Title>
+			</Card.CardHeader>
+			<Card.Content class="flex flex-col gap-8 text-red-200/60">
+				<span>
+					Delete your account and all information about you, this action can not be reversed! We might preserve some required information needed to prevent abuse on our systems.
+				</span>
+			</Card.Content>
+			<Card.Footer>
+				<Button class='ml-auto' variant='destructive'>Delete Account</Button>
+			</Card.Footer>
+		</Card.Root>
+	</div>
+{/if}
