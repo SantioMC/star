@@ -27,4 +27,8 @@ func cleanup(db *Database) {
 	if err := db.SocialStore.DeleteOldStates(); err != nil {
 		slog.Error("failed to delete old states", "err", err)
 	}
+
+	if err := db.SessionStore.DeleteOldSessions(); err != nil {
+		slog.Error("failed to delete old sessions", "err", err)
+	}
 }

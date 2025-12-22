@@ -20,6 +20,15 @@ export const isLoggedIn = (): boolean => {
 	return get(token) != null && get(refreshToken) != null
 }
 
+const base64UrlDecode = (str: string): string => {
+	str = str.replace(/-/g, '+').replace(/_/g, '/');
+	while (str.length % 4) {
+		str += '=';
+	}
+
+	return atob(str);
+}
+
 export const getJWT = (): JWTDetails | null => {
 	const accessToken = get(token);
 	if (!accessToken) return null;
@@ -28,7 +37,7 @@ export const getJWT = (): JWTDetails | null => {
 	if (parts.length != 3) return null;
 
 	// No reason for us to bother verifying it, the frontend doesn't do anything special
-	return JSON.parse(atob(parts[1])) as JWTDetails
+	return JSON.parse(base64UrlDecode(parts[1])) as JWTDetails
 }
 
 export interface JWTDetails {

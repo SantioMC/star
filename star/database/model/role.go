@@ -2,9 +2,12 @@ package model
 
 type Role struct {
 	BaseModel
+
 	Name      string `json:"name"`
 	SuperRole bool   `json:"super"`
-	Default   bool   `json:"default"`
+	Global    bool   `json:"global"`
+
+	Permission []Permission ` gorm:"many2many:role_permissions" json:"scopes"`
 }
 
 func NewRole(name string) Role {

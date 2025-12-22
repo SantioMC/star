@@ -8,10 +8,10 @@ import (
 )
 
 var StarState *Server
+var Database *database.Database
 
 type Server struct {
 	Config     *config.Config
-	Database   *database.Database
 	SigningKey *model.Keypair
 	Provider   *op.Provider
 }

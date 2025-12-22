@@ -9,7 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/api/helper"
-	"github.com/tubblelive/star/star/state"
+	"github.com/tubblelive/star/star/service"
 )
 
 var loginClaims []oidc.Claim = []oidc.Claim{
@@ -25,8 +25,7 @@ func LoginRouter(r fiber.Router) {
 }
 
 func loginCallback(ctx *fiber.Ctx) error {
-	database := state.StarState.Database
-	provider, err := database.SocialStore.GetProviderByName(ctx.Params("provider", ""))
+	provider, err := service.GetProviderByName(ctx.Params("provider", ""))
 	if err != nil {
 		return helper.NewHttpError(404, "Invalid provider name provided")
 	}
@@ -46,7 +45,7 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "invalid state provided")
 	}
 
-	app, err := database.SocialStore.UseState(userState)
+	app, err := service.UseState(userState)
 	if err != nil {
 		slog.Error("user attempted to login with invalid state", "state", userState)
 		return helper.NewHttpError(400, "unknown state provided")
@@ -58,12 +57,12 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	user, _, err := database.UserStore.CreateUserFromSocial(provider, token.AccessToken)
+	user, _, err := service.CreateUserFromSocial(provider, token.AccessToken)
 	if err != nil {
 		return err
 	}
 
-	suspended, err := database.UserStore.GetActiveSuspension(user.ID)
+	suspended, err := service.GetActiveSuspension(user.ID)
 	if err != nil {
 		return err
 	}
@@ -72,7 +71,7 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
 	}
 
-	refreshToken, accessToken, _, err := database.UserStore.CreateRefreshToken(user, app, loginClaims)
+	refreshToken, accessToken, _, err := service.CreateSession(user, app, nil, "", loginClaims)
 	if err != nil {
 		return err
 	}
@@ -95,18 +94,17 @@ func login(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	app, err := getAppFromCtx(ctx)
+	app, err := service.GetAppBySlug(ctx.Params("app", ""))
 	if err != nil {
 		return helper.NewHttpError(404, "Invalid application slug provided")
 	}
 
-	userStore := state.StarState.Database.UserStore
-	user, err := userStore.ValidateLogin(body.Username, body.Password)
+	user, err := service.ValidateLogin(body.Username, body.Password)
 	if err != nil {
 		return helper.NewHttpError(401, "Invalid username or password")
 	}
 
-	suspended, err := userStore.GetActiveSuspension(user.ID)
+	suspended, err := service.GetActiveSuspension(user.ID)
 	if err != nil {
 		return err
 	}
@@ -115,7 +113,7 @@ func login(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
 	}
 
-	refreshToken, accessToken, expiresAt, err := userStore.CreateRefreshToken(user, app, loginClaims)
+	refreshToken, accessToken, expiresAt, err := service.CreateSession(user, app, nil, "", loginClaims)
 	if err != nil {
 		return err
 	}
@@ -132,12 +130,12 @@ func login(ctx *fiber.Ctx) error {
 }
 
 func loginWithProvider(ctx *fiber.Ctx) error {
-	app, err := getAppFromCtx(ctx)
+	app, err := service.GetAppBySlug(ctx.Params("app", ""))
 	if err != nil {
 		return helper.NewHttpError(404, "Invalid application slug provided")
 	}
 
-	provider, err := state.StarState.Database.SocialStore.GetProviderByName(ctx.Params("provider", ""))
+	provider, err := service.GetProviderByName(ctx.Params("provider", ""))
 	if err != nil {
 		return helper.NewHttpError(404, "Invalid provider name provided")
 	}
@@ -146,7 +144,7 @@ func loginWithProvider(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "Invalid provider provided")
 	}
 
-	state, err := state.StarState.Database.SocialStore.CreateState(app)
+	state, err := service.CreateState(app)
 	if err != nil {
 		return err
 	}

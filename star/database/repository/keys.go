@@ -21,10 +21,10 @@ func (store *KeyStore) GetKeyByID(id string) (*model.Keypair, error) {
 	return &keypair, nil
 }
 
-func (store *KeyStore) GetSigningKey() (*model.Keypair, error) {
+func (store *KeyStore) GetKeyByKind(kind model.KeypairKind) (*model.Keypair, error) {
 	keypair := model.Keypair{}
 
-	if err := store.DB.Where("kind = ?", model.KeypairKindSigning).First(&keypair).Error; err != nil {
+	if err := store.DB.Where("kind = ?", kind).First(&keypair).Error; err != nil {
 		return nil, err
 	}
 

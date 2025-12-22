@@ -9,6 +9,8 @@ import (
 	"github.com/tubblelive/star/star/api"
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database"
+	"github.com/tubblelive/star/star/database/seeder"
+	"github.com/tubblelive/star/star/service"
 	"github.com/tubblelive/star/star/state"
 )
 
@@ -21,13 +23,19 @@ func StartServer(config *config.Config) {
 
 	slog.Info("connecting to database", "protocol", protocol)
 
-	db, err := database.Connect(*dialector, config)
+	db, firstStart, err := database.Connect(*dialector, config)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		return
 	}
 
-	signingKey, err := db.KeyStore.GetSigningKey()
+	state.Database = db
+	if err := seeder.SeedDatabase(firstStart, config); err != nil {
+		slog.Error("failed to seed database", "error", err)
+		return
+	}
+
+	signingKey, err := service.GetSigningKey()
 	if err != nil {
 		slog.Error("failed to get signing key", "error", err)
 		return
@@ -35,7 +43,6 @@ func StartServer(config *config.Config) {
 
 	server := &state.Server{
 		Config:   config,
-		Database: db,
 		SigningKey: signingKey,
 	}
 
@@ -52,7 +59,7 @@ func StartServer(config *config.Config) {
 	slog.Info("star authorization server shutting down")
 	
 	stopTicker <- true
-	sqlDb, err := server.Database.DB.DB()
+	sqlDb, err := state.Database.DB.DB()
 
 	if err == nil {
 		sqlDb.Close()

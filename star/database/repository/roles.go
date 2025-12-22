@@ -21,14 +21,8 @@ func (store *RoleStore) GetRoleByID(id string) (*model.Role, error) {
 	return &role, nil
 }
 
-func (store *RoleStore) CreateRole(name string) (*model.Role, error) {
-	role := model.NewRole(name)
-
-	if err := store.DB.Create(&role).Error; err != nil {
-		return nil, err
-	}
-
-	return &role, nil
+func (store *RoleStore) SaveRole(role *model.Role) error {
+	return store.DB.Save(role).Error
 }
 
 func (store *RoleStore) GetDefaultRoles() ([]model.Role, error) {
@@ -40,24 +34,7 @@ func (store *RoleStore) GetDefaultRoles() ([]model.Role, error) {
 	return roles, nil
 }
 
-func (store *RoleStore) CreateSuperUserRole() (*model.Role, error) {
-	role := model.NewRole("superuser")
-	role.SuperRole = true
-
-	if err := store.DB.Create(&role).Error; err != nil {
-		return nil, err
-	}
-
-	return &role, nil
-}
-
-func (store *RoleStore) CreateDefaultRole() (*model.Role, error) {
-	role := model.NewRole("default")
-	role.Default = true
-
-	if err := store.DB.Create(&role).Error; err != nil {
-		return nil, err
-	}
-
-	return &role, nil
+func (store *RoleStore) CreatePermission(app *model.Application, permission string) error {
+	perm := model.NewPermission(app, permission)
+	return gorm.G[model.Permission](store.DB).Create(context.Background(), &perm)
 }

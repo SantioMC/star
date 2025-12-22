@@ -29,8 +29,11 @@ func NewInternalAccount(user *User, username string, password string) Account {
 			ID: CreateTypedId("acc", 12),
 		},
 
-		Provider: nil,
-		User:     user,
+		Provider:   nil,
+		ProviderID: nil,
+
+		User:   user,
+		UserID: user.ID,
 
 		Username: username,
 		Password: &hash,
@@ -47,8 +50,11 @@ func NewProviderAccount(user *User, provider *SocialProvider, userInfo *oidc.Use
 			ID: CreateTypedId("acc", 12),
 		},
 
-		Provider: provider,
-		User:     user,
+		Provider:   provider,
+		ProviderID: &provider.ID,
+
+		User:   user,
+		UserID: user.ID,
 
 		Username: userInfo.Username,
 		Password: nil,

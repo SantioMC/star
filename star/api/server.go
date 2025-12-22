@@ -46,22 +46,27 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	app.Use(func(c *fiber.Ctx) error {
 		err := c.Next()
 
+		request := string(c.Request().URI().RequestURI())
+
 		if err != nil {
 			switch data := err.(type) {
 			case *fiber.Error:
+				slog.Error(strconv.Itoa(data.Code) + " " + request, "err", err)
 				c.Status(data.Code).JSON(fiber.Map{
 					"error": true,
 					"status": data.Code,
 					"message": data.Message,
 				})
 			default:
-				slog.Error("failed handling request", "err", err)
+				slog.Error("500 " + request, "params", c.AllParams(), "err", err)
 				c.Status(500).JSON(fiber.Map{
 					"error": true,
 					"status": 500,
 					"message": data.Error(),
 				})
 			}
+		} else {
+			slog.Info(strconv.Itoa(c.Response().StatusCode()) + " " + request)
 		}
 
 		return nil

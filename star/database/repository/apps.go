@@ -1,9 +1,6 @@
 package repository
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
@@ -25,10 +22,6 @@ func (store *AppStore) GetAppByID(id string) (*model.Application, error) {
 }
 
 func (store *AppStore) GetAppBySlug(slug string) (*model.Application, error) {
-	if slug == "" {
-		return nil, fmt.Errorf("provided slug was empty")
-	}
-
 	app := model.Application{}
 
 	if err := store.DB.Where("slug = ?", slug).First(&app).Error; err != nil {
@@ -38,29 +31,10 @@ func (store *AppStore) GetAppBySlug(slug string) (*model.Application, error) {
 	return &app, nil
 }
 
-func (store *AppStore) CreateStarApp() (*model.Application, error) {
-	// Create internal Star app
-	app := model.NewApplication("Star")
-	app.Internal = true
+func (store *AppStore) SaveApp(app *model.Application) error {
+	return store.DB.Save(app).Error
+}
 
-	if store.Config.Url != "" {
-		app.Url = store.Config.Url
-	}
-
-	// Set to `/callback` if no url is specified
-	app.Callback = strings.TrimSuffix(app.Url, "/") + "/callback"
-
-	err := store.DB.Save(&app).Error
-	if err != nil {
-		return nil, err
-	}
-
-	// Create OAuth2 provider for star app
-	provider := model.NewProvider(&app, model.OAuth2)
-	err = store.DB.Save(&provider).Error
-	if err != nil {
-		return nil, err
-	}
-
-	return &app, nil
+func (store *AppStore) SaveProvider(provider *model.Provider) error {
+	return store.DB.Save(provider).Error
 }

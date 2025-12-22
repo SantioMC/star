@@ -14,8 +14,9 @@ import (
 type Database struct {
 	DB *gorm.DB
 
-	UserStore *repository.UserStore
-	RoleStore *repository.RoleStore
+	UserStore    *repository.UserStore
+	SessionStore *repository.SessionStore
+	RoleStore    *repository.RoleStore
 
 	KeyStore     *repository.KeyStore
 	AppStore     *repository.AppStore
@@ -23,16 +24,16 @@ type Database struct {
 	RequestStore *repository.RequestStore
 }
 
-func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error) {
+func Connect(dialector gorm.Dialector, config *config.Config) (*Database, bool, error) {
 	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
 			IgnoreRecordNotFoundError: true,
-			LogLevel: logger.Warn,
+			LogLevel:                  logger.Warn,
 		}),
 	})
-	
+
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	db.Use(plugin.CreateEncryptionPlugin(config.AccessToken))
@@ -49,12 +50,14 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 	db.AutoMigrate(&model.Provider{})
 	db.AutoMigrate(&model.LoginState{})
 	db.AutoMigrate(&model.Suspension{})
+	db.AutoMigrate(&model.Permission{})
 
 	database := &Database{
 		DB: db,
 
-		UserStore: &repository.UserStore{DB: db, Config: config},
-		RoleStore: &repository.RoleStore{DB: db},
+		UserStore:    &repository.UserStore{DB: db, Config: config},
+		SessionStore: &repository.SessionStore{DB: db},
+		RoleStore:    &repository.RoleStore{DB: db},
 
 		KeyStore:     &repository.KeyStore{DB: db, Config: config},
 		AppStore:     &repository.AppStore{DB: db, Config: config},
@@ -62,9 +65,5 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, error)
 		RequestStore: &repository.RequestStore{DB: db},
 	}
 
-	if err := seedDatabase(firstStart, database); err != nil {
-		return nil, err
-	}
-
-	return database, nil
+	return database, firstStart, nil
 }

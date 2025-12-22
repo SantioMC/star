@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/tubblelive/star/star/api/helper"
+	"github.com/tubblelive/star/star/service"
 	"github.com/tubblelive/star/star/state"
 	"github.com/tubblelive/star/star/state/scopes"
 	"github.com/tubblelive/star/star/verifier"
@@ -50,8 +51,7 @@ func registerAccount(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "Invalid password, "+err.Error())
 	}
 
-	userStore := state.StarState.Database.UserStore
-	existing, err := userStore.GetUserByEmail(email.Address)
+	existing, err := service.GetUserByEmail(email.Address)
 
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func registerAccount(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(409, "The email provided is already in use")
 	}
 
-	user, _, err := userStore.CreateUser(
+	user, _, err := service.CreateUser(
 		body.Username, email.Address, body.Password,
 	)
 
@@ -84,7 +84,7 @@ func getMe(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := state.StarState.Database.UserStore.GetUserByID(id)
+	user, err := service.GetUserByID(id)
 	if err != nil {
 		return err
 	}
@@ -108,8 +108,7 @@ func patchMe(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	store := state.StarState.Database.UserStore
-	user, err := store.GetUserByID(id)
+	user, err := service.GetUserByID(id)
 	if err != nil {
 		return err
 	}
@@ -124,7 +123,7 @@ func patchMe(ctx *fiber.Ctx) error {
 	}
 
 	if body.Username != nil {
-		existing, err := store.GetUserByUsername(*body.Username)
+		existing, err := service.GetUserByUsername(*body.Username)
 		if err != nil {
 			return err
 		}
@@ -144,8 +143,7 @@ func patchMe(ctx *fiber.Ctx) error {
 		user.LastName = *body.LastName
 	}
 
-	err = store.SaveUser(*user)
-	if err != nil {
+	if err := service.SaveUser(*user); err != nil {
 		return err
 	}
 
