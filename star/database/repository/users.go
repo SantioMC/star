@@ -16,10 +16,10 @@ type UserStore struct {
 	Config *config.Config
 }
 
-func (store *UserStore) GetAllUsers() ([]model.User, error) {
+func (store *UserStore) GetAllUsers(page int, size int) ([]model.User, error) {
 	var users []model.User
 
-	if err := store.DB.Find(&users).Error; err != nil {
+	if err := store.DB.Order("created_at DESC").Limit(size).Offset((page - 1) * size).Preload(clause.Associations).Find(&users).Error; err != nil {
 		return nil, err
 	}
 
@@ -96,8 +96,37 @@ func (store *UserStore) GetActiveSuspension(id string) (*model.Suspension, error
 	return &suspension, nil
 }
 
+func (store *UserStore) SearchUsers(query string, page int, size int) ([]model.User, error) {
+	if strings.Contains(query, "%") {
+		return []model.User{}, nil
+	}
+
+	search := "%" + query + "%"
+	var users []model.User
+
+	err := store.DB.
+		Where("username LIKE ? OR email LIKE ? OR id LIKE ?", search, search, search).
+		Order("created_at DESC").
+		Limit(size).
+		Offset((page - 1) * size).
+		Preload(clause.Associations).
+		Find(&users).Error
+
+	return users, err
+}
+
 func (store *UserStore) SaveUser(user model.User) error {
 	_, err := gorm.G[model.User](store.DB).Where("id = ?", user.ID).Updates(context.Background(), user)
+	return err
+}
+
+func (store *UserStore) DeleteUser(userId string) error {
+	_, err := gorm.G[model.User](store.DB).Where("id = ?", userId).Delete(context.Background())
+	return err
+}
+
+func (store *UserStore) SetLastLogin(userId string, time int64) error {
+	_, err := gorm.G[model.User](store.DB).Where("id = ?", userId).Update(context.Background(), "last_login_at", time)
 	return err
 }
 
@@ -106,6 +135,30 @@ func (store *UserStore) SaveAccount(account *model.Account) error {
 		Assign(model.Account{ PlatformAvatar: account.PlatformAvatar, Username: account.Username }).
 		Attrs(account).
 		FirstOrCreate(&account).Error
+}
+
+func (store *UserStore) UpdateAccountPassword(accountId string, password string) error {
+	_, err := gorm.G[model.Account](store.DB).Where("id = ?", accountId).Update(context.Background(), "password", password)
+	return err
+}
+
+func (store *UserStore) GetCount() int64 {
+	users, err := gorm.G[model.User](store.DB).Count(context.Background(), "*")
+	if err != nil {
+		return 0
+	}
+
+	return users
+}
+
+func (store *UserStore) SuspendUser(userId string, issuerId string, reason string, duration *int64) error {
+	suspension := model.NewSuspension(userId, issuerId, reason, duration)
+	return gorm.G[model.Suspension](store.DB).Create(context.Background(), &suspension)
+}
+
+func (store *UserStore) UnsuspendUser(userId string) error {
+	_, err := gorm.G[model.Suspension](store.DB).Where("user_id = ?", userId).Delete(context.Background())
+	return err
 }
 
 func (store *UserStore) GetUserPermissions(user *model.User) ([]model.Permission, error) {

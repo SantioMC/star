@@ -46,7 +46,8 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	app.Use(func(c *fiber.Ctx) error {
 		err := c.Next()
 
-		request := string(c.Request().URI().RequestURI())
+		uri := string(c.Request().URI().RequestURI())
+		request := c.Method() + " " + uri
 
 		if err != nil {
 			switch data := err.(type) {
@@ -65,7 +66,7 @@ func StartAPIServer(server *state.Server) *fiber.App {
 					"message": data.Error(),
 				})
 			}
-		} else {
+		} else if strings.HasPrefix(uri, "/api") {
 			slog.Info(strconv.Itoa(c.Response().StatusCode()) + " " + request)
 		}
 
@@ -75,8 +76,12 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	// Route handlers
 
 	// Global
-	app.Get("/healthz", route.Health)
-	app.Route("/.well-known", route.WellKnownRouter)
+	global := app.Group("/", cors.New(cors.Config{
+		AllowCredentials: false,
+	}))
+
+	global.Get("/healthz", route.Health)
+	global.Route("/.well-known", route.WellKnownRouter)
 
 	// API
 	api := app.Group("/api", limiter.New(limiter.Config{
@@ -89,7 +94,9 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	
 	api.Route("/", route.LoginRouter)
 	api.Route("/user", route.UserRouter)
+	api.Route("/session", route.SessionRouter)
 	api.Route("/app", route.AppRouter)
+	api.Route("/metrics", route.MetricRouter)
 
 	// Frontend
 	app.Use(

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
@@ -71,8 +72,12 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
 	}
 
-	refreshToken, accessToken, _, err := service.CreateSession(user, app, nil, "", loginClaims)
+	refreshToken, accessToken, _, err := service.CreateSession(user, app, nil, "", ctx.IP(), loginClaims)
 	if err != nil {
+		return err
+	}
+
+	if err := service.UpdateLastLogin(user.ID, time.Now()); err != nil {
 		return err
 	}
 
@@ -113,14 +118,23 @@ func login(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
 	}
 
-	refreshToken, accessToken, expiresAt, err := service.CreateSession(user, app, nil, "", loginClaims)
+	userAgent := ""
+	if body.UserAgent != nil && strings.TrimSpace(*body.UserAgent) != "" && len(*body.UserAgent) < 256 {
+		userAgent = *body.UserAgent
+	}
+
+	session, accessToken, expiresAt, err := service.CreateSession(user, app, body.Fingerprint, userAgent, ctx.IP(), loginClaims)
 	if err != nil {
+		return err
+	}
+
+	if err := service.UpdateLastLogin(user.ID, time.Now()); err != nil {
 		return err
 	}
 
 	ctx.JSON(LoginResponse{
 		AccessToken:   accessToken,
-		RefreshToken:  refreshToken.Token,
+		RefreshToken:  session.Token,
 		ExpiresAt:     expiresAt.Unix(),
 		ApplicationID: app.ID,
 		UserID:        user.ID,
@@ -161,8 +175,10 @@ func loginWithProvider(ctx *fiber.Ctx) error {
 }
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username    string  `json:"username"`
+	Password    string  `json:"password"`
+	Fingerprint *string `json:"fingerprint"`
+	UserAgent   *string `json:"userAgent"`
 }
 
 type LoginResponse struct {

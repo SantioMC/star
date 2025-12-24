@@ -147,8 +147,12 @@ func modifyFields(reflectValue reflect.Value, fields []*schema.Field, db *gorm.D
 			continue
 		}
 
+		if value.Kind() == reflect.Ptr {
+			value = reflect.Indirect(value)
+		}
+
 		if value.Kind() != reflect.String {
-			slog.Warn("Failed to modify field, it was not a string", "field", field.Name)
+			slog.Warn("failed to modify field, it was not a string", "field", field.Name, "kind", value.Kind())
 			continue
 		}
 

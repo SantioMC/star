@@ -6,9 +6,23 @@ type Scope string
 
 const (
 	ScopeAll Scope = "star:*"
+	
+	// User scopes, given to all users (starts with `star:user:`)
 	ScopeUserAll Scope = "star:user:*"
 	ScopeReadEmail Scope = "star:user:email"
+	ScopeReadSessions Scope = "star:user:read:sessions"
+	ScopeDeleteSessions Scope = "star:user:delete:sessions"
 	ScopeDeleteUser Scope = "star:user:delete"
+	ScopeChangePassword Scope = "star:user:change_password"
+
+	// Additional scopes, must be granted
+	ScopeReadMetrics Scope = "star:server:metrics"
+
+	// Admin scopes, must be granted
+	ScopeAdminAll Scope = "star:admin:*"
+	ScopeAdminReadUsers Scope = "star:admin:read:users"
+	ScopeAdminModifyUsers Scope = "star:admin:update:users"
+	ScopeAdminDeleteUsers Scope = "star:admin:delete:users"
 )
 
 // The list of all built-in default scopes
@@ -23,21 +37,12 @@ func (s Scope) Permits(other Scope) bool {
 		return true
 	}
 
-	parts := strings.Split(string(s), ":")
-	otherParts := strings.Split(string(other), ":")
-
-	for idx, part := range parts {
-		otherPart := otherParts[idx]
-		
-		if part == "*" {
+	if strings.HasSuffix(string(s), "*") {
+		prefix := strings.TrimSuffix(string(s), "*")
+		if strings.HasPrefix(string(other), prefix) {
 			return true
-		}
-
-		if part != otherPart {
-			return false
 		}
 	}
 
-	// Must make sure we're in the same level, foo:bar != foo:bar:baz
-	return len(parts) == len(otherParts)
+	return false
 }

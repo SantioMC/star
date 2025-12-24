@@ -13,14 +13,14 @@ type Suspension struct {
 	ExpiresAt *int64 `json:"expires_at"`
 }
 
-func NewSuspension(user *User, issuedBy *User, reason string, expiresAt *int64) Suspension {
+func NewSuspension(user string, issuedBy string, reason string, expiresAt *int64) Suspension {
 	return Suspension{
 		BaseModel: BaseModel{
 			ID: CreateTypedId("sus", 12),
 		},
 
-		User:     user,
-		IssuedBy: issuedBy,
+		UserID:     user,
+		IssuedByID: issuedBy,
 
 		Reason:    reason,
 		ExpiresAt: expiresAt,

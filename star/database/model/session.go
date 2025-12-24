@@ -21,8 +21,9 @@ type Session struct {
 
 	Token string
 
-	Fingerprint *string
-	UserAgent   string
+	Fingerprint *string `encrypt:"true"`
+	UserAgent   string  `encrypt:"true"`
+	Address     string  `encrypt:"true"`
 
 	Claims   datatypes.JSONType[[]oidc.Claim]
 	Duration time.Duration
@@ -35,7 +36,7 @@ func NewSession(duration time.Duration, claims []oidc.Claim) Session {
 
 	return Session{
 		BaseModel: BaseModel{
-			ID: CreateTypedId("rt", 12),
+			ID: CreateTypedId("ses", 12),
 		},
 		Token:    token,
 		Duration: duration,
@@ -43,9 +44,12 @@ func NewSession(duration time.Duration, claims []oidc.Claim) Session {
 	}
 }
 
+func (s *Session) ExpiresAt() int64 {
+	return s.CreatedAt + int64(s.Duration.Seconds())
+}
+
 func (s *Session) IsExpired() bool {
-	expiry := s.CreatedAt + int64(s.Duration.Seconds())
-	return time.Now().After(time.Unix(expiry, 0))
+	return time.Now().After(time.Unix(s.ExpiresAt(), 0))
 }
 
 func (s *Session) GetOS() string {

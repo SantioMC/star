@@ -1,4 +1,7 @@
+import type { Session } from "@/star";
 import { clsx, type ClassValue } from "clsx";
+import ms from "ms";
+import type { ChangeEventHandler } from "svelte/elements";
 import { twMerge } from "tailwind-merge";
 
 export const knownProviders = {
@@ -24,12 +27,42 @@ export const knownProviders = {
 	}
 } as Record<string, { icon: string, color: string }>
 
+let debounceTask: number | null = null
+
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
 export function titleCase(text: string): string {
-	return text.charAt(0).toUpperCase() + text.substring(1).toLowerCase()
+	return text.charAt(0).toUpperCase() + text.substring(1).toLowerCase();
+}
+
+export function relativeTime(time: number, long: boolean = true): string {
+	return ms(Math.abs(Date.now() - (time * 1000)), { long });
+}
+
+export const debounced = <T extends EventTarget>(func: ChangeEventHandler<T>, delay: number = 250) => (event: Event & { currentTarget: Element & T }) => {
+	if (debounceTask != null) clearTimeout(debounceTask);
+	debounceTask = setTimeout(() => {
+		func(event)
+	}, delay)
+}
+
+export const getIcon = (session: Session): string => {
+	switch (session.device.toLowerCase()) {
+		case "desktop":
+			return "device-desktop"
+		case "mobile":
+			return "device-mobile"
+		case "tablet":
+			return "device-tablet"
+		case "tv":
+			return "device-tv"
+		case "bot":
+			return "robot"
+		default:
+			return "device-unknown"
+	}
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

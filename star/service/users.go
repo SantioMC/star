@@ -34,8 +34,8 @@ func CreateSuperUser(password string, role *model.Role) (*model.User, error) {
 	return &user, nil
 }
 
-func GetAllUsers() ([]model.User, error) {
-	return state.Database.UserStore.GetAllUsers()
+func GetAllUsers(page int, size int) ([]model.User, error) {
+	return state.Database.UserStore.GetAllUsers(page, size)
 }
 
 func GetUserByID(id string) (*model.User, error) {
@@ -58,8 +58,28 @@ func GetActiveSuspension(userId string) (*model.Suspension, error) {
 	return state.Database.UserStore.GetActiveSuspension(userId)
 }
 
+func SearchUsers(query string, page int, size int) ([]model.User, error) {
+	if query == "" {
+		return GetAllUsers(page, size)
+	}
+	
+	return state.Database.UserStore.SearchUsers(query, page, size)
+}
+
 func SaveUser(user model.User) error {
 	return state.Database.UserStore.SaveUser(user)
+}
+
+func DeleteUser(userId string) error {
+	return state.Database.UserStore.DeleteUser(userId)
+}
+
+func SuspendUser(userId string, issuer string, reason string, duration *int64) error {
+	return state.Database.UserStore.SuspendUser(userId, issuer, reason, duration)
+}
+
+func UnsuspendUser(userId string) error {
+	return state.Database.UserStore.UnsuspendUser(userId)
 }
 
 func FindOrCreateUser(username string, email string) (model.User, error) {
@@ -150,12 +170,7 @@ func CreateUserFromSocial(provider *model.SocialProvider, token string) (*model.
 	return &user, &newAccount, nil
 }
 
-func ValidateLogin(username, password string) (*model.User, error) {
-	user, err := GetUserByUsernameOrEmail(username)
-	if err != nil || user == nil {
-		return nil, fmt.Errorf("invalid user")
-	}
-
+func getInternalAccount(user *model.User) (*model.Account, error) {
 	var internalAccount *model.Account
 	for _, account := range user.Accounts {
 		if account.Provider == nil {
@@ -168,7 +183,40 @@ func ValidateLogin(username, password string) (*model.User, error) {
 		return nil, fmt.Errorf("no internal account found")
 	}
 
-	if !crypto.VerifyHash(password, *internalAccount.Password) {
+	return internalAccount, nil
+}
+
+func VerifyPassword(user *model.User, password string) (bool, error) {
+	account, err := getInternalAccount(user)
+	if err != nil {
+		return false, err
+	}
+
+	return crypto.VerifyHash(password, *account.Password), nil
+}
+
+func SetPassword(user *model.User, password string) error {
+	account, err := getInternalAccount(user)
+	if err != nil {
+		return err
+	}
+
+	hashed := crypto.HashString(password)
+	return state.Database.UserStore.UpdateAccountPassword(account.ID, hashed)
+}
+
+func ValidateLogin(username, password string) (*model.User, error) {
+	user, err := GetUserByUsernameOrEmail(username)
+	if err != nil || user == nil {
+		return nil, fmt.Errorf("invalid user")
+	}
+
+	success, err := VerifyPassword(user, password)
+	if err != nil {
+		return nil, err
+	}
+
+	if !success {
 		return nil, fmt.Errorf("invalid password")
 	}
 
@@ -177,6 +225,10 @@ func ValidateLogin(username, password string) (*model.User, error) {
 
 func GetUserPermissions(user *model.User) ([]model.Permission, error) {
 	return state.Database.UserStore.GetUserPermissions(user)
+}
+
+func UpdateLastLogin(userId string, time time.Time) error {
+	return state.Database.UserStore.SetLastLogin(userId, time.Unix())
 }
 
 func CreateAccessToken(
@@ -192,11 +244,16 @@ func CreateAccessToken(
 	}
 
 	roles := make([]interface{}, len(refreshToken.User.Roles))
+	isSuperUser := false
 
 	var groups []string 
 	var perms []scopes.Scope 
 
 	for idx, role := range refreshToken.User.Roles {
+		if !isSuperUser && role.SuperRole {
+			isSuperUser = true
+		}
+
 		groups = append(groups, role.Name)
 		roles[idx] = map[string]any{
 			"id": role.ID,
@@ -240,9 +297,12 @@ func CreateAccessToken(
 		fields["imp"] = true
 	}
 
-	if app.Internal {
+	if app.Internal && !isSuperUser {
 		// Give ourselves frontend access to user-facing endpoints
 		perms = append(perms, scopes.ScopeUserAll)
+	} else if app.Internal && isSuperUser {
+		// Grant the user access to management pages & endpoints
+		perms = append(perms, scopes.ScopeAll)
 	}
 
 	permissions, err := GetUserPermissions(refreshToken.User)
@@ -284,13 +344,17 @@ func CreateSession(
 	app *model.Application,
 	fingerprint *string,
 	userAgent string,
+	address string,
 	claims []oidc.Claim,
 ) (*model.Session, string, time.Time, error) {
 	session := model.NewSession(time.Hour * 24 * 7, claims)
+	
 	session.User = user
 	session.Application = app
+	
 	session.UserAgent = userAgent
 	session.Fingerprint = fingerprint
+	session.Address = address
 
 	if err := state.Database.SessionStore.CreateSession(&session); err != nil {
 		return nil, "", time.Time{}, err
@@ -302,6 +366,30 @@ func CreateSession(
 	}
 
 	return &session, jwt, expiresAt, nil
+}
+
+func GetAllSessions(userId string) ([]model.Session, error) {
+	return state.Database.SessionStore.GetUserSessions(userId)
+}
+
+func GetSessionByID(sessionId string) (*model.Session, error) {
+	return state.Database.SessionStore.GetSessionByID(sessionId)
+}
+
+func InvalidateSession(sessionId string) error {
+	return state.Database.SessionStore.InvalidateSession(sessionId)
+}
+
+func InvalidateAllSessions(userId string) error {
+	return state.Database.SessionStore.InvalidateAllSessions(userId)
+}
+
+func GetSessionCount() int64 {
+	return state.Database.SessionStore.GetCount()
+}
+
+func GetUserCount() int64 {
+	return state.Database.UserStore.GetCount()
 }
 
 func RefreshAccessToken(

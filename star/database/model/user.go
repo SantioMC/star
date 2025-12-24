@@ -17,15 +17,18 @@ const (
 
 type User struct {
 	BaseModel
-	Username       string    `json:"username" gorm:"uniqueIndex"`
-	FirstName      string    `json:"first_name"`
-	LastName       string    `json:"last_name"`
-	Email          string    `json:"email" gorm:"uniqueIndex"`
-	EmailVerified  bool      `json:"email_verified"`
-	ProfilePicture string    `json:"-"`
-	EmailCode      string    `json:"-"`
-	Roles          []Role    `json:"-" gorm:"many2many:user_roles"`
-	Accounts       []Account `json:"-"`
+	Username       string      `json:"username" gorm:"uniqueIndex"`
+	FirstName      string      `json:"first_name"`
+	LastName       string      `json:"last_name"`
+	Email          string      `json:"email" gorm:"uniqueIndex"`
+	EmailVerified  bool        `json:"email_verified"`
+	ProfilePicture string      `json:"-"`
+	EmailCode      string      `json:"-"`
+	LastLoginAt    int64       `json:"-"`
+	Roles          []Role      `json:"roles" gorm:"many2many:user_roles"`
+	Accounts       []Account   `json:"accounts"`
+	Sessions       []Session   `json:"sessions"`
+	Suspension     *Suspension `json:"-"`
 }
 
 func (u *User) GenerateProfilePicture() string {

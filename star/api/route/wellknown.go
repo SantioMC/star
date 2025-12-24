@@ -15,6 +15,7 @@ func WellKnownRouter(r fiber.Router) {
 }
 
 func getWellKnownSecurity(ctx *fiber.Ctx) error {
+	// todo: make configurable
 	ctx.SendString(strings.TrimSpace(
 	"Contact: mailto:business@santio.me\n" +
 	"Expires: 2027-1-01T00:00:00.000Z\n" +
