@@ -68,7 +68,7 @@
 
 <div class="flex flex-row gap-1 min-h-dvh">
   {#if !props.hidden}
-    <div class='bg-secondary w-56 shadow flex flex-col px-2 transition-all'>
+    <div class='bg-secondary w-56 min-w-56 shadow flex flex-col px-2 transition-all'>
       {#each Category as category (category.id)}
         {#if !('permission' in category) || hasPermission(category.permission)}
           <span class='text-secondary-foreground/50 text-sm px-2 pt-4'>{category.name}</span>
