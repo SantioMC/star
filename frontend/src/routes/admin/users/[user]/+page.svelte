@@ -13,7 +13,7 @@
 	import * as Item from '@/components/ui/item';
 	import { Label } from "@/components/ui/label";
 	import { hasPermission } from "@/index";
-	import { getIcon, relativeTime } from "@/utils";
+	import { getIcon, relativeTime, titleCase } from "@/utils";
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
 
@@ -36,6 +36,10 @@
 
 	let user = $state<star.AdminUser|null>(null)
 	let suspender = $state<star.AdminUser|null>(null)
+	
+	let activeSessions = $derived<star.Session[]>(
+		user?.sessions?.filter(s => !s.expired)?.sort((a, b) => b.created_at - a.created_at) ?? []
+	)
 
 	onMount(async () => {
 		if (!browser) return
@@ -57,6 +61,8 @@
 		const result = await star.deleteUser(user!.id)
 		if ('success' in result) {
 			goto('/admin/users')
+		} else {
+			toast.error(result.message)
 		}
 	}
 
@@ -67,6 +73,8 @@
 
 		if ('success' in result) {
 			location.reload()
+		} else {
+			toast.error(result.message)
 		}
 	}
 
@@ -75,6 +83,8 @@
 		const result = await star.unsuspendUser(user!.id)
 		if ('success' in result) {
 			location.reload()
+		} else {
+			toast.error(result.message)
 		}
 	}
 
@@ -86,6 +96,8 @@
 
 		if ('success' in result) {
 			toast.success('Successfully changed password')
+		} else {
+			toast.error(result.message)
 		}
 	}
 
@@ -218,6 +230,33 @@
 
 			<Card.Root class='min-w-1/3 w-full md:w-auto'>
 				<Card.CardHeader>
+					<Card.Title><Icon icon='gavel' /> Roles</Card.Title>
+				</Card.CardHeader>
+				<Card.Content class="flex flex-col gap-1">
+					<p class="text-primary/60 text-sm">The user has the following roles:</p>
+					{#if user.roles.length == 0}
+						<div class="flex flex-col gap-4 items-center w-full my-16">
+							<span class='text-xl font-semibold leading-2'>No Roles</span>
+							<span class='text-primary/60 leading-2'>This user currently has no assigned roles</span>
+						</div>
+					{:else}
+						<div class='flex gap-2 items-center'>
+							{#each user.roles as role (role.id)}
+								<Badge variant='secondary' class='hover:*:block hover:*:opacity-100 hover:bg-secondary/60 cursor-pointer transition-all'>
+									<Icon icon='folder' class='p-1' />{titleCase(role.name)}
+									<Icon icon='x' class='p-1 hidden opacity-0 transition-all' />
+								</Badge>
+							{/each}
+							<Badge variant='secondary' class='w-fit hover:bg-secondary/60 transition-colors cursor-pointer'>
+								<Icon icon='plus' class='p-1' /> Add Role
+							</Badge>
+						</div>
+					{/if}
+				</Card.Content>
+			</Card.Root>
+
+			<Card.Root class='min-w-1/3 w-full md:w-auto'>
+				<Card.CardHeader>
 					<Card.Title><Icon icon='user' /> Profile Information</Card.Title>
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-8">
@@ -256,7 +295,7 @@
 					<Card.Description class='max-w-xl'>The different devices and sessions currently logged into the account, invalidating a session might take up to an hour to take effect.</Card.Description>
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-2">
-					{#each user.sessions.filter(i => !i.expired).sort((a, b) => b.created_at - a.created_at) as session}
+					{#each activeSessions as session}
 						<Item.Root variant='outline'>
 							<Item.Content class='flex flex-row items-center gap-4'>
 								<Icon class='text-3xl' icon={getIcon(session)} />
@@ -276,6 +315,13 @@
 							</Item.Content>
 						</Item.Root>
 					{/each}
+
+					{#if activeSessions.length == 0}
+						<div class="flex flex-col gap-4 items-center w-full my-16">
+							<span class='text-xl font-semibold leading-2'>No Sessions</span>
+							<span class='text-primary/60 leading-2'>This user currently has no sessions</span>
+						</div>
+					{/if}
 				</Card.Content>
 				<Card.Footer>
 					<Button class='ml-auto' variant='destructive'>Sign out all sessions</Button>

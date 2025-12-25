@@ -28,7 +28,7 @@
     icon?: string
     href: string
     category: Category
-    permission?: StarPermission
+    permission?: StarPermission | (string & {})
   }[] = [
     {
       name: 'Account Details',
@@ -56,6 +56,20 @@
       href: '/admin/users',
       category: 'management',
       permission: 'star:admin:read:users'
+    },
+    {
+      name: 'Roles',
+      icon: 'hammer',
+      href: '/admin/roles',
+      category: 'management',
+      permission: 'star:admin:read:roles'
+    },
+    {
+      name: 'Applications',
+      icon: 'puzzle',
+      href: '/admin/apps',
+      category: 'management',
+      permission: 'star:admin:read:applications'
     }
   ]
 

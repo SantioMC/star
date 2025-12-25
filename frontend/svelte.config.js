@@ -6,10 +6,16 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
-		adapter: adapter(),
+		adapter: adapter({
+			pages: 'build',
+			assets: 'build',
+			precompress: false,
+			strict: true,
+			fallback: 'index.html'
+		}),
 		alias: {
 			"@/*": "./src/lib",
-		}
+		},
 	}
 };
 

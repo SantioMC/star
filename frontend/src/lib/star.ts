@@ -20,6 +20,8 @@ export type StarPermission = "star:*"
 	| "star:admin:read:users"
 	| "star:admin:update:users"
 	| "star:admin:delete:users"
+	| "star:admin:read:roles"
+	| "star:admin:read:applications"
 
 export const api = ky.extend({
 	prefixUrl: API_URL,
@@ -144,6 +146,10 @@ export const updateUser = (user: string, changes: UserChanges) => {
 	return api.patch(`user/${user}`, {
 		json: changes
 	}).json<User>().catch(orError)
+}
+
+export const getAllApps = async () => {
+	return api.get(`app`).json<any[]>().catch(_ => [] as any[])
 }
 
 interface ThumbmarkResult {
