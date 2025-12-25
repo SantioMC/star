@@ -13,7 +13,7 @@ type Application struct {
 	Callback string `json:"callback"`
 	Internal bool   `json:"internal"`
 
-	Providers []Provider `json:"-"`
+	Providers []Provider `json:"providers"`
 }
 
 func NewApplication(name string) Application {

@@ -18,11 +18,19 @@ const (
 	// Additional scopes, must be granted
 	ScopeReadMetrics Scope = "star:server:metrics"
 
-	// Admin scopes, must be granted
+	// Generic admin scopes, must be granted
 	ScopeAdminAll Scope = "star:admin:*"
+
+	// Admin user scopes, must be granted
 	ScopeAdminReadUsers Scope = "star:admin:read:users"
 	ScopeAdminModifyUsers Scope = "star:admin:update:users"
 	ScopeAdminDeleteUsers Scope = "star:admin:delete:users"
+
+	// Admin role scopes, must be granted
+	ScopeAdminReadRoles Scope = "star:admin:read:roles"
+
+	// Admin app scopes, must be granted
+	ScopeAdminReadApps Scope = "star:admin:read:apps"
 )
 
 // The list of all built-in default scopes

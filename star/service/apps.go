@@ -12,6 +12,10 @@ func GetAppByID(id string) (*model.Application, error) {
 	return state.Database.AppStore.GetAppByID(id)
 }
 
+func GetAllApps() ([]model.Application, error) {
+	return state.Database.AppStore.GetAllApps()
+}
+
 func GetAppBySlug(slug string) (*model.Application, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("provided slug was empty")

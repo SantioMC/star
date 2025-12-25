@@ -85,7 +85,7 @@ func StartAPIServer(server *state.Server) *fiber.App {
 
 	// API
 	api := app.Group("/api", limiter.New(limiter.Config{
-		Max:        300,
+		Max:        100,
 		Expiration: 1 * time.Minute,
 		LimitReached: func(c *fiber.Ctx) error {
 			return fiber.ErrTooManyRequests
@@ -96,41 +96,22 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	api.Route("/user", route.UserRouter)
 	api.Route("/session", route.SessionRouter)
 	api.Route("/app", route.AppRouter)
+	api.Route("/role", route.RoleRouter)
 	api.Route("/metrics", route.MetricRouter)
 
 	// Frontend
 	app.Use(
-		"/*",
-		func(ctx *fiber.Ctx) error {
-			path := ctx.Path()
-
-			// Redirect if url trails `/` (eg /login/ -> /login)
-			if path != "/" && strings.HasSuffix(path, "/") {
-				ctx.Redirect(strings.TrimSuffix(ctx.Request().URI().String(), "/"))
-			} else {
-				ctx.Next()
-			}
-
-			return nil
-		},
+		"/_app/*",
 		filesystem.New(filesystem.Config{
 			Root: http.FS(frontend.FrontendFS),
-			Browse: false,
-			MaxAge: 86400,
 			PathPrefix: "build",
-			Next: func(ctx *fiber.Ctx) bool {
-				// Auto add .html to extensionless paths (eg /login -> /login.html)
-				path := ctx.Path()
-				fileIndex := strings.LastIndex(path, "/")
-
-				if path != "/" && !strings.Contains(path[fileIndex:], ".") {
-					ctx.Path(path + ".html")
-				}
-
-				return false
-			},
+			Browse: true,
 		}),
 	)
+
+	app.Get("/*", func(ctx *fiber.Ctx) error {
+		return filesystem.SendFile(ctx, http.FS(frontend.FrontendFS), "build/index.html")
+	})
 
 	// Bind to port
 	bind := "0.0.0.0:" + strconv.Itoa(server.Config.Port)

@@ -1,9 +1,12 @@
 package repository
 
 import (
+	"context"
+
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AppStore struct {
@@ -14,17 +17,21 @@ type AppStore struct {
 func (store *AppStore) GetAppByID(id string) (*model.Application, error) {
 	app := model.Application{}
 
-	if err := store.DB.Where("id = ?", id).First(&app).Error; err != nil {
+	if err := store.DB.Where("id = ?", id).Preload(clause.Associations).First(&app).Error; err != nil {
 		return nil, err
 	}
 
 	return &app, nil
 }
 
+func (store *AppStore) GetAllApps() ([]model.Application, error) {
+	return gorm.G[model.Application](store.DB).Preload("Providers", nil).Find(context.Background())
+}
+
 func (store *AppStore) GetAppBySlug(slug string) (*model.Application, error) {
 	app := model.Application{}
 
-	if err := store.DB.Where("slug = ?", slug).First(&app).Error; err != nil {
+	if err := store.DB.Where("slug = ?", slug).Preload(clause.Associations).First(&app).Error; err != nil {
 		return nil, err
 	}
 

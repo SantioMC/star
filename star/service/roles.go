@@ -23,6 +23,10 @@ func GetDefaultRoles() ([]model.Role, error) {
 	return state.Database.RoleStore.GetDefaultRoles()
 }
 
+func GetAllRoles() ([]model.Role, error) {
+	return state.Database.RoleStore.GetAllRoles()
+}
+
 func CreateSuperUserRole() (*model.Role, error) {
 	role := model.NewRole("superuser")
 	role.SuperRole = true

@@ -25,13 +25,12 @@ func (store *RoleStore) SaveRole(role *model.Role) error {
 	return store.DB.Save(role).Error
 }
 
-func (store *RoleStore) GetDefaultRoles() ([]model.Role, error) {
-	roles, err := gorm.G[model.Role](store.DB).Where("default = ?", true).Find(context.Background())
-	if err != nil {
-		return nil, err
-	}
+func (store *RoleStore) GetAllRoles() ([]model.Role, error) {
+	return gorm.G[model.Role](store.DB).Find(context.Background())
+}
 
-	return roles, nil
+func (store *RoleStore) GetDefaultRoles() ([]model.Role, error) {
+	return gorm.G[model.Role](store.DB).Where("default = ?", true).Find(context.Background())
 }
 
 func (store *RoleStore) CreatePermission(app *model.Application, permission string) error {

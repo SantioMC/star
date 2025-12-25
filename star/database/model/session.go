@@ -49,7 +49,7 @@ func (s *Session) ExpiresAt() int64 {
 }
 
 func (s *Session) IsExpired() bool {
-	return time.Now().After(time.Unix(s.ExpiresAt(), 0))
+	return time.Now().Unix() > s.ExpiresAt() || s.InvalidatedAt != nil
 }
 
 func (s *Session) GetOS() string {
