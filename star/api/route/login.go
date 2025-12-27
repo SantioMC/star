@@ -11,6 +11,7 @@ import (
 	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/api/helper"
 	"github.com/tubblelive/star/star/service"
+	"github.com/tubblelive/star/star/state"
 )
 
 var loginClaims []oidc.Claim = []oidc.Claim{
@@ -53,6 +54,10 @@ func loginCallback(ctx *fiber.Ctx) error {
 	}
 
 	hostname := string(ctx.Request().URI().Scheme()) + "://" + ctx.Hostname()
+	if state.StarState.Config.Url != "" {
+		hostname = state.StarState.Config.Url
+	}
+	
 	token, err := provider.ExchangeCode(hostname, code)
 	if err != nil {
 		return err
@@ -158,15 +163,18 @@ func loginWithProvider(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "Invalid provider provided")
 	}
 
-	state, err := service.CreateState(app)
+	code, err := service.CreateState(app)
 	if err != nil {
 		return err
 	}
 
 	hostname := string(ctx.Request().URI().Scheme()) + "://" + ctx.Hostname()
-	redirect := provider.GetCallbackURL(hostname, provider.Name)
+	if state.StarState.Config.Url != "" {
+		hostname = state.StarState.Config.Url
+	}
 
-	loginUrl, err := provider.GetLoginURL(state, redirect)
+	redirect := provider.GetCallbackURL(hostname, provider.Name)
+	loginUrl, err := provider.GetLoginURL(code, redirect)
 	if err != nil {
 		return err
 	}
