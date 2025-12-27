@@ -17,10 +17,10 @@ const (
 
 type User struct {
 	BaseModel
-	Username       string      `json:"username" gorm:"uniqueIndex"`
+	Username       string      `json:"username"`
 	FirstName      string      `json:"first_name"`
 	LastName       string      `json:"last_name"`
-	Email          string      `json:"email" gorm:"uniqueIndex"`
+	Email          string      `json:"email"`
 	EmailVerified  bool        `json:"email_verified"`
 	ProfilePicture string      `json:"-"`
 	EmailCode      string      `json:"-"`

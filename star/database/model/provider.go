@@ -7,10 +7,10 @@ import (
 	"gorm.io/datatypes"
 )
 
-type ProviderKind int
+type ProviderKind string
 
 const (
-	OAuth2 ProviderKind = iota
+	OAuth2 ProviderKind = "oauth2"
 )
 
 type Provider struct {
@@ -20,15 +20,15 @@ type Provider struct {
 	ApplicationID string       `json:"application_id"`
 	Type          ProviderKind `json:"type"`
 
-	Secret           string `json:"secret" encrypt:"true"`
-	RedirectURIs     datatypes.JSONType[[]string]
-	RedirectURIGlobs datatypes.JSONType[[]string]
+	Secret           string                       `json:"secret" encrypt:"true"`
+	RedirectURIs     datatypes.JSONType[[]string] `json:"redirect_uris"`
+	RedirectURIGlobs datatypes.JSONType[[]string] `json:"redirect_uri_globs"`
 
-	ApplicationType op.ApplicationType
-	AuthMethod      oidc.AuthMethod
-	ResponseTypes   datatypes.JSONType[[]oidc.ResponseType]
-	GrantTypes      datatypes.JSONType[[]oidc.GrantType]
-	AccessTokenType op.AccessTokenType
+	ApplicationType op.ApplicationType                      `json:"application_type"`
+	AuthMethod      oidc.AuthMethod                         `json:"auth_method"`
+	ResponseTypes   datatypes.JSONType[[]oidc.ResponseType] `json:"response_types"`
+	GrantTypes      datatypes.JSONType[[]oidc.GrantType]    `json:"grant_types"`
+	AccessTokenType op.AccessTokenType                      `json:"access_token_type"`
 }
 
 func NewProvider(application *Application, kind ProviderKind) Provider {

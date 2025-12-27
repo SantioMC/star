@@ -2,20 +2,18 @@
 	import { browser } from "$app/environment";
 	import { goto } from "$app/navigation";
 	import Icon from '$lib/components/icon.svelte';
+	import Session from "@/components/session.svelte";
 	import Sidebar from "@/components/sidebar.svelte";
 	import * as Avatar from "@/components/ui/avatar";
 	import { Button } from "@/components/ui/button";
 	import * as Card from "@/components/ui/card";
 	import { Input } from "@/components/ui/input";
-	import * as Item from "@/components/ui/item";
 	import { Label } from "@/components/ui/label";
 	import { hasPermission } from "@/index";
 	import * as star from "@/star";
-	import { getIcon, relativeTime } from "@/utils";
 	import { onMount } from "svelte";
 
 	let data = $state<star.User|null>(null)
-	$inspect(data)
 
 	onMount(async () => {
 		if (!browser) return
@@ -25,6 +23,10 @@
 			goto('/login')
 		}
 	})
+
+	const removeSession = (session: star.Session) => {
+		data!.sessions = data!.sessions.filter(s => s.id != session.id)
+	}
 </script>
 
 <Sidebar hidden={data == null || !hasPermission('star:server') && !hasPermission('star:admin')}>
@@ -127,18 +129,7 @@
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-2">
 					{#each data.sessions.filter(i => !i.expired).sort((a, b) => b.created_at - a.created_at) as session}
-						<Item.Root variant='outline'>
-							<Item.Content class='flex flex-row items-center gap-4'>
-								<Icon class='text-3xl' icon={getIcon(session)} />
-								<div>
-									<p class="text-lg">{session.device} {session.operating_system}</p>
-									<Item.Description class='text-xs'>IP Address: {session.ip_address} • Created {relativeTime(session.created_at)} ago</Item.Description>
-								</div>
-								<div class='ml-auto'>
-									<Button variant='destructive'>Log out</Button>
-								</div>
-							</Item.Content>
-						</Item.Root>
+						<Session {session} oninvalidate={() => removeSession(session)} />
 					{/each}
 				</Card.Content>
 				<Card.Footer>

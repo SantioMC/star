@@ -24,6 +24,24 @@ func GetAppBySlug(slug string) (*model.Application, error) {
 	return state.Database.AppStore.GetAppBySlug(slug)
 }
 
+func CreateApplication(name string, slug *string, url string) (*model.Application, error) {
+	// Create internal Star app
+	app := model.NewApplication(name)
+	app.Url = url
+
+	sanitized := strings.TrimSpace(strings.ToLower(*slug))
+	if slug != nil && sanitized != "" {
+		app.Slug = *slug
+	}
+
+	err := state.Database.AppStore.SaveApp(&app)
+	if err != nil {
+		return nil, err
+	}
+
+	return &app, nil
+}
+
 func CreateStarApp(url string) (*model.Application, error) {
 	// Create internal Star app
 	app := model.NewApplication("Star")
@@ -48,4 +66,12 @@ func CreateStarApp(url string) (*model.Application, error) {
 	}
 
 	return &app, nil
+}
+
+func DeleteApp(appId string) error {
+	return state.Database.AppStore.DeleteApp(appId)
+}
+
+func UpdateApp(app *model.Application) error {
+	return state.Database.AppStore.SaveApp(app)
 }

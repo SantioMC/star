@@ -31,6 +31,9 @@ const (
 
 	// Admin app scopes, must be granted
 	ScopeAdminReadApps Scope = "star:admin:read:apps"
+	ScopeAdminModifyApps Scope = "star:admin:update:apps"
+	ScopeAdminCreateApps Scope = "star:admin:create:apps"
+	ScopeAdminDeleteApps Scope = "star:admin:delete:apps"
 )
 
 // The list of all built-in default scopes

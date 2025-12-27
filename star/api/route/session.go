@@ -72,8 +72,8 @@ func invalidateSession(ctx *fiber.Ctx) error {
 	if err := service.InvalidateSession(session.ID); err != nil {
 		return err
 	}
-	
-	return ctx.JSON(fiber.Map{ "success": true })
+
+	return ctx.JSON(fiber.Map{"success": true})
 }
 
 func invalidateAllSessions(ctx *fiber.Ctx) error {
@@ -89,8 +89,8 @@ func invalidateAllSessions(ctx *fiber.Ctx) error {
 	if err := service.InvalidateAllSessions(userId); err != nil {
 		return err
 	}
-	
-	return ctx.JSON(fiber.Map{ "success": true })
+
+	return ctx.JSON(fiber.Map{"success": true})
 }
 
 func getSessionFromCtx(ctx *fiber.Ctx) (*model.Session, error) {
@@ -120,18 +120,20 @@ func toSessionResponse(session *model.Session) SessionResponse {
 		OS:     session.GetOS(),
 		IP:     session.Address,
 
-		CreatedAt: session.CreatedAt,
-		ExpiresAt: session.ExpiresAt(),
-		Expired:   session.IsExpired(),
+		CreatedAt:     session.CreatedAt,
+		InvalidatedAt: session.InvalidatedAt,
+		ExpiresAt:     session.ExpiresAt(),
+		Expired:       session.IsExpired(),
 	}
 }
 
 type SessionResponse struct {
-	ID        string `json:"id"`
-	Device    string `json:"device"`
-	OS        string `json:"operating_system"`
-	IP        string `json:"ip_address"`
-	CreatedAt int64  `json:"created_at"`
-	ExpiresAt int64  `json:"expires_at"`
-	Expired   bool   `json:"expired"`
+	ID            string `json:"id"`
+	Device        string `json:"device"`
+	OS            string `json:"operating_system"`
+	IP            string `json:"ip_address"`
+	CreatedAt     int64  `json:"created_at"`
+	InvalidatedAt *int64 `json:"invalidated_at"`
+	ExpiresAt     int64  `json:"expires_at"`
+	Expired       bool   `json:"expired"`
 }

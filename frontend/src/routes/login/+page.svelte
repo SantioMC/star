@@ -19,7 +19,7 @@
 	let password = $state('');
 
 	const login = async (event: Event) => {
-		event.stopPropagation();
+		event.preventDefault();
 		error = '';
 		
 		const data = await star.login(username, password);
@@ -39,55 +39,53 @@
 </script>
 
 <div class="h-full w-full flex items-center justify-center">
-	<Card.Root class="-my-4 w-full max-w-sm">
-		<Card.Header>
-			<Card.Title>Login to your account</Card.Title>
-			<Card.Description>
-				Enter your account details below to login to your account
-			</Card.Description>
-		</Card.Header>
-		{#if !logins}
-			<div class="flex items-center justify-center h-48 w-full">
-				<Spinner size='2rem' />
-			</div>
-		{:else if logins?.user_pass_login}
-			<Card.Content>
-					<form onsubmit={login}>
-						<div class="flex flex-col gap-6">
-							<div class="grid gap-2">
-								<Label for="username">Username</Label>
-								<Input bind:value={username} id="username" type="text" required />
-							</div>
-							<div class="grid gap-2">
-								<div class="flex items-center">
-									<Label for="password">Password</Label>
-								</div>
-								<Input bind:value={password} id="password" type="password" required />
-							</div>
+	<form onsubmit={login}>
+		<Card.Root class="-my-4 w-full max-w-sm">
+			<Card.Header>
+				<Card.Title>Login to your account</Card.Title>
+				<Card.Description>
+					Enter your account details below to login to your account
+				</Card.Description>
+			</Card.Header>
+			{#if !logins}
+				<div class="flex items-center justify-center h-48 w-full">
+					<Spinner size='2rem' />
+				</div>
+			{:else if logins?.user_pass_login}
+				<Card.Content class='w-96'>
+					<div class="flex flex-col gap-6">
+						<div class="grid gap-2">
+							<Label for="username">Username</Label>
+							<Input bind:value={username} id="username" type="text" required />
 						</div>
-					</form>
+						<div class="grid gap-2">
+							<div class="flex items-center">
+								<Label for="password">Password</Label>
+							</div>
+							<Input bind:value={password} id="password" type="password" required />
+						</div>
+					</div>
 
 					{#if error}
 						<span class="text-red-300">{error}</span>
 					{/if}
-			</Card.Content>
-		{/if}
-		<Card.Footer class="flex-col gap-2">
-			{#if logins?.user_pass_login}
-				<Button type="submit" class="w-full" disabled={loading} onclick={login}>
-					{#if loading}
-						<Spinner />
-					{/if}
-					Login
-				</Button>
+				</Card.Content>
 			{/if}
-
-			{#if logins?.providers}
+			<Card.Footer class="flex-col gap-2">
 				{#if logins?.user_pass_login}
+					<Button type="submit" class="w-full" disabled={loading} onclick={login}>
+						{#if loading}
+							<Spinner />
+						{/if}
+						Login
+					</Button>
+				{/if}
+
+				{#if logins?.user_pass_login && logins?.providers?.length > 0}
 					<hr />
 				{/if}
 
-				{#each logins.providers as provider}
+				{#each logins?.providers as provider}
 					<Button type="submit" variant='outline' class="w-full" onclick={() => star.loginWithProvider(provider)}>
 						{#if !!knownProviders[provider]}
 							<Icon icon={knownProviders[provider].icon} class='text-lg' />
@@ -95,7 +93,7 @@
 						Login with {titleCase(provider)}
 					</Button>
 				{/each}
-			{/if}
-		</Card.Footer>
-	</Card.Root>
+			</Card.Footer>
+		</Card.Root>
+	</form>
 </div>

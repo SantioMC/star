@@ -48,7 +48,7 @@
 		<Card.Root class='max-w-lg min-w-72 w-full text-fuchsia-200'>
 			<Card.CardHeader>
 				<Card.Title><Icon icon='app-window' /> Star Metadata</Card.Title>
-				<Card.Description>Metadata relating to the Star server currently requesting data from</Card.Description>
+				<Card.Description>Metadata relating to the star server currently requesting data from</Card.Description>
 			</Card.CardHeader>
 			<Card.Content class="flex flex-col">
 				<span class='text-white text-sm'>Current version: <span class='text-lg text-fuchsia-200'>{metrics?.version ?? "unknown"}</span></span>

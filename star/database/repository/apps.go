@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database/model"
@@ -18,6 +19,10 @@ func (store *AppStore) GetAppByID(id string) (*model.Application, error) {
 	app := model.Application{}
 
 	if err := store.DB.Where("id = ?", id).Preload(clause.Associations).First(&app).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		
 		return nil, err
 	}
 
@@ -32,10 +37,19 @@ func (store *AppStore) GetAppBySlug(slug string) (*model.Application, error) {
 	app := model.Application{}
 
 	if err := store.DB.Where("slug = ?", slug).Preload(clause.Associations).First(&app).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 
 	return &app, nil
+}
+
+func (store *AppStore) DeleteApp(appId string) error {
+	_, err := gorm.G[model.Application](store.DB).Where("id = ?", appId).Delete(context.Background())
+	return err
 }
 
 func (store *AppStore) SaveApp(app *model.Application) error {

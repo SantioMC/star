@@ -74,7 +74,7 @@
   ]
 
   const props: { 
-    children: Snippet,
+    children?: Snippet,
     hidden?: boolean,
     class?: ClassValue,
   } = $props()

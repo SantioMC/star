@@ -22,6 +22,9 @@ export type StarPermission = "star:*"
 	| "star:admin:delete:users"
 	| "star:admin:read:roles"
 	| "star:admin:read:applications"
+	| "star:admin:update:applications"
+	| "star:admin:create:applications"
+	| "star:admin:delete:applications"
 
 export const api = ky.extend({
 	prefixUrl: API_URL,
@@ -89,15 +92,15 @@ export const getSession = async (id: string) => {
 }
 
 export const invalidateSession = async (id: string) => {
-	return api.delete(`session/${id}`)
+	return api.delete(`session/${id}`).json<{ success: boolean }>().catch(orError)
 }
 
 export const invalidateAllSessions = async () => {
-	return api.delete(`session`)
+	return api.delete(`session`).json<{ success: boolean }>().catch(orError)
 }
 
 export const invalidateUserSessions = async (userId: string) => {
-	return api.post(`user/${userId}/invalidate`)
+	return api.post(`user/${userId}/invalidate`).json<{ success: boolean }>().catch(orError)
 }
 
 export const getMetrics = async () => {
@@ -149,7 +152,23 @@ export const updateUser = (user: string, changes: UserChanges) => {
 }
 
 export const getAllApps = async () => {
-	return api.get(`app`).json<any[]>().catch(_ => [] as any[])
+	return api.get(`app`).json<AdminApplication[]>().catch(_ => [] as any[])
+}
+
+export const getApplication = async (id: string) => {
+	return api.get(`app/${id}`).json<AdminApplication>().catch(_ => null)
+}
+
+export const createApplication = async (app: { name: string, slug?: string, url: string }) => {
+	return api.post(`app`, { json: app }).json<AdminApplication>().catch(orError)
+}
+
+export const deleteApplication = async (app: string) => {
+	return api.delete(`app/${app}`).json<{ success: boolean }>().catch(orError)
+}
+
+export const updateApplication = async (app: { name?: string, slug?: string, url?: string, callback_url?: string }) => {
+	return api.patch(`app/${app}`, { json: app }).json<AdminApplication>().catch(orError)
 }
 
 interface ThumbmarkResult {
@@ -262,6 +281,35 @@ export interface Session {
 	operating_system: string
 	ip_address: string
 	created_at: number
+	invalidated_at: number | null
 	expires_at: number
 	expired: boolean
+}
+
+export interface AdminApplication {
+	id: string
+	created_at: number
+	updated_at: number
+	name: string
+	slug: string
+	url: string
+	callback: string
+	internal: boolean
+	providers: AdminProvider[]
+}
+
+export interface AdminProvider {
+	id: string
+	created_at: number
+	updated_at: number
+	application_id: string
+	type: 'oauth2'
+	secret: string
+	redirect_uris: string[]
+	redirect_uri_globs: string[]
+	application_type: string
+	auth_method: string
+	response_types: string[]
+	grant_types: string[]
+	access_token_type: string
 }

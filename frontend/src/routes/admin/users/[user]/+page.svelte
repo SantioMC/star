@@ -5,15 +5,15 @@
 	import * as star from '$lib/star';
 	import Icon from "@/components/icon.svelte";
 	import Modal from "@/components/modal.svelte";
+	import Session from "@/components/session.svelte";
 	import Sidebar from "@/components/sidebar.svelte";
 	import { Badge } from "@/components/ui/badge";
 	import { Button } from "@/components/ui/button";
 	import * as Card from '@/components/ui/card';
 	import { Input } from "@/components/ui/input";
-	import * as Item from '@/components/ui/item';
 	import { Label } from "@/components/ui/label";
 	import { hasPermission } from "@/index";
-	import { getIcon, relativeTime, titleCase } from "@/utils";
+	import { relativeTime, titleCase } from "@/utils";
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
 
@@ -119,9 +119,14 @@
 			toast.success('Successfully updated user')
 		}
 	}
+
+	const invalidateSession = (session: star.Session) => {
+		user!.sessions = user!.sessions.filter(s => s.id != session.id)
+		toast.success('You have invalidated the session')
+	}
 </script>
 
-<Sidebar class='p-8 max-w-6xl mx-auto'>
+<Sidebar class='md:p-8 max-w-6xl mx-auto'>
 	{#if user}
 		<div class='flex flex-row items-center'>
 			<div>
@@ -296,36 +301,21 @@
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-2">
 					{#each activeSessions as session}
-						<Item.Root variant='outline'>
-							<Item.Content class='flex flex-row items-center gap-4'>
-								<Icon class='text-3xl' icon={getIcon(session)} />
-								<div>
-									<p class="text-lg">
-										{#if !session.device && !session.operating_system}
-											Unknown
-										{:else}
-											{session.device} {session.operating_system}
-										{/if}
-									</p>
-									<Item.Description class='text-xs'>IP Address: {session.ip_address} • Created {relativeTime(session.created_at)} ago</Item.Description>
-								</div>
-								<div class='ml-auto'>
-									<Button variant='destructive'>Log out</Button>
-								</div>
-							</Item.Content>
-						</Item.Root>
+						<Session {session} oninvalidate={() => invalidateSession(session)} />
 					{/each}
 
 					{#if activeSessions.length == 0}
-						<div class="flex flex-col gap-4 items-center w-full my-16">
+						<div class="flex flex-col gap-4 items-center w-full my-24">
 							<span class='text-xl font-semibold leading-2'>No Sessions</span>
 							<span class='text-primary/60 leading-2'>This user currently has no sessions</span>
 						</div>
 					{/if}
 				</Card.Content>
-				<Card.Footer>
-					<Button class='ml-auto' variant='destructive'>Sign out all sessions</Button>
-				</Card.Footer>
+				{#if activeSessions.length != 0}
+					<Card.Footer>
+						<Button class='ml-auto' variant='destructive'>Sign out all sessions</Button>
+					</Card.Footer>
+				{/if}
 			</Card.Root>
 		</div>
 	{/if}

@@ -1,392 +1,366 @@
 <script lang="ts">
-	import { browser } from "$app/environment";
-	import { goto } from "$app/navigation";
-	import { page } from "$app/state";
+	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as star from '$lib/star';
-	import Icon from "@/components/icon.svelte";
-	import Modal from "@/components/modal.svelte";
-	import Sidebar from "@/components/sidebar.svelte";
-	import { Badge } from "@/components/ui/badge";
-	import { Button } from "@/components/ui/button";
+	import Categorizied from '@/components/categorizied.svelte';
+	import Copy from '@/components/copy.svelte';
+	import Hidden from '@/components/hidden.svelte';
+	import Icon from '@/components/icon.svelte';
+	import Modal from '@/components/modal.svelte';
+	import Sidebar from '@/components/sidebar.svelte';
+	import { Badge } from '@/components/ui/badge';
+	import { Button } from '@/components/ui/button';
 	import * as Card from '@/components/ui/card';
-	import { Input } from "@/components/ui/input";
-	import * as Item from '@/components/ui/item';
-	import { Label } from "@/components/ui/label";
-	import { hasPermission } from "@/index";
-	import { getIcon, relativeTime, titleCase } from "@/utils";
-	import { onMount } from "svelte";
-	import { toast } from "svelte-sonner";
+	import * as DropdownMenu from '@/components/ui/dropdown-menu';
+	import { Spinner } from '@/components/ui/spinner';
+	import { hasPermission } from '@/index';
+	import { dateFormatter, formatTime, titleCase } from '@/utils';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 
-	const dateFormatter = new Intl.DateTimeFormat(undefined, {
-		month: "short",
-		day: "2-digit",
-		year: "numeric",
-	})
+	let app = $state<star.AdminApplication | null>(null);
+	let loading = $state<boolean>(false);
 
-	let deleteUserModal = $state<Modal>()
-	let suspendUserModal = $state<Modal>()
-	let unsuspendUserModal = $state<Modal>()
-	let changePasswordModal = $state<Modal>()
+	let deleteAppModal = $state<Modal>()
 
-	let reason = $state<string>('')
-	let password = $state<string>('')
-	let username = $state<string>('')
-	let firstName = $state<string>('')
-	let lastName = $state<string>('')
+	let callbackUrl = $derived(
+		app?.callback?.startsWith('/') ? app?.url + app?.callback : app?.callback
+	);
 
-	let user = $state<star.AdminUser|null>(null)
-	let suspender = $state<star.AdminUser|null>(null)
-	
-	let activeSessions = $derived<star.Session[]>(
-		user?.sessions?.filter(s => !s.expired)?.sort((a, b) => b.created_at - a.created_at) ?? []
-	)
+	let canModify = $derived(
+		app?.internal == false && hasPermission('star:admin:update:applications')
+	);
 
 	onMount(async () => {
-		if (!browser) return
-		if (!hasPermission('star:admin:read:users')) return goto('/')
-		user = await star.getUser(page.params.user!)
-		if (user == null) return goto('/admin/users')
+		if (!browser) return;
+		if (!hasPermission('star:admin:read:applications')) return goto('/');
+		app = await star.getApplication(page.params.app!);
+		if (app == null) return goto('/admin/apps');
+	});
 
-		username = user.username
-		firstName = user.first_name
-		lastName = user.last_name
-
-		if (user.suspension?.issued_by) {
-			suspender = await star.getUser(user.suspension.issued_by)
-		}
-	})
-
-	const deleteUser = async () => {
-		deleteUserModal?.close()
-		const result = await star.deleteUser(user!.id)
-		if ('success' in result) {
-			goto('/admin/users')
-		} else {
-			toast.error(result.message)
-		}
-	}
-
-	const suspendUser = async () => {
-		suspendUserModal?.close()
-		const result = await star.suspendUser(user!.id, reason)
-		reason = '';
-
-		if ('success' in result) {
-			location.reload()
-		} else {
-			toast.error(result.message)
-		}
-	}
-
-	const unsuspendUser = async () => {
-		unsuspendUserModal?.close()
-		const result = await star.unsuspendUser(user!.id)
-		if ('success' in result) {
-			location.reload()
-		} else {
-			toast.error(result.message)
-		}
-	}
-
-	const changePassword = async () => {
-		changePasswordModal?.close()
-
-		const result = await star.forceChangePassword(user!.id, password)
-		password = '';
-
-		if ('success' in result) {
-			toast.success('Successfully changed password')
-		} else {
-			toast.error(result.message)
-		}
-	}
-
-	const updateUser = async () => {
-		const result = await star.updateUser(user!.id, {
-			family_name: lastName,
-			given_name: firstName,
-			username: username
-		})
+	const deleteApp = async () => {
+		loading = true;
+		const result = await star.deleteApplication(app!.id);
+		deleteAppModal?.close();
+		loading = false;
 
 		if ('error' in result) {
-			firstName = user!.first_name
-			lastName = user!.last_name
-			username = user!.username
+			toast.error(result.message)
 		} else {
-			user!.first_name = firstName
-			user!.last_name = lastName
-			user!.username = username
-			toast.success('Successfully updated user')
+			goto('/admin/apps')
 		}
 	}
 </script>
 
-<Sidebar class='p-8 max-w-6xl mx-auto'>
-	{#if user}
-		<div class='flex flex-row items-center'>
-			<div>
-				<h1 class='text-2xl font-semibold'>User Management</h1>
-				<h2 class='text-lg text-primary/60'>Viewing profile for {user?.username}</h2>
+<Sidebar class="md:p-8 max-w-6xl mx-auto">
+	{#if app}
+		<div class="flex flex-col gap-4">
+			<div class="flex flex-row items-center">
+				<div>
+					<h1 class="text-2xl font-semibold">Manage Application</h1>
+					<h2 class="text-lg text-primary/60">
+						Viewing application {app.name}
+					</h2>
+				</div>
+
+				<Button
+					variant="ghost"
+					class="ml-auto"
+					onclick={() => goto('/admin/apps')}
+				>
+					<Icon icon="chevron-left" />Go back
+				</Button>
 			</div>
 
-			<Button variant='ghost' class='ml-auto' onclick={() => goto('/admin/users')}><Icon icon='chevron-left' />Go back</Button>
-		</div>
-
-		<div class='mt-24 flex flex-col gap-8'>
-			<div class="flex flex-col xl:flex-row items-center gap-4">
-				<img src={user.profile_picture} alt="{user.username}'s profile picture" class='rounded-full w-16 h-16' />
-				<div class="flex flex-col items-center xl:items-start justify-center gap-2">
-					<h3 class='text-lg leading-4'>
-						{#if user.first_name}
-							{user.first_name} {user.last_name}
-						{:else}
-							{user.username}
-						{/if}
-					</h3>
-					<div class="flex flex-col xl:flex-row items-center xl:gap-3 text-sm text-primary/60 flex-wrap">
-						<span>
-							<Icon icon='id' />
-							{user.id}
-						</span>
-						<span>
-							<Icon icon='mail' />
-							{user.email}
-						</span>
-						<span>
-							<Icon icon='calendar-event' />
-							Joined {dateFormatter.format(new Date(user.created_at * 1000))}
-						</span>
-					</div>
-					{#if user.roles.length > 0}
-						<div class='flex flex-col xl:flex-row items-center gap-4'>
-							{#each user.roles as role (role.id)}
-								<Badge variant='secondary'>{role.name}</Badge>
-							{/each}
+			<div class="mt-16 flex flex-col gap-8">
+				<div class="flex flex-col xl:flex-row items-center gap-4">
+					<Icon class="text-3xl" icon="package" />
+					<div
+						class="flex flex-col items-center xl:items-start justify-center gap-2"
+					>
+						<h3 class="text-lg leading-4 flex items-center gap-2">
+							{app.name}
+							{#if app.internal}
+								<Badge>Internal</Badge>
+							{/if}
+						</h3>
+						<div
+							class="flex flex-col xl:flex-row items-center xl:gap-3 text-sm text-primary/60 flex-wrap"
+						>
+							<span>
+								<Icon icon="id" />
+								{app.id}
+							</span>
+							<span>
+								<Icon icon="tag" />
+								{app.slug}
+							</span>
+							<span>
+								<Icon icon="calendar-event" />
+								Created {dateFormatter.format(new Date(app.created_at * 1000))}
+							</span>
 						</div>
+					</div>
+
+					{#if canModify}
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger class='ml-auto'>
+								<Button variant='ghost' size='icon'>
+									<Icon icon='dots' class='text-2xl' />
+								</Button>
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content>
+								<DropdownMenu.Group>
+									<DropdownMenu.Item variant='destructive' onclick={() => deleteAppModal?.open()}>
+										<Icon icon='trash' />
+										Delete
+									</DropdownMenu.Item>
+								</DropdownMenu.Group>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
 					{/if}
 				</div>
 
-				<div class='xl:ml-auto flex items-center gap-2'>
-					{#if !user.suspension && hasPermission('star:admin:update:users')}
-					<Button onclick={() => changePasswordModal?.open()} variant='ghost'>
-						<Icon icon='password' />
-						Change Password
-					</Button>
-
-					<Button onclick={() => suspendUserModal?.open()} class='bg-transparent text-red-400 hover:bg-red-400/30 hover:border-transparent hover:text-primary'>
-						<Icon icon='hammer' />
-						Suspend User
-					</Button>
-					{/if}
-
-					{#if hasPermission('star:admin:delete:users')}
-					<Button variant='destructive' onclick={() => deleteUserModal?.open()}>
-						<Icon icon='trash' />
-						Delete User
-					</Button>
-					{/if}
-				</div>
+				{#if app.internal}
+					<Card.Root class="w-full">
+						<Card.Content
+							class="flex flex-col overflow-hidden flex-wrap text-red-100"
+						>
+							<Card.Title class="text-red-200 mb-4">
+								<Icon icon="lock" /> Internal Application
+							</Card.Title>
+							<span>
+								This application is managed internally by star and can not be
+								modified manually
+							</span>
+						</Card.Content>
+					</Card.Root>
+				{/if}
 			</div>
 
-			{#if user.suspension}
-			<Card.Root class='w-full'>
-				<Card.Content class="flex flex-col overflow-hidden flex-wrap text-orange-100">
-					<Card.Title class='text-orange-200 mb-4'><Icon icon='gavel' /> User is suspended</Card.Title>
-					<span>This user is currently suspended for the reason "{user.suspension.reason}"</span>
-					
-					<div class="my-4 flex flex-col">
-					{#if user.suspension.expires_at}
-						<span>
-							<Icon icon='clock' />
-							This suspension expires on {dateFormatter.format(user.suspension.expires_at * 1000)} (in {relativeTime(user.suspension.expires_at)})
-						</span>
-					{/if}
-					
-					{#if suspender}
-						<span>
-							<Icon icon='hammer' />
-							This suspension was issued by {suspender?.username}
-						</span>
-					{/if}
+			<Card.Root class="min-w-1/3 w-full md:w-auto">
+				<Card.CardHeader>
+					<Card.Title class="flex items-center gap-1">
+						<Icon icon="package" class="text-2xl" /> Application Information
+					</Card.Title>
+				</Card.CardHeader>
+				<Card.Content class="flex flex-row justify-between">
+					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
+						<div>
+							<p
+								class="text-sm text-primary/70 select-none font-semibold uppercase"
+							>
+								Application Name
+							</p>
+							<p class="text-md">{app.name}</p>
+						</div>
+						<div>
+							<p
+								class="text-sm text-primary/70 select-none font-semibold uppercase"
+							>
+								Slug
+							</p>
+							<code class="text-md mt-1">
+								{app.slug}
+								<Copy content={app.slug} />
+							</code>
+						</div>
+						<div>
+							<p
+								class="text-sm text-primary/70 select-none font-semibold uppercase"
+							>
+								Application URL
+							</p>
+							<a href={app.url} target="_blank" class="text-md text-blue-300">
+								{app.url}
+								<Icon icon="external-link" />
+							</a>
+						</div>
 					</div>
-
-					{#if hasPermission('star:admin:update:users') || suspender}
-					<div class="ml-auto flex items-center gap-2">
-						{#if hasPermission('star:admin:update:users')}
-						<Button onclick={() => unsuspendUserModal?.open()} class='bg-transparent text-orange-400 hover:bg-orange-400/30 hover:border-transparent hover:text-primary'>
-							<Icon icon='hammer-off' />
-							Revoke Suspension
-						</Button>
-						{/if}
-
-						{#if suspender}
-							<Button variant='outline' onclick={() => location.href = `/admin/users/${suspender!.id}`}>View Issuer</Button>
-						{/if}
+					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
+						<div>
+							<p
+								class="text-sm text-primary/70 select-none font-semibold uppercase"
+							>
+								Callback URL
+							</p>
+							<code class="text-md mt-1">
+								{callbackUrl}
+								<Copy content={callbackUrl} />
+							</code>
+						</div>
+						<div>
+							<p
+								class="text-sm text-primary/70 select-none font-semibold uppercase"
+							>
+								Created At
+							</p>
+							<p class="text-md">
+								<Icon icon="clock" />
+								{formatTime(app.created_at)}
+							</p>
+						</div>
+						<div>
+							<p
+								class="text-sm text-primary/70 select-none font-semibold uppercase"
+							>
+								Updated At
+							</p>
+							<p class="text-md">
+								<Icon icon="clock" />
+								{formatTime(app.updated_at)}
+							</p>
+						</div>
 					</div>
-					{/if}
 				</Card.Content>
 			</Card.Root>
+
+			<h3 class="text-xl flex items-center gap-1">
+				<Icon icon="shield" />
+				Providers
+			</h3>
+
+			{#if app.providers.length == 0}
+				<div class="flex flex-col gap-4 items-center w-full my-32">
+					<span class="text-xl font-semibold leading-2">No Providers</span>
+					<span class="text-primary/60 leading-2">
+						This application currently has no assigned providers
+					</span>
+					{#if canModify}
+						<Button class="my-2">Create Provider</Button>
+					{/if}
+				</div>
 			{/if}
 
-			<Card.Root class='min-w-1/3 w-full md:w-auto'>
-				<Card.CardHeader>
-					<Card.Title><Icon icon='gavel' /> Roles</Card.Title>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-1">
-					<p class="text-primary/60 text-sm">The user has the following roles:</p>
-					{#if user.roles.length == 0}
-						<div class="flex flex-col gap-4 items-center w-full my-16">
-							<span class='text-xl font-semibold leading-2'>No Roles</span>
-							<span class='text-primary/60 leading-2'>This user currently has no assigned roles</span>
-						</div>
-					{:else}
-						<div class='flex gap-2 items-center'>
-							{#each user.roles as role (role.id)}
-								<Badge variant='secondary' class='hover:*:block hover:*:opacity-100 hover:bg-secondary/60 cursor-pointer transition-all'>
-									<Icon icon='folder' class='p-1' />{titleCase(role.name)}
-									<Icon icon='x' class='p-1 hidden opacity-0 transition-all' />
+			{#each app.providers as provider (provider.id)}
+				<Card.Root class="min-w-1/3 w-full md:w-auto">
+					<Card.CardHeader>
+						<Card.Title class="flex flex-row gap-2 items-center">
+							<Icon icon="key" class="text-4xl" />
+							<div class="flex flex-col gap-0.5">
+								<div class="flex flex-row items-center">
+									{titleCase(provider.type)}
+									<Badge
+										variant="outline"
+										class="border-emerald-600/60 text-emerald-500 mx-2"
+									>
+										Active
+									</Badge>
+								</div>
+								<span class="text-primary/70 text-xs">{provider.id}</span>
+							</div>
+						</Card.Title>
+					</Card.CardHeader>
+					<Card.Content class="flex flex-row justify-between items-stretch">
+						<div
+							class="flex flex-col gap-4 justify-center items-baseline flex-1"
+						>
+							<Categorizied title='Client Secret'>
+								<Hidden content={provider.secret} />
+							</Categorizied>
+							<Categorizied title='Application Type'>
+								<Badge
+									variant="outline"
+									class="border-blue-400/60 text-blue-300"
+								>
+									{titleCase(provider.application_type)}
 								</Badge>
-							{/each}
-							<Badge variant='secondary' class='w-fit hover:bg-secondary/60 transition-colors cursor-pointer'>
-								<Icon icon='plus' class='p-1' /> Add Role
-							</Badge>
+							</Categorizied>
+							<Categorizied title='Auth Method'>
+								<Badge
+									variant="outline"
+									class="border-purple-400/60 text-purple-300"
+								>
+									{provider.auth_method.toLowerCase()}
+								</Badge>
+							</Categorizied>
+							<Categorizied title='Access Token Type'>
+								<Badge
+									variant="outline"
+									class="border-orange-400/60 text-orange-300"
+								>
+									{titleCase(provider.access_token_type)}
+								</Badge>
+							</Categorizied>
+							<Categorizied title='Response Types'>
+								<div class="flex flex-row items-center gap-1 flex-wrap">
+									{#each provider.response_types as responseType}
+										<Badge variant="outline">{responseType}</Badge>
+									{/each}
+								</div>
+							</Categorizied>
+							<Categorizied title='Grant Types'>
+								<div class="flex flex-row items-center gap-1 flex-wrap">
+									{#each provider.grant_types as grantType}
+										<Badge variant="outline">{grantType}</Badge>
+									{/each}
+								</div>
+							</Categorizied>
 						</div>
-					{/if}
-				</Card.Content>
-			</Card.Root>
-
-			<Card.Root class='min-w-1/3 w-full md:w-auto'>
-				<Card.CardHeader>
-					<Card.Title><Icon icon='user' /> Profile Information</Card.Title>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-8">
-					<form class="flex flex-col gap-6">
-						<div class="grid gap-2">
-							<Label for="username">Username</Label>
-							<Input id="username" type="text" required bind:value={username} />
-						</div>
-
-						<div class="grid gap-2">
-							<Label for="email">Email</Label>
-							<Input id="email" type="email" value={user.email} disabled />
-						</div>
-
-						<div class="flex gap-2 sm:gap-8">
-							<div class="flex-1/2 gap-2 grid">
-								<Label for="givenName">Given Name</Label>
-								<Input id="givenName" type="text" bind:value={firstName} />
-							</div>
-
-							<div class="flex-1/2 gap-2 grid">
-								<Label for="familyName">Family Name</Label>
-								<Input id="familyName" type="text" bind:value={lastName} />
-							</div>
-						</div>
-					</form>
-				</Card.Content>
-				<Card.Footer>
-					<Button class='ml-auto' onclick={updateUser}>Update</Button>
-				</Card.Footer>
-			</Card.Root>
-
-			<Card.Root class='min-w-1/3 w-full md:w-auto'>
-				<Card.CardHeader>
-					<Card.Title><Icon icon='device-desktop' /> Sessions</Card.Title>
-					<Card.Description class='max-w-xl'>The different devices and sessions currently logged into the account, invalidating a session might take up to an hour to take effect.</Card.Description>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-2">
-					{#each activeSessions as session}
-						<Item.Root variant='outline'>
-							<Item.Content class='flex flex-row items-center gap-4'>
-								<Icon class='text-3xl' icon={getIcon(session)} />
-								<div>
-									<p class="text-lg">
-										{#if !session.device && !session.operating_system}
-											Unknown
-										{:else}
-											{session.device} {session.operating_system}
-										{/if}
+						<div
+							class="flex flex-col gap-4 items-baseline flex-1 h-auto"
+						>
+							<Categorizied title='Redirect URIs' class='w-full'>
+								<div class="flex flex-col w-full gap-1">
+									{#each provider.redirect_uris as redirectUri}
+										<code class='w-auto!'>
+											<Icon icon='world' />
+											{redirectUri}
+											<Copy content={redirectUri} class='ml-auto' />
+											<Icon icon='trash' class="hover:text-red-300 transition-colors" />
+										</code>
+									{/each}
+									{#if canModify}
+										<Button variant='secondary'>
+											<Icon icon="plus" />
+											Add Redirect URI
+										</Button>
+									{:else if provider.redirect_uris.length == 0}
+										<div class="flex flex-col gap-4 items-center w-full my-24 select-none">
+											<span class="text-xl font-semibold text-primary/60 text-center">No Redirects Configured</span>
+											<span class="text-primary/40 text-center">
+												This application has no redirects configured
+											</span>
+										</div>
+									{/if}
+								</div>
+							</Categorizied>
+							<hr class='mt-auto!' />
+							<div class="flex items-center justify-between w-full">
+								<Categorizied title='Created At'>
+									<p class="text-sm">
+										<Icon icon="clock" />
+										{dateFormatter.format(new Date(app.created_at * 1000))}
 									</p>
-									<Item.Description class='text-xs'>IP Address: {session.ip_address} • Created {relativeTime(session.created_at)} ago</Item.Description>
-								</div>
-								<div class='ml-auto'>
-									<Button variant='destructive'>Log out</Button>
-								</div>
-							</Item.Content>
-						</Item.Root>
-					{/each}
-
-					{#if activeSessions.length == 0}
-						<div class="flex flex-col gap-4 items-center w-full my-16">
-							<span class='text-xl font-semibold leading-2'>No Sessions</span>
-							<span class='text-primary/60 leading-2'>This user currently has no sessions</span>
+								</Categorizied>
+								<Categorizied title='Updated At'>
+									<p class="text-sm">
+										<Icon icon="clock" />
+										{dateFormatter.format(new Date(app.updated_at * 1000))}
+									</p>
+								</Categorizied>
+							</div>
 						</div>
-					{/if}
-				</Card.Content>
-				<Card.Footer>
-					<Button class='ml-auto' variant='destructive'>Sign out all sessions</Button>
-				</Card.Footer>
-			</Card.Root>
+					</Card.Content>
+				</Card.Root>
+			{/each}
 		</div>
 	{/if}
 </Sidebar>
 
-<Modal bind:this={deleteUserModal} button class='xl:w-xl!'>
+<Modal bind:this={deleteAppModal} button class='xl:w-xl!'>
 	<h1 class='text-xl font-semibold'>Are you sure?</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>This action can not be reversed! It is recommended to instead suspend a user over deleting.</h2>
+	<h2 class='text-card-foreground/60 sm:max-w-10/12'>This action can not be reversed! You will not be able to restore this application if it is deleted.</h2>
 
 	<div class='flex items-center gap-2 justify-end mt-4'>
-		<Button variant='secondary' onclick={() => deleteUserModal?.close()}>Cancel</Button>
-		<Button variant='destructive' onclick={deleteUser}>Delete User</Button>
+		<Button variant='secondary' onclick={() => deleteAppModal?.close()}>Cancel</Button>
+		<Button variant='destructive' onclick={deleteApp} disabled={loading}>
+			{#if loading}
+				<Spinner />
+			{/if}
+
+			Delete Application
+		</Button>
 	</div>
-</Modal>
-
-<Modal bind:this={suspendUserModal} button class='xl:w-xl!'>
-	<h1 class='text-xl font-semibold'>Suspend {user?.username}</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Suspending a user will immediately invalidate all sessions and prevent the user from signing in again.</h2>
-
-	<form onsubmit={suspendUser} class='mt-6'>
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="reason">Reason</Label>
-				<Input id="username" type="text" placeholder='Suspicious account behaviour' bind:value={reason} required />
-			</div>
-		</div>
-
-		<div class='flex items-center gap-2 justify-end mt-6'>
-			<Button variant='secondary' onclick={() => suspendUserModal?.close()}>Cancel</Button>
-			<Button variant='destructive' onclick={suspendUser}>Suspend User</Button>
-		</div>
-	</form>
-</Modal>
-
-<Modal bind:this={unsuspendUserModal} button class='xl:w-xl!'>
-	<h1 class='text-xl font-semibold'>Revoke Suspension</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Revoking {user?.username}'s suspension will allow them to continue using their account</h2>
-
-	<form onsubmit={unsuspendUser} class='mt-6'>
-		<div class='flex items-center gap-2 justify-end mt-6'>
-			<Button variant='secondary' onclick={() => unsuspendUserModal?.close()}>Cancel</Button>
-			<Button onclick={unsuspendUser}>Revoke Suspension</Button>
-		</div>
-	</form>
-</Modal>
-
-<Modal bind:this={changePasswordModal} button class='xl:w-xl!'>
-	<h1 class='text-xl font-semibold'>Change Password</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Manually change the password of this user, invalidating their previous sessions and requiring them to sign in with the new password</h2>
-
-	<form onsubmit={changePassword} class='mt-6'>
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="password">New Password</Label>
-				<Input id="password" type="password" placeholder='' bind:value={password} required />
-			</div>
-		</div>
-
-		<div class='flex items-center gap-2 justify-end mt-6'>
-			<Button variant='secondary' onclick={() => changePasswordModal?.close()}>Cancel</Button>
-			<Button onclick={changePassword}>Change Password</Button>
-		</div>
-	</form>
 </Modal>

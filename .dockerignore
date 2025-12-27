@@ -1,0 +1,7 @@
+.env
+data.db
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+frontend/.env/
+.git/

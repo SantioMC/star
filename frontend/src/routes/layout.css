@@ -127,3 +127,7 @@ hr {
 button:active {
   @apply scale-[0.97]
 }
+
+code {
+  @apply bg-background/70 px-2 py-1 rounded flex flex-row items-center gap-2 w-fit
+}

@@ -29,16 +29,54 @@ export const knownProviders = {
 
 let debounceTask: number | null = null
 
+export const dateFormatter = new Intl.DateTimeFormat(undefined, {
+	month: 'short',
+	day: 'numeric',
+	year: 'numeric'
+});
+
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+	month: 'short',
+	day: 'numeric',
+	year: 'numeric',
+	hour: 'numeric',
+	minute: '2-digit',
+	hour12: true
+});
+
+export function formatTime(time: number | Date): string {
+	const date = time instanceof Date ? time : new Date(time * 1000)
+	const parts = timeFormatter.formatToParts(date)
+	let year = false;
+
+	for (const part of parts) {
+		if (part.type == 'dayPeriod') part.value = part.value.replaceAll('.', '');
+		if (part.type == 'year') year = true
+		if (part.type == 'literal' && year) {
+			part.value = ` at `
+			year = false
+		}
+	}
+
+	return parts.map(p => p.value).join('')
+}
+
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
 export function titleCase(text: string): string {
+	// just some edge cases, we don't care a whole lot tbh
+	if (text == 'oauth2') return 'OAuth2';
+
 	return text.charAt(0).toUpperCase() + text.substring(1).toLowerCase();
 }
 
 export function relativeTime(time: number, long: boolean = true): string {
-	return ms(Math.abs(Date.now() - (time * 1000)), { long });
+	const diff = Math.abs(Date.now() - (time * 1000))
+	if (diff < 1e3) return "a few moments"
+
+	return ms(diff, { long });
 }
 
 export const debounced = <T extends EventTarget>(func: ChangeEventHandler<T>, delay: number = 250) => (event: Event & { currentTarget: Element & T }) => {

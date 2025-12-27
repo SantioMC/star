@@ -39,7 +39,7 @@
 	})
 </script>
 
-<Sidebar class='p-8 max-w-6xl mx-auto'>
+<Sidebar class='lg:p-8 max-w-6xl mx-auto'>
 	<h1 class='text-2xl font-semibold'>User Management</h1>
 	<h2 class='text-lg text-primary/60'>View and manage users</h2>
 	
@@ -63,20 +63,21 @@
 			<Table.Caption>Found {users.length} user{users.length == 1 ? '' : 's'}</Table.Caption>
 			<Table.Header>
 				<Table.Row>
-				<Table.Head>User</Table.Head>
+				<Table.Head class='w-1/4'>User</Table.Head>
 				<Table.Head>Status</Table.Head>
 				<Table.Head>Last Login</Table.Head>
-				<Table.Head>Created At</Table.Head>
+				<Table.Head>Created</Table.Head>
+				<Table.Head class='text-end'>Actions</Table.Head>
 				</Table.Row>
 			</Table.Header>
 			<Table.Body>
 				{#each users as user (user.id)}
-				<Table.Row onclick={() => goto(`/admin/users/${user.id}`)}>
+				<Table.Row>
 					<Table.Cell class='flex flex-row gap-2 items-center'>
 						<img src={user.profile_picture ?? ""} alt="{user.username}'s profile picture" class='w-10 h-10 rounded-full' />
 						<div class="flex flex-col items-start">
 							<span>{user.username}</span>
-							<span class='text-primary/70'>{user.email}</span>
+							<span class='text-primary/70 text-ellipsis overflow-hidden w-56'>{user.email}</span>
 						</div>
 					</Table.Cell>
 					<Table.Cell>
@@ -91,6 +92,7 @@
 					</Table.Cell>
 					<Table.Cell>{relativeTime(user.last_login_at)} ago</Table.Cell>
 					<Table.Cell>{relativeTime(user.created_at)} ago</Table.Cell>
+					<Table.Cell class='w-0'><Button variant='secondary' class='ml-auto' size='sm' onclick={() => goto(`/admin/users/${user.id}`)}>Manage</Button></Table.Cell>
 				</Table.Row>
 				{/each}
 			</Table.Body>

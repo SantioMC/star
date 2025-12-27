@@ -7,8 +7,8 @@ import (
 type Application struct {
 	BaseModel
 
-	Name     string `json:"name" gorm:"unique"`
-	Slug     string `json:"slug" gorm:"unique"`
+	Name     string `json:"name"`
+	Slug     string `json:"slug"`
 	Url      string `json:"url"`
 	Callback string `json:"callback"`
 	Internal bool   `json:"internal"`
