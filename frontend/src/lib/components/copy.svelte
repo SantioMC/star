@@ -15,12 +15,8 @@
 		if (clicked) return
 		clicked = true
 
-		const result = await navigator.clipboard.writeText(props.content ?? "").catch(e => null)
-		if (result == null) {
-			toast.error("failed to copy to your clipboard!")
-		} else if (props.toast != false) {
-			toast.success('Copied to clipboard')
-		}
+		await navigator.clipboard.writeText(props.content ?? "").catch(e => null)
+		toast.success('Copied to clipboard')
 		
 		setTimeout(() => {
 			clicked = false

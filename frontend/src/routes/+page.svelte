@@ -4,6 +4,7 @@
 	import Icon from '$lib/components/icon.svelte';
 	import Session from "@/components/session.svelte";
 	import Sidebar from "@/components/sidebar.svelte";
+	import SocialAccount from "@/components/social-account.svelte";
 	import * as Avatar from "@/components/ui/avatar";
 	import { Button } from "@/components/ui/button";
 	import * as Card from "@/components/ui/card";
@@ -26,6 +27,11 @@
 
 	const removeSession = (session: star.Session) => {
 		data!.sessions = data!.sessions.filter(s => s.id != session.id)
+	}
+
+	const getAccount = (kind: star.DefaultSocialProvider) => {
+		// todo: make this work
+		return {username: 'santio', platform_avatar: 'https://avatars.githubusercontent.com/u/30200259?v=4'} as any as star.Account
 	}
 </script>
 
@@ -120,6 +126,20 @@
 				<Card.Footer>
 					<Button class='ml-auto'>Change Password</Button>
 				</Card.Footer>
+			</Card.Root>
+
+			<Card.Root class='min-w-1/3 w-full md:w-auto'>
+				<Card.CardHeader>
+					<Card.Title><Icon icon='plug-connected' /> Connected Accounts</Card.Title>
+					<Card.Description class='max-w-xl'>Connect multiple providers to your account to allow yourself to login with them.</Card.Description>
+				</Card.CardHeader>
+				<Card.Content class="flex flex-row gap-2 flex-wrap">
+					<SocialAccount type='google' account={getAccount('google')} />
+					<SocialAccount type='discord' />
+					<SocialAccount type='twitch' />
+					<SocialAccount type='slack' />
+					<SocialAccount type='github' />
+				</Card.Content>
 			</Card.Root>
 
 			<Card.Root class='min-w-1/3 w-full md:w-auto'>

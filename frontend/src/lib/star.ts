@@ -26,6 +26,12 @@ export type StarPermission = "star:*"
 	| "star:admin:create:applications"
 	| "star:admin:delete:applications"
 
+export type DefaultSocialProvider = 'google'
+	| 'github'
+	| 'twitch'
+	| 'slack'
+	| 'discord'
+
 export const api = ky.extend({
 	prefixUrl: API_URL,
 	retry: {
@@ -167,8 +173,20 @@ export const deleteApplication = async (app: string) => {
 	return api.delete(`app/${app}`).json<{ success: boolean }>().catch(orError)
 }
 
-export const updateApplication = async (app: { name?: string, slug?: string, url?: string, callback_url?: string }) => {
-	return api.patch(`app/${app}`, { json: app }).json<AdminApplication>().catch(orError)
+export const updateApplication = async (id: string, app: { name?: string, slug?: string, url?: string, callback_url?: string }) => {
+	return api.patch(`app/${id}`, { json: app }).json<AdminApplication>().catch(orError)
+}
+
+export const createProvider = async (app: string, kind: string) => {
+	return api.post(`app/${app}/provider`, { json: { kind } }).json<AdminProvider>().catch(orError)
+}
+
+export const deleteProvider = async (app: string, provider: string) => {
+	return api.delete(`app/${app}/provider/${provider}`).json<{ success: boolean }>().catch(orError)
+}
+
+export const rotateProvider = async (app: string, provider: string) => {
+	return api.post(`app/${app}/provider/${provider}/rotate`).json<{ secret: string }>().catch(orError)
 }
 
 interface ThumbmarkResult {

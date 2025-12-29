@@ -129,5 +129,9 @@ button:active {
 }
 
 code {
-  @apply bg-background/70 px-2 py-1 rounded flex flex-row items-center gap-2 w-fit
+  @apply bg-background/70 px-2 py-1 rounded w-fit inline-block
+}
+
+.link {
+  @apply text-blue-300 hover:text-blue-300/80 transition-colors
 }

@@ -2,29 +2,37 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import oauth2 from '$lib/assets/oauth2.png';
 	import * as star from '$lib/star';
+	import CardChoice from '@/components/card-choice.svelte';
 	import Categorizied from '@/components/categorizied.svelte';
 	import Copy from '@/components/copy.svelte';
-	import Hidden from '@/components/hidden.svelte';
 	import Icon from '@/components/icon.svelte';
 	import Modal from '@/components/modal.svelte';
+	import Provider from '@/components/provider.svelte';
 	import Sidebar from '@/components/sidebar.svelte';
 	import { Badge } from '@/components/ui/badge';
 	import { Button } from '@/components/ui/button';
 	import * as Card from '@/components/ui/card';
 	import * as DropdownMenu from '@/components/ui/dropdown-menu';
+	import { Input } from '@/components/ui/input';
+	import { Label } from '@/components/ui/label';
 	import { Spinner } from '@/components/ui/spinner';
 	import { hasPermission } from '@/index';
-	import { dateFormatter, formatTime, titleCase } from '@/utils';
+	import { dateFormatter, formatTime } from '@/utils';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	let app = $state<star.AdminApplication | null>(null);
 	let loading = $state<boolean>(false);
 
-	let deleteAppModal = $state<Modal>()
+	let callbackUrl = $state<string>('');
 
-	let callbackUrl = $derived(
+	let createProviderModal = $state<Modal>()
+	let deleteAppModal = $state<Modal>()
+	let editCallbackURLModal = $state<Modal>()
+
+	let currentCallbackUrl = $derived(
 		app?.callback?.startsWith('/') ? app?.url + app?.callback : app?.callback
 	);
 
@@ -50,6 +58,40 @@
 		} else {
 			goto('/admin/apps')
 		}
+	}
+
+	$effect(() => {
+		callbackUrl = currentCallbackUrl ?? ''
+	})
+
+	const updateCallbackURL = async () => {
+		loading = true
+		const result = await star.updateApplication(app!.id, { callback_url: callbackUrl });
+		loading = false;
+
+		if ('error' in result) {
+			toast.error(result.message)
+		} else {
+			app!.callback = callbackUrl
+			editCallbackURLModal?.close();
+		}
+	}
+
+	const createProvider = async (kind: string) => {
+		loading = true
+		const result = await star.createProvider(app!.id, kind);
+		loading = false;
+
+		if ('error' in result) {
+			toast.error(result.message)
+		} else {
+			app!.providers.push(result)
+			createProviderModal?.close()
+		}
+	}
+
+	const removeProvider = (provider: star.AdminProvider) => {
+		app!.providers = app!.providers.filter(p => p.id != provider.id);
 	}
 </script>
 
@@ -147,71 +189,52 @@
 				</Card.CardHeader>
 				<Card.Content class="flex flex-row justify-between">
 					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
-						<div>
-							<p
-								class="text-sm text-primary/70 select-none font-semibold uppercase"
-							>
-								Application Name
-							</p>
+						<Categorizied title='Application Name'>
 							<p class="text-md">{app.name}</p>
-						</div>
-						<div>
-							<p
-								class="text-sm text-primary/70 select-none font-semibold uppercase"
-							>
-								Slug
-							</p>
+						</Categorizied>
+						<Categorizied title='Slug'>
 							<code class="text-md mt-1">
 								{app.slug}
 								<Copy content={app.slug} />
 							</code>
-						</div>
-						<div>
-							<p
-								class="text-sm text-primary/70 select-none font-semibold uppercase"
-							>
-								Application URL
-							</p>
+						</Categorizied>
+						<Categorizied title='Application URL'>
 							<a href={app.url} target="_blank" class="text-md text-blue-300">
 								{app.url}
 								<Icon icon="external-link" />
 							</a>
-						</div>
+						</Categorizied>
 					</div>
 					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
-						<div>
-							<p
-								class="text-sm text-primary/70 select-none font-semibold uppercase"
-							>
-								Callback URL
-							</p>
-							<code class="text-md mt-1">
-								{callbackUrl}
-								<Copy content={callbackUrl} />
-							</code>
-						</div>
-						<div>
-							<p
-								class="text-sm text-primary/70 select-none font-semibold uppercase"
-							>
-								Created At
-							</p>
+						<Categorizied title='Callback URL'>
+							<div class="flex flex-item items-center gap-1">
+								<code class="text-md mt-1 block">
+									{#if currentCallbackUrl}
+										{currentCallbackUrl}
+										<Copy content={currentCallbackUrl} />
+									{:else}
+										Unspecified
+									{/if}
+								</code>
+								{#if canModify}
+									<Button size='icon' variant='ghost' onclick={() => editCallbackURLModal?.open()}>
+										<Icon icon='pencil' />
+									</Button>
+								{/if}
+							</div>
+						</Categorizied>
+						<Categorizied title='Created At'>
 							<p class="text-md">
 								<Icon icon="clock" />
 								{formatTime(app.created_at)}
 							</p>
-						</div>
-						<div>
-							<p
-								class="text-sm text-primary/70 select-none font-semibold uppercase"
-							>
-								Updated At
-							</p>
+						</Categorizied>
+						<Categorizied title='Updated At'>
 							<p class="text-md">
 								<Icon icon="clock" />
 								{formatTime(app.updated_at)}
 							</p>
-						</div>
+						</Categorizied>
 					</div>
 				</Card.Content>
 			</Card.Root>
@@ -228,126 +251,26 @@
 						This application currently has no assigned providers
 					</span>
 					{#if canModify}
-						<Button class="my-2">Create Provider</Button>
+						<Button class="my-2" onclick={() => createProviderModal?.open()}>Create Provider</Button>
 					{/if}
 				</div>
 			{/if}
 
 			{#each app.providers as provider (provider.id)}
-				<Card.Root class="min-w-1/3 w-full md:w-auto">
-					<Card.CardHeader>
-						<Card.Title class="flex flex-row gap-2 items-center">
-							<Icon icon="key" class="text-4xl" />
-							<div class="flex flex-col gap-0.5">
-								<div class="flex flex-row items-center">
-									{titleCase(provider.type)}
-									<Badge
-										variant="outline"
-										class="border-emerald-600/60 text-emerald-500 mx-2"
-									>
-										Active
-									</Badge>
-								</div>
-								<span class="text-primary/70 text-xs">{provider.id}</span>
-							</div>
-						</Card.Title>
-					</Card.CardHeader>
-					<Card.Content class="flex flex-row justify-between items-stretch">
-						<div
-							class="flex flex-col gap-4 justify-center items-baseline flex-1"
-						>
-							<Categorizied title='Client Secret'>
-								<Hidden content={provider.secret} />
-							</Categorizied>
-							<Categorizied title='Application Type'>
-								<Badge
-									variant="outline"
-									class="border-blue-400/60 text-blue-300"
-								>
-									{titleCase(provider.application_type)}
-								</Badge>
-							</Categorizied>
-							<Categorizied title='Auth Method'>
-								<Badge
-									variant="outline"
-									class="border-purple-400/60 text-purple-300"
-								>
-									{provider.auth_method.toLowerCase()}
-								</Badge>
-							</Categorizied>
-							<Categorizied title='Access Token Type'>
-								<Badge
-									variant="outline"
-									class="border-orange-400/60 text-orange-300"
-								>
-									{titleCase(provider.access_token_type)}
-								</Badge>
-							</Categorizied>
-							<Categorizied title='Response Types'>
-								<div class="flex flex-row items-center gap-1 flex-wrap">
-									{#each provider.response_types as responseType}
-										<Badge variant="outline">{responseType}</Badge>
-									{/each}
-								</div>
-							</Categorizied>
-							<Categorizied title='Grant Types'>
-								<div class="flex flex-row items-center gap-1 flex-wrap">
-									{#each provider.grant_types as grantType}
-										<Badge variant="outline">{grantType}</Badge>
-									{/each}
-								</div>
-							</Categorizied>
-						</div>
-						<div
-							class="flex flex-col gap-4 items-baseline flex-1 h-auto"
-						>
-							<Categorizied title='Redirect URIs' class='w-full'>
-								<div class="flex flex-col w-full gap-1">
-									{#each provider.redirect_uris as redirectUri}
-										<code class='w-auto!'>
-											<Icon icon='world' />
-											{redirectUri}
-											<Copy content={redirectUri} class='ml-auto' />
-											<Icon icon='trash' class="hover:text-red-300 transition-colors" />
-										</code>
-									{/each}
-									{#if canModify}
-										<Button variant='secondary'>
-											<Icon icon="plus" />
-											Add Redirect URI
-										</Button>
-									{:else if provider.redirect_uris.length == 0}
-										<div class="flex flex-col gap-4 items-center w-full my-24 select-none">
-											<span class="text-xl font-semibold text-primary/60 text-center">No Redirects Configured</span>
-											<span class="text-primary/40 text-center">
-												This application has no redirects configured
-											</span>
-										</div>
-									{/if}
-								</div>
-							</Categorizied>
-							<hr class='mt-auto!' />
-							<div class="flex items-center justify-between w-full">
-								<Categorizied title='Created At'>
-									<p class="text-sm">
-										<Icon icon="clock" />
-										{dateFormatter.format(new Date(app.created_at * 1000))}
-									</p>
-								</Categorizied>
-								<Categorizied title='Updated At'>
-									<p class="text-sm">
-										<Icon icon="clock" />
-										{dateFormatter.format(new Date(app.updated_at * 1000))}
-									</p>
-								</Categorizied>
-							</div>
-						</div>
-					</Card.Content>
-				</Card.Root>
+				<Provider modifiable={canModify} ondelete={() => removeProvider(provider)} {provider} />
 			{/each}
 		</div>
 	{/if}
 </Sidebar>
+
+<Modal bind:this={createProviderModal} button class='xl:w-xl!'>
+	<h1 class='text-xl font-semibold'>Create Provider</h1>
+	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Create a new provider for this application, allowing the app to authenticate against star using an authorization protocol</h2>
+
+	<div class="flex flex-row gap-4 flex-wrap my-4">
+		<CardChoice image={oauth2} class='w-[calc(33%-0.75rem)] h-48' recommended name='oauth2' onclick={() => createProvider('oauth2')} />
+	</div>
+</Modal>
 
 <Modal bind:this={deleteAppModal} button class='xl:w-xl!'>
 	<h1 class='text-xl font-semibold'>Are you sure?</h1>
@@ -363,4 +286,23 @@
 			Delete Application
 		</Button>
 	</div>
+</Modal>
+
+<Modal bind:this={editCallbackURLModal} button class='xl:w-xl!'>
+	<h1 class='text-xl font-semibold'>Change Callback URL</h1>
+	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Modify where star will redirect the user logging into the application, star will set the <code>access_token</code> and <code>refresh_token</code> query parameters once redirected successfully</h2>
+
+	<form onsubmit={updateCallbackURL} class='mt-6'>
+		<div class="flex flex-col gap-6 w-full mx-auto">
+			<div class="grid gap-2">
+				<Label for="callback_url">Callback URL</Label>
+				<Input id="callback_url" type="text" placeholder='' bind:value={callbackUrl} required />
+			</div>
+		</div>
+
+		<div class='flex items-center gap-2 justify-end mt-6'>
+			<Button variant='secondary' onclick={() => editCallbackURLModal?.close()}>Cancel</Button>
+			<Button onclick={updateCallbackURL}>Change Callback</Button>
+		</div>
+	</form>
 </Modal>
