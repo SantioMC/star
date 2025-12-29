@@ -1,8 +1,11 @@
 package route
 
 import (
+	"slices"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/tubblelive/star/star/api/helper"
+	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/service"
 	"github.com/tubblelive/star/star/state/scopes"
 	"github.com/tubblelive/star/star/verifier"
@@ -17,6 +20,10 @@ func AppRouter(r fiber.Router) {
 	r.Delete("/:app", deleteApp)
 
 	r.Get("/:app/logins", getAppLogins)
+	r.Post("/:app/provider", createProvider)
+
+	r.Delete("/:app/provider/:provider", deleteProvider)
+	r.Post("/:app/provider/:provider/rotate", rotateProvider)
 }
 
 func getAllApps(ctx *fiber.Ctx) error {
@@ -134,7 +141,7 @@ func updateApp(ctx *fiber.Ctx) error {
 			return err
 		}
 
-		app.Url = *body.CallbackURL
+		app.Callback = *body.CallbackURL
 	}
 
 	if err := service.UpdateApp(app); err != nil {
@@ -183,12 +190,97 @@ func getAppLogins(ctx *fiber.Ctx) error {
 		logins = append(logins, provider.Name)
 	}
 
-	ctx.JSON(AppLoginsResponse{
+	return ctx.JSON(AppLoginsResponse{
 		Internal:  true,
 		Providers: logins,
 	})
+}
 
-	return nil
+func createProvider(ctx *fiber.Ctx) error {
+	if err := helper.EnforcePermission(ctx, scopes.ScopeAdminModifyApps); err != nil {
+		return err
+	}
+
+	app, err := service.GetAppByID(ctx.Params("app", ""))
+	if err != nil {
+		return err
+	}
+
+	if app == nil {
+		return helper.NewHttpError(404, "app not found")
+	}
+
+	var body CreateProviderRequest
+	if err := ctx.BodyParser(&body); err != nil {
+		return err
+	}
+
+	if (!slices.Contains(model.AllProviderKinds, body.Kind)) {
+		return helper.NewHttpError(400, "unknown provider kind provided")
+	}
+
+	provider, err := service.CreateAppProvider(app, body.Kind)
+	if err != nil {
+		return err
+	}
+
+	return ctx.JSON(provider)
+}
+
+func deleteProvider(ctx *fiber.Ctx) error {
+	if err := helper.EnforcePermission(ctx, scopes.ScopeAdminModifyApps); err != nil {
+		return err
+	}
+
+	_, provider, err := getProviderFromCtx(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := service.DeleteAppProvider(provider.ID); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{ "success": true })
+}
+
+func rotateProvider(ctx *fiber.Ctx) error {
+	if err := helper.EnforcePermission(ctx, scopes.ScopeAdminModifyApps); err != nil {
+		return err
+	}
+
+	_, provider, err := getProviderFromCtx(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := service.RotateAppProvider(provider); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{"secret": provider.Secret})
+}
+
+func getProviderFromCtx(ctx *fiber.Ctx) (model.Application, model.Provider, error) {
+	app, err := service.GetAppByID(ctx.Params("app", ""))
+	if err != nil {
+		return model.Application{}, model.Provider{}, err
+	}
+
+	if app == nil {
+		return model.Application{}, model.Provider{}, helper.NewHttpError(404, "app not found")
+	}
+
+	provider, err := service.GetAppProviderByID(ctx.Params("provider", ""))
+	if err != nil {
+		return *app, model.Provider{}, err
+	}
+
+	if provider == nil || provider.ApplicationID != app.ID {
+		return *app, model.Provider{}, helper.NewHttpError(404, "app not found")
+	}
+
+	return *app, *provider, nil
 }
 
 type AppLoginsResponse struct {
@@ -208,3 +300,8 @@ type PatchAppRequest struct {
 	URL         *string `json:"url"`
 	CallbackURL *string `json:"callback_url"`
 }
+
+type CreateProviderRequest struct {
+	Kind model.ProviderKind `json:"kind"`
+}
+

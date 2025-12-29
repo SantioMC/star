@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/tubblelive/star/star/database/model"
@@ -59,12 +60,6 @@ func CreateStarApp(url string) (*model.Application, error) {
 		return nil, err
 	}
 
-	// Create OAuth2 provider for star app
-	provider := model.NewProvider(&app, model.OAuth2)
-	if err := state.Database.AppStore.SaveProvider(&provider); err != nil {
-		return nil, err
-	}
-
 	return &app, nil
 }
 
@@ -74,4 +69,35 @@ func DeleteApp(appId string) error {
 
 func UpdateApp(app *model.Application) error {
 	return state.Database.AppStore.SaveApp(app)
+}
+
+func GetAppProviderByID(id string) (*model.Provider, error) {
+	provider, err := state.Database.AppStore.GetProviderByID(id)
+	if err != nil {
+		return &model.Provider{}, err
+	}
+	
+	return provider, nil
+}
+
+func CreateAppProvider(app *model.Application, kind model.ProviderKind) (model.Provider, error) {
+	if (!slices.Contains(model.AllProviderKinds, kind)) {
+		return model.Provider{}, fmt.Errorf("unknown provider kind")
+	}
+	
+	provider := model.NewProvider(app, kind)
+	if err := state.Database.AppStore.SaveProvider(&provider); err != nil {
+		return model.Provider{}, err
+	}
+
+	return provider, nil
+}
+
+func DeleteAppProvider(id string) error {
+	return state.Database.AppStore.DeleteProvider(id)
+}
+
+func RotateAppProvider(provider model.Provider) error {
+	provider.RotateSecret()
+	return state.Database.AppStore.SaveProvider(&provider)
 }

@@ -2,6 +2,7 @@ package seeder
 
 import (
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -65,6 +66,32 @@ func SeedDatabase(firstStart bool, config *config.Config) error {
 		if err != nil {
 			slog.Error("failed to create social provider", "id", id, "err", err)
 			break
+		}
+	}
+
+	// Update our internal application
+	if !firstStart {
+		application, err := service.GetAppBySlug("star")
+		if err != nil {
+			return err
+		}
+
+		if application == nil {
+			return fmt.Errorf("failed to find internal star application, how did this happen?")
+		}
+
+		if config.Url != "" {
+			url := strings.TrimSuffix(config.Url, "/")
+			if !strings.Contains(url, "://") {
+				url = "https://" + url
+			}
+
+			application.Url = url
+			application.Callback = url + "/callback"
+		}
+
+		if err := service.UpdateApp(application); err != nil {
+			return err
 		}
 	}
 

@@ -46,7 +46,18 @@ func LoadFromEnv() (*Config, error) {
 		os.Unsetenv("ACCESS_TOKEN") 
 	}
 
-	config.Origins = strings.Split(fromEnv("ORIGINS", "*"), ",")
+	origins := os.Getenv("ORIGINS")
+	if origins == "" {
+		if config.Url != "" {
+			index := strings.Index(config.Url, "://") + 3
+			config.Origins = []string{config.Url[index:]}
+		} else {
+			config.Origins = []string{"*"}
+		}
+	} else {
+		config.Origins = strings.Split(origins, ",")
+	}
+
 	config.TrustProxy = fromEnv("TRUST_PROXY", "false") == "true"
 	config.CaptchaVerifier = loadCaptchaFromEnv()
 
@@ -64,7 +75,7 @@ func loadCaptchaFromEnv() captcha.Verifier {
 	}
 
 	switch strings.ToLower(captcha) {
-	case "cloudflare":
+	case "cloudflare", "turnstile":
 		captchaToken := fromEnv("CLOUDFLARE_TOKEN", "")
 		if captchaToken == "" {
 			slog.Error("expected CLOUDFLARE_TOKEN to be set when CAPTCHA is set to 'cloudflare'")

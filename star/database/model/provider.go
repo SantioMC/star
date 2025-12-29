@@ -13,6 +13,8 @@ const (
 	OAuth2 ProviderKind = "oauth2"
 )
 
+var AllProviderKinds = []ProviderKind{OAuth2}
+
 type Provider struct {
 	BaseModel
 
@@ -50,4 +52,8 @@ func NewProvider(application *Application, kind ProviderKind) Provider {
 		GrantTypes:      datatypes.NewJSONType([]oidc.GrantType{oidc.GrantTypeCode, oidc.GrantTypeRefreshToken, oidc.GrantTypeTokenExchange}),
 		AccessTokenType: op.AccessTokenTypeBearer,
 	}
+}
+
+func (p *Provider) RotateSecret() {
+	p.Secret = crypto.CreateRandString(24)
 }
