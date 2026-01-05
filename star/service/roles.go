@@ -1,6 +1,8 @@
 package service
 
 import (
+	"log/slog"
+
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/state"
 )
@@ -49,6 +51,16 @@ func CreateDefaultRole() (*model.Role, error) {
 	return &role, nil
 }
 
-func CreatePermission(role *model.Application, permission string) error {
-	return state.Database.RoleStore.CreatePermission(role, permission)
+func CreatePermission(application *model.Application, permission string, description string) error {
+	return state.Database.RoleStore.CreatePermission(application, permission, description)
+}
+
+func GetPermissions(appId string) []model.Permission {
+	permissions, err := state.Database.AppStore.GetPermissions(appId)
+	if err != nil {
+		slog.Error("failed to get permissions for", "app", appId)
+		return []model.Permission{}
+	}
+
+	return permissions
 }

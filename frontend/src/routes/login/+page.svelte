@@ -34,7 +34,7 @@
 	}
 
 	onMount(async () => {
-		logins = await star.getLogins();
+		logins = await star.getLogins(star.APP_ID);
 	});
 </script>
 

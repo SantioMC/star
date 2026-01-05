@@ -42,7 +42,7 @@ func SeedDatabase(firstStart bool, config *config.Config) error {
 		}
 
 		for _, scope := range scopes.DefaultScopes {
-			service.CreatePermission(app, string(scope))
+			service.CreatePermission(app, scope.Node, scope.Description)
 		}
 	}
 

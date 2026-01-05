@@ -32,8 +32,3 @@ func (store *RoleStore) GetAllRoles() ([]model.Role, error) {
 func (store *RoleStore) GetDefaultRoles() ([]model.Role, error) {
 	return gorm.G[model.Role](store.DB).Where("default = ?", true).Find(context.Background())
 }
-
-func (store *RoleStore) CreatePermission(app *model.Application, permission string) error {
-	perm := model.NewPermission(app, permission)
-	return gorm.G[model.Permission](store.DB).Create(context.Background(), &perm)
-}

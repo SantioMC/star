@@ -95,8 +95,11 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	api.Route("/", route.LoginRouter)
 	api.Route("/user", route.UserRouter)
 	api.Route("/session", route.SessionRouter)
-	api.Route("/app", route.AppRouter)
 	api.Route("/role", route.RoleRouter)
+	
+	api.Route("/app", route.AppRouter)
+	api.Route("/app/:app/permission", route.PermissionRouter)
+
 	api.Route("/metrics", route.MetricRouter)
 
 	// Frontend

@@ -103,14 +103,14 @@ func CreateProviderFromPreset(
 	return provider, nil
 }
 
-func CreateState(app *model.Application) (string, error) {
-	return state.Database.SocialStore.CreateState(app)
+func CreateState(app *model.Application, userAgent string, address string) (string, error) {
+	return state.Database.SocialStore.CreateState(app, userAgent, address)
 }
 
 func DeleteOldStates() error {
 	return state.Database.SocialStore.DeleteOldStates()
 }
 
-func UseState(code string) (*model.Application, error) {
+func UseState(code string) (*model.LoginState, error) {
 	return state.Database.SocialStore.UseState(code)
 }

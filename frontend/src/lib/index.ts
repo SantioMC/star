@@ -69,6 +69,7 @@ token.subscribe(newValue => {
 
 export interface JWTDetails {
 	sub: string
+	sid: string
 	aud: string
 	name: string
 	nickname: string

@@ -5,9 +5,10 @@
 	import type { ClassValue } from "svelte/elements";
 
 	const props: {
-		type: star.DefaultSocialProvider
-		account?: star.Account
+		type: star.DefaultSocialProvider | (string & {})
+		account?: star.Account|null
 		class?: ClassValue
+		modifiable?: boolean
 	} = $props()
 
 	const icons: { [key in star.DefaultSocialProvider]: string } = {
@@ -17,10 +18,19 @@
 		'twitch': 'brand-twitch',
 		'slack': 'brand-slack',
 	}
+	
+	let loginUrl = $derived(star.getLoginUrl(star.APP_ID, props.type))
+
+	const onclick = () => {
+		if (!props.modifiable) return;
+		location.href = loginUrl;
+	}
 </script>
 
-<div class='flex items-center h-16 basis-[calc(50%-0.25rem)] gap-1 border {props.account ? 'border-green-500/20' : 'border-border'} p-4 w-full rounded {props.account ? 'hover:border-green-700/20' : 'hover:border-border/30'} transition-colors cursor-pointer {props.class ?? ''}'>
-	<Icon icon={icons[props.type]} class='text-lg' />
+<button class='flex items-center h-16 basis-[calc(50%-0.25rem)] gap-1 border {props.account ? 'border-green-500/20' : 'border-border'} p-4 w-full rounded {props.account ? 'not-disabled:hover:border-green-700/20' : 'not-disabled:hover:border-border/30'} transition-colors not-disabled:cursor-pointer {props.class ?? ''}' {onclick} disabled={!props.modifiable}>
+	{#if props.type in icons}
+		<Icon icon={icons[props.type as star.DefaultSocialProvider]} class='text-lg' />
+	{/if}
 
 	{#if props.account}
 		<div class="flex flex-col mx-1">
@@ -36,6 +46,6 @@
 		<span class='ml-auto text-green-200/60'>Connected</span>
 	{:else}
 		{titleCase(props.type)}
-		<span class='ml-auto text-primary/60'>Connect</span>
+		<span class='ml-auto text-primary/60'>{props.modifiable ? `Connect` : 'Not Connected'}</span>
 	{/if}
-</div>
+</button>

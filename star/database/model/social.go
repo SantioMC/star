@@ -41,6 +41,9 @@ type LoginState struct {
 
 	ApplicationID string
 	Application   *Application
+
+	UserAgent string
+	Address   string
 }
 
 // Reaches out to the oidc discovery endpoint to find the relevant information

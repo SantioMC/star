@@ -47,10 +47,10 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "invalid state provided")
 	}
 
-	app, err := service.UseState(userState)
+	loginState, err := service.UseState(userState)
 	if err != nil {
-		slog.Error("user attempted to login with invalid state", "state", userState)
-		return helper.NewHttpError(400, "unknown state provided")
+		slog.Error("user attempted to login with invalid state", "state", userState, "err", err)
+		return helper.NewHttpError(400, "unknown state provided, please retry")
 	}
 
 	hostname := string(ctx.Request().URI().Scheme()) + "://" + ctx.Hostname()
@@ -77,7 +77,15 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
 	}
 
-	refreshToken, accessToken, _, err := service.CreateSession(user, app, nil, "", ctx.IP(), loginClaims)
+	refreshToken, accessToken, _, err := service.CreateSession(
+		user, 
+		loginState.Application, 
+		nil, 
+		loginState.UserAgent, 
+		loginState.Address, 
+		loginClaims,
+	)
+	
 	if err != nil {
 		return err
 	}
@@ -86,7 +94,7 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	callbackUri := app.Callback
+	callbackUri := loginState.Application.Callback
 	if strings.HasPrefix(callbackUri, "/") {
 		// Use the current hostname
 		callbackUri = strings.TrimSuffix(hostname, "/") + callbackUri
@@ -163,7 +171,10 @@ func loginWithProvider(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "Invalid provider provided")
 	}
 
-	code, err := service.CreateState(app)
+	userAgent := ctx.Query("ua", "")
+	address := ctx.IP()
+
+	code, err := service.CreateState(app, userAgent, address)
 	if err != nil {
 		return err
 	}

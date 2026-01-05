@@ -23,7 +23,7 @@ func VerifyUsername(username string) error {
 }
 
 func VerifyPassword(password string) error {
-	if len(password) <= 2 {
+	if len(strings.TrimSpace(password)) <= 2 {
 		return fmt.Errorf("password must be at least 3 characters")
 	}
 

@@ -7,9 +7,11 @@
 	import Modal from "@/components/modal.svelte";
 	import Session from "@/components/session.svelte";
 	import Sidebar from "@/components/sidebar.svelte";
+	import SocialAccount from "@/components/social-account.svelte";
 	import { Badge } from "@/components/ui/badge";
 	import { Button } from "@/components/ui/button";
 	import * as Card from '@/components/ui/card';
+	import * as DropdownMenu from '@/components/ui/dropdown-menu';
 	import { Input } from "@/components/ui/input";
 	import { Label } from "@/components/ui/label";
 	import { hasPermission } from "@/index";
@@ -21,38 +23,42 @@
 		month: "short",
 		day: "2-digit",
 		year: "numeric",
-	})
+	});
 
-	let deleteUserModal = $state<Modal>()
-	let suspendUserModal = $state<Modal>()
-	let unsuspendUserModal = $state<Modal>()
-	let changePasswordModal = $state<Modal>()
+	let deleteUserModal = $state<Modal>();
+	let suspendUserModal = $state<Modal>();
+	let unsuspendUserModal = $state<Modal>();
+	let changePasswordModal = $state<Modal>();
 
-	let reason = $state<string>('')
-	let password = $state<string>('')
-	let username = $state<string>('')
-	let firstName = $state<string>('')
-	let lastName = $state<string>('')
+	let reason = $state<string>('');
+	let password = $state<string>('');
+	let username = $state<string>('');
+	let profilePicture = $state<string>('');
+	let firstName = $state<string>('');
+	let lastName = $state<string>('');
 
-	let user = $state<star.AdminUser|null>(null)
-	let suspender = $state<star.AdminUser|null>(null)
-	
-	let activeSessions = $derived<star.Session[]>(
-		user?.sessions?.filter(s => !s.expired)?.sort((a, b) => b.created_at - a.created_at) ?? []
-	)
+	let logins = $state<star.AppLogins|null>(null)
+	let user = $state<star.AdminUser|null>(null);
+	let suspender = $state<star.AdminUser|null>(null);
+
+	let sessions = $derived(user?.sessions?.toSorted((a, b) => b.created_at - a.created_at) ?? [] as star.Session[])
 
 	onMount(async () => {
-		if (!browser) return
-		if (!hasPermission('star:admin:read:users')) return goto('/')
-		user = await star.getUser(page.params.user!)
-		if (user == null) return goto('/admin/users')
+		if (!browser) return;
+		if (!hasPermission('star:admin:read:users')) return goto('/');
 
-		username = user.username
-		firstName = user.first_name
-		lastName = user.last_name
+		user = await star.getUser(page.params.user!);
+		if (user == null) return goto('/admin/users');
+
+		logins = await star.getLogins(star.APP_ID);
+
+		username = user.username;
+		profilePicture = user.profile_picture;
+		firstName = user.first_name;
+		lastName = user.last_name;
 
 		if (user.suspension?.issued_by) {
-			suspender = await star.getUser(user.suspension.issued_by)
+			suspender = await star.getUser(user.suspension.issued_by);
 		}
 	})
 
@@ -124,6 +130,11 @@
 		user!.sessions = user!.sessions.filter(s => s.id != session.id)
 		toast.success('You have invalidated the session')
 	}
+
+	const getAccount = (kind: string) => {
+		// todo: supply kind
+		return user!.accounts.find(acc => acc.id == kind);
+	}
 </script>
 
 <Sidebar class='md:p-8 max-w-6xl mx-auto'>
@@ -165,7 +176,7 @@
 					{#if user.roles.length > 0}
 						<div class='flex flex-col xl:flex-row items-center gap-4'>
 							{#each user.roles as role (role.id)}
-								<Badge variant='secondary'>{role.name}</Badge>
+								<Badge variant='secondary'>{titleCase(role.name)}</Badge>
 							{/each}
 						</div>
 					{/if}
@@ -173,22 +184,43 @@
 
 				<div class='xl:ml-auto flex items-center gap-2'>
 					{#if !user.suspension && hasPermission('star:admin:update:users')}
-					<Button onclick={() => changePasswordModal?.open()} variant='ghost'>
-						<Icon icon='password' />
-						Change Password
-					</Button>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger class='ml-auto'>
+								<Button variant='ghost' size='icon'>
+									<Icon icon='dots' class='text-2xl' />
+								</Button>
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content>
+								<DropdownMenu.Group>
+									<DropdownMenu.Item onclick={() => changePasswordModal?.open()}>
+										<Icon icon='password' />
+										Change Password
+									</DropdownMenu.Item>
+									<DropdownMenu.Item onclick={() => changePasswordModal?.open()}>
+										<Icon icon='photo' />
+										Update Profile Picture
+									</DropdownMenu.Item>
+									<DropdownMenu.Item>
+										<Icon icon='spy' />
+										Impersonate User
+									</DropdownMenu.Item>
+								</DropdownMenu.Group>
 
-					<Button onclick={() => suspendUserModal?.open()} class='bg-transparent text-red-400 hover:bg-red-400/30 hover:border-transparent hover:text-primary'>
-						<Icon icon='hammer' />
-						Suspend User
-					</Button>
-					{/if}
-
-					{#if hasPermission('star:admin:delete:users')}
-					<Button variant='destructive' onclick={() => deleteUserModal?.open()}>
-						<Icon icon='trash' />
-						Delete User
-					</Button>
+								<DropdownMenu.Separator />
+								<DropdownMenu.Group>
+									<DropdownMenu.Item class='text-orange-400' onclick={() => suspendUserModal?.open()}>
+										<Icon icon='hammer' />
+										Suspend User
+									</DropdownMenu.Item>
+									{#if hasPermission('star:admin:delete:users')}
+										<DropdownMenu.Item variant='destructive' onclick={() => deleteUserModal?.open()}>
+											<Icon icon='trash' />
+											Delete
+										</DropdownMenu.Item>
+									{/if}
+								</DropdownMenu.Group>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
 					{/if}
 				</div>
 			</div>
@@ -238,17 +270,19 @@
 					<Card.Title><Icon icon='gavel' /> Roles</Card.Title>
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-1">
-					<p class="text-primary/60 text-sm">The user has the following roles:</p>
 					{#if user.roles.length == 0}
 						<div class="flex flex-col gap-4 items-center w-full my-16">
 							<span class='text-xl font-semibold leading-2'>No Roles</span>
 							<span class='text-primary/60 leading-2'>This user currently has no assigned roles</span>
+							<Button class='mt-1'>Add Role</Button>
 						</div>
 					{:else}
+						<p class="text-primary/60 text-sm">The user has the following roles:</p>
 						<div class='flex gap-2 items-center'>
 							{#each user.roles as role (role.id)}
 								<Badge variant='secondary' class='hover:*:block hover:*:opacity-100 hover:bg-secondary/60 cursor-pointer transition-all'>
-									<Icon icon='folder' class='p-1' />{titleCase(role.name)}
+									<Icon icon='folder' class='p-1' />
+									<span class="pr-1">{titleCase(role.name)}</span>
 									<Icon icon='x' class='p-1 hidden opacity-0 transition-all' />
 								</Badge>
 							{/each}
@@ -294,24 +328,38 @@
 				</Card.Footer>
 			</Card.Root>
 
+			{#if logins && logins.providers.length > 0}
+				<Card.Root class='min-w-1/3 w-full md:w-auto'>
+					<Card.CardHeader>
+						<Card.Title><Icon icon='plug-connected' /> Connected Accounts</Card.Title>
+						<Card.Description class='max-w-xl'>The social accounts connected to the user</Card.Description>
+					</Card.CardHeader>
+					<Card.Content class="flex flex-row gap-2 flex-wrap">
+						{#each logins?.providers as provider}
+							<SocialAccount type={provider} account={getAccount(provider)} />
+						{/each}
+					</Card.Content>
+				</Card.Root>
+			{/if}
+
 			<Card.Root class='min-w-1/3 w-full md:w-auto'>
 				<Card.CardHeader>
 					<Card.Title><Icon icon='device-desktop' /> Sessions</Card.Title>
 					<Card.Description class='max-w-xl'>The different devices and sessions currently logged into the account, invalidating a session might take up to an hour to take effect.</Card.Description>
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-2">
-					{#each activeSessions as session}
+					{#each sessions as session}
 						<Session {session} oninvalidate={() => invalidateSession(session)} />
 					{/each}
 
-					{#if activeSessions.length == 0}
+					{#if sessions.length == 0}
 						<div class="flex flex-col gap-4 items-center w-full my-24">
 							<span class='text-xl font-semibold leading-2'>No Sessions</span>
 							<span class='text-primary/60 leading-2'>This user currently has no sessions</span>
 						</div>
 					{/if}
 				</Card.Content>
-				{#if activeSessions.length != 0}
+				{#if sessions.length != 0}
 					<Card.Footer>
 						<Button class='ml-auto' variant='destructive'>Sign out all sessions</Button>
 					</Card.Footer>

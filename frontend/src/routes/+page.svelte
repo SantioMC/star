@@ -10,15 +10,27 @@
 	import * as Card from "@/components/ui/card";
 	import { Input } from "@/components/ui/input";
 	import { Label } from "@/components/ui/label";
-	import { hasPermission } from "@/index";
+	import { Spinner } from "@/components/ui/spinner";
+	import { getJWT, hasPermission } from "@/index";
 	import * as star from "@/star";
 	import { onMount } from "svelte";
+	import { toast } from "svelte-sonner";
 
 	let data = $state<star.User|null>(null)
+	let logins = $state<star.AppLogins|null>(null)
+	let loading = $state<boolean>(false)
+
+	let currentPassword = $state<string>('');
+	let newPassword = $state<string>('');
+	let confirmPassword = $state<string>('');
 
 	onMount(async () => {
 		if (!browser) return
+
 		data = await star.getSelf()
+		logins = await star.getLogins(star.APP_ID)
+
+		console.log(star.getLoginUrl(star.APP_ID, 'discord'))
 
 		if (data == null) {
 			goto('/login')
@@ -29,9 +41,43 @@
 		data!.sessions = data!.sessions.filter(s => s.id != session.id)
 	}
 
-	const getAccount = (kind: star.DefaultSocialProvider) => {
-		// todo: make this work
-		return {username: 'santio', platform_avatar: 'https://avatars.githubusercontent.com/u/30200259?v=4'} as any as star.Account
+	const invalidateAllSessions = async () => {
+		loading = true;
+		const response = await star.invalidateAllSessions()
+		
+		if ('error' in response) {
+			loading = false
+			return toast.error(response.message)
+		}
+
+		goto('/logout')
+	}
+
+	const changePassword = async (e: Event) => {
+		e.preventDefault();
+		
+		if (!currentPassword || !newPassword || !confirmPassword) {
+			return;
+		}
+
+		if (newPassword !== confirmPassword) {
+			return toast.error('Your passwords do not match!')
+		}
+
+		loading = true;
+		const response = await star.changePassword(currentPassword, newPassword)
+
+		if ('error' in response) {
+			loading = false;
+			return toast.error(response.message)
+		}
+
+		goto('/logout');
+	}
+
+	const getAccount = (kind: string) => {
+		// todo: supply kind
+		return data!.accounts.find(acc => acc.id == kind);
 	}
 </script>
 
@@ -101,46 +147,46 @@
 				</Card.Footer>
 			</Card.Root>
 
-			<Card.Root class='min-w-1/3 w-full md:w-auto'>
+			<Card.Root class='min-w-1/3 w-full md:w-auto' id='change-password'>
 				<Card.CardHeader>
 					<Card.Title><Icon icon='lock' /> Change Password</Card.Title>
 				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-8">
-					<form class="flex flex-col gap-6">
-						<div class="grid gap-2">
-							<Label for="currentPassword">Current Password</Label>
-							<Input id="currentPassword" type="password" required placeholder={"••••••••••••••••"} />
-						</div>
+				<form onsubmit={changePassword}>
+					<Card.Content class="flex flex-col gap-6">
+							<div class="grid gap-2">
+								<Label for="currentPassword">Current Password</Label>
+								<Input bind:value={currentPassword} id="currentPassword" type="password" required placeholder={"••••••••••••••••"} />
+							</div>
 
-						<div class="grid gap-2">
-							<Label for="password">New Password</Label>
-							<Input id="password" type="password" />
-						</div>
+							<div class="grid gap-2">
+								<Label for="password">New Password</Label>
+								<Input bind:value={newPassword} id="password" type="password" />
+							</div>
 
-						<div class="grid gap-2">
-							<Label for="confirmPassword">Confirm Password</Label>
-							<Input id="confirmPassword" type="password" />
-						</div>
-					</form>
-				</Card.Content>
-				<Card.Footer>
-					<Button class='ml-auto'>Change Password</Button>
-				</Card.Footer>
+							<div class="grid gap-2">
+								<Label for="confirmPassword">Confirm Password</Label>
+								<Input bind:value={confirmPassword} id="confirmPassword" type="password" />
+							</div>
+					</Card.Content>
+					<Card.Footer class='mt-6'>
+						<Button class='ml-auto' onclick={changePassword}>Change Password</Button>
+					</Card.Footer>
+				</form>
 			</Card.Root>
 
-			<Card.Root class='min-w-1/3 w-full md:w-auto'>
-				<Card.CardHeader>
-					<Card.Title><Icon icon='plug-connected' /> Connected Accounts</Card.Title>
-					<Card.Description class='max-w-xl'>Connect multiple providers to your account to allow yourself to login with them.</Card.Description>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-row gap-2 flex-wrap">
-					<SocialAccount type='google' account={getAccount('google')} />
-					<SocialAccount type='discord' />
-					<SocialAccount type='twitch' />
-					<SocialAccount type='slack' />
-					<SocialAccount type='github' />
-				</Card.Content>
-			</Card.Root>
+			{#if !!logins && logins.providers.length != 0}
+				<Card.Root class='min-w-1/3 w-full md:w-auto'>
+					<Card.CardHeader>
+						<Card.Title><Icon icon='plug-connected' /> Connected Accounts</Card.Title>
+						<Card.Description class='max-w-xl'>Connect multiple providers to your account to allow yourself to login with them.</Card.Description>
+					</Card.CardHeader>
+					<Card.Content class="flex flex-row gap-2 flex-wrap">
+						{#each logins?.providers as provider}
+							<SocialAccount modifiable type={provider} account={getAccount(provider)} />
+						{/each}
+					</Card.Content>
+				</Card.Root>
+			{/if}
 
 			<Card.Root class='min-w-1/3 w-full md:w-auto'>
 				<Card.CardHeader>
@@ -149,11 +195,26 @@
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-2">
 					{#each data.sessions.filter(i => !i.expired).sort((a, b) => b.created_at - a.created_at) as session}
-						<Session {session} oninvalidate={() => removeSession(session)} />
+						<Session 
+							{session} 
+							oninvalidate={() => removeSession(session)} 
+							currentSession={session.id == getJWT()?.sid}
+						/>
 					{/each}
 				</Card.Content>
 				<Card.Footer>
-					<Button class='ml-auto' variant='destructive'>Sign out all sessions</Button>
+					<Button 
+						class='ml-auto' 
+						variant='destructive' 
+						onclick={invalidateAllSessions}
+						disabled={loading}
+					>
+						{#if loading}
+							<Spinner />
+						{/if}
+
+						Sign out all sessions
+					</Button>
 				</Card.Footer>
 			</Card.Root>
 

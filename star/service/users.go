@@ -247,7 +247,7 @@ func CreateAccessToken(
 	isSuperUser := false
 
 	var groups []string 
-	var perms []scopes.Scope 
+	var perms []string 
 
 	for idx, role := range refreshToken.User.Roles {
 		if !isSuperUser && role.SuperRole {
@@ -265,12 +265,13 @@ func CreateAccessToken(
 	fields := map[string]any{
 		"sub": refreshToken.User.ID,
 		"aud": app.ID,
+		"sid": refreshToken.ID,
 	}
 
 	if slices.Contains(claims, oidc.ClaimEmail) {
 		fields["email"] = refreshToken.User.Email
 		fields["email_verified"] = refreshToken.User.EmailVerified
-		perms = append(perms, scopes.ScopeReadEmail) // Allow apps to read email
+		perms = append(perms, scopes.ScopeReadEmail.Node) // Allow apps to read email
 	}
 
 	if slices.Contains(claims, oidc.ClaimRoles) {
@@ -299,10 +300,10 @@ func CreateAccessToken(
 
 	if app.Internal && !isSuperUser {
 		// Give ourselves frontend access to user-facing endpoints
-		perms = append(perms, scopes.ScopeUserAll)
+		perms = append(perms, scopes.ScopeUserAll.Node)
 	} else if app.Internal && isSuperUser {
 		// Grant the user access to management pages & endpoints
-		perms = append(perms, scopes.ScopeAll)
+		perms = append(perms, scopes.ScopeAll.Node)
 	}
 
 	permissions, err := GetUserPermissions(refreshToken.User)
@@ -311,7 +312,7 @@ func CreateAccessToken(
 	}
 
 	for _, perm := range permissions {
-		perms = append(perms, scopes.Scope(perm.Permission))
+		perms = append(perms, perm.Permission)
 	}
 
 	fields["scopes"] = perms

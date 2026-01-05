@@ -165,6 +165,14 @@ func patchMe(ctx *fiber.Ctx) error {
 		user.Username = *body.Username
 	}
 
+	if body.Picture != nil {
+		if err := verifier.VerifyURL(*body.Picture); err != nil {
+			return helper.NewHttpError(400, err.Error())
+		}
+
+		user.ProfilePicture = *body.Picture
+	}
+
 	if body.FirstName != nil && len(*body.FirstName) < 64 {
 		user.FirstName = *body.FirstName
 	}
@@ -216,6 +224,10 @@ func updatePassword(ctx *fiber.Ctx) error {
 
 	if !success {
 		return helper.NewHttpError(403, "your current password does not match!")
+	}
+
+	if err := verifier.VerifyPassword(body.NewPassword); err != nil {
+		return helper.NewHttpError(400, err.Error())
 	}
 
 	if err := service.SetPassword(user, body.NewPassword); err != nil {
@@ -327,6 +339,14 @@ func patchUser(ctx *fiber.Ctx) error {
 		}
 
 		user.Username = *body.Username
+	}
+
+	if body.Picture != nil {
+		if err := verifier.VerifyURL(*body.Picture); err != nil {
+			return helper.NewHttpError(400, err.Error())
+		}
+		
+		user.ProfilePicture = *body.Picture
 	}
 
 	if body.FirstName != nil {
@@ -527,4 +547,5 @@ type UpdateUserRequest struct {
 	Username  *string `json:"username"`
 	FirstName *string `json:"given_name"`
 	LastName  *string `json:"family_name"`
+	Picture   *string `json:"profile_picture"`
 }

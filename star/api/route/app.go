@@ -108,7 +108,7 @@ func updateApp(ctx *fiber.Ctx) error {
 	}
 
 	if app.Internal {
-		return helper.NewHttpError(400, "app is internal and can not be modified")
+		return helper.NewHttpError(403, "app is internal and can not be modified")
 	}
 
 	var body PatchAppRequest
@@ -166,7 +166,7 @@ func deleteApp(ctx *fiber.Ctx) error {
 	}
 
 	if app.Internal {
-		return helper.NewHttpError(400, "app is internal and can not be deleted")
+		return helper.NewHttpError(403, "app is internal and can not be deleted")
 	}
 
 	if err := service.DeleteApp(app.ID); err != nil {
@@ -210,6 +210,10 @@ func createProvider(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "app not found")
 	}
 
+	if app.Internal {
+		return helper.NewHttpError(403, "app is internal and can not be modified")
+	}
+
 	var body CreateProviderRequest
 	if err := ctx.BodyParser(&body); err != nil {
 		return err
@@ -232,9 +236,13 @@ func deleteProvider(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	_, provider, err := getProviderFromCtx(ctx)
+	app, provider, err := getProviderFromCtx(ctx)
 	if err != nil {
 		return err
+	}
+
+	if app.Internal {
+		return helper.NewHttpError(403, "app is internal and can not be modified")
 	}
 
 	if err := service.DeleteAppProvider(provider.ID); err != nil {
@@ -249,9 +257,13 @@ func rotateProvider(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	_, provider, err := getProviderFromCtx(ctx)
+	app, provider, err := getProviderFromCtx(ctx)
 	if err != nil {
 		return err
+	}
+
+	if app.Internal {
+		return helper.NewHttpError(403, "app is internal and can not be modified")
 	}
 
 	if err := service.RotateAppProvider(provider); err != nil {

@@ -52,11 +52,13 @@ func (store *SocialStore) SaveProvider(provider *model.SocialProvider) error {
 	return store.DB.Save(provider).Error
 }
 
-func (store *SocialStore) CreateState(app *model.Application) (string, error) {
+func (store *SocialStore) CreateState(app *model.Application, userAgent string, address string) (string, error) {
 	state := crypto.CreateRandString(16)
 	model := model.LoginState{
 		State: state,
 		Application: app,
+		UserAgent: userAgent,
+		Address: address,
 	}
 
 	if err := store.DB.Save(&model).Error; err != nil {
@@ -72,12 +74,12 @@ func (store *SocialStore) DeleteOldStates() error {
 	return err
 }
 
-func (store *SocialStore) UseState(state string) (*model.Application, error) {
+func (store *SocialStore) UseState(state string) (*model.LoginState, error) {
 	loginState := model.LoginState{}
 	if err := store.DB.Where("state = ?", state).Preload(clause.Associations).First(&loginState).Error; err != nil {
 		return nil, err
 	}
 
 	store.DB.Unscoped().Delete(&loginState)
-	return loginState.Application, nil
+	return &loginState, nil
 }

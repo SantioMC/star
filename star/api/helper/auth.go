@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -37,6 +38,7 @@ func GetUserClaims(ctx *fiber.Ctx) (*claims.UserJWT, error) {
 
 	claims, err := crypto.VerifyJWT(token, &signingKey.PublicKey)
 	if err != nil {
+		slog.Warn("client attempted to provide unverified jwt", "token", token, "err", err)
 		return nil, NewHttpError(401, "Unauthorized")
 	}
 
@@ -59,7 +61,7 @@ func HasPermission(ctx *fiber.Ctx, permission scopes.Scope) bool {
 	}
 
 	for _, scope := range claims.Scopes {
-		if scope.Permits(permission) {
+		if scopes.Permits(scope, permission.Node) {
 			return true
 		}
 	}

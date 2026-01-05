@@ -24,8 +24,9 @@
 	import { toast } from 'svelte-sonner';
 
 	let app = $state<star.AdminApplication | null>(null);
-	let loading = $state<boolean>(false);
+	let permissions = $state<star.Permission[]>([])
 
+	let loading = $state<boolean>(false);
 	let callbackUrl = $state<string>('');
 
 	let createProviderModal = $state<Modal>()
@@ -43,8 +44,11 @@
 	onMount(async () => {
 		if (!browser) return;
 		if (!hasPermission('star:admin:read:applications')) return goto('/');
+		
 		app = await star.getApplication(page.params.app!);
 		if (app == null) return goto('/admin/apps');
+
+		permissions = await star.getPermissions(app.id);
 	});
 
 	const deleteApp = async () => {
@@ -236,6 +240,52 @@
 							</p>
 						</Categorizied>
 					</div>
+				</Card.Content>
+			</Card.Root>
+			
+			<Card.Root class="min-w-1/3 w-full md:w-auto">
+				<Card.CardHeader>
+					<Card.Title class="flex items-center gap-1">
+						<Icon icon="package" class="text-2xl" /> Application Permissions
+					</Card.Title>
+					<Card.Description class='md:max-w-2/3'>Applications compatible with star can check whether a user is authorized perform actions based on their permissions. The <code>scopes</code> claim in access tokens defines the scopes the token is authorized to perform.</Card.Description>
+				</Card.CardHeader>
+				<Card.Content class="flex flex-row justify-between">
+					{#if permissions.length == 0}
+						<div class="flex flex-col gap-4 items-center w-full my-12">
+							<span class="text-xl font-semibold leading-2">No Permissions</span>
+							<span class="text-primary/60 leading-5 m-0 -translate-y-1.5 text-center max-w-3/4">
+								Leverage star's permission system to keep all access managed by star. Permissions are a great way to have consistent RBAC between all your applications.
+							</span>
+							{#if canModify}
+								<Button>Create Permission</Button>
+							{/if}
+						</div>
+					{:else}
+						<div class="w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+							{#each permissions as permission (permission.id)}
+								<div role='button' class='w-full h-16 py-1 px-3 border border-primary/30 rounded-md flex gap-2 hover:*:opacity-100'>
+									<div class='flex flex-col items-baseline'>
+										<span class="text-md overflow-hidden text-clip">{permission.scope}</span>
+										<span class="text-xs text-primary/60 overflow-hidden text-clip">{permission.description}</span>
+									</div>
+
+									{#if canModify}
+										<Button variant='destructive' size='icon' class='ml-auto my-auto opacity-0 transition-all'>
+											<Icon icon='trash' class='text-lg' />
+										</Button>
+									{/if}
+								</div>
+							{/each}
+
+							{#if canModify && permissions.length > 0}
+								<Button class='w-full border border-primary/30 h-full hover:bg-primary/80! hover:text-secondary!' variant='ghost'>
+									<Icon icon='plus' />
+									<span class="text-md">Create</span>
+								</Button>
+							{/if}
+						</div>
+					{/if}
 				</Card.Content>
 			</Card.Root>
 

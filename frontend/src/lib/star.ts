@@ -6,8 +6,8 @@ import { Thumbmark } from '@thumbmarkjs/thumbmarkjs';
 import ky, { HTTPError, type BeforeRequestState, type KyRequest, type NormalizedOptions } from "ky";
 import { get } from "svelte/store";
 
-const API_URL = env.PUBLIC_API_URL ?? "/api";
-const APP_ID = "star";
+export const API_URL = env.PUBLIC_API_URL ?? "/api";
+export const APP_ID = "star";
 
 export type StarPermission = "star:*"
 	| "star:user:*"
@@ -63,8 +63,8 @@ const orError = async (e: Error): Promise<StarError> => {
 	return e.response.json<StarError>()
 }
 
-export const getLogins = async () => {
-	return api.get(`app/${APP_ID}/logins`).json<AppLogins>()
+export const getLogins = async (app: string) => {
+	return api.get(`app/${app}/logins`).json<AppLogins>()
 		.catch(_ => null)
 }
 
@@ -81,12 +81,22 @@ export const login = async (username: string, password: string) => {
 	}).json<LoginResponse>().catch(orError)
 }
 
+export const getLoginUrl = (app: string, provider: string) => {
+	return `${API_URL}/app/${app}/login/${provider}?ua=${encodeURIComponent(navigator.userAgent)}`
+}
+
 export const loginWithProvider = (provider: string) => {
-	location.href = `${API_URL}/app/${APP_ID}/login/${provider}`
+	location.href = getLoginUrl(APP_ID, provider)
 }
 
 export const getSelf = async () => {
 	return api.get('user/me').json<User>().catch(_ => null)
+}
+
+export const changePassword = async (currentPassword: string, newPassword: string) => {
+	return api.post(`user/me/password`, {
+		json: { current_password: currentPassword, new_password: newPassword }
+	}).json<{ success: boolean }>().catch(orError)
 }
 
 export const getSessions = async () => {
@@ -189,6 +199,11 @@ export const rotateProvider = async (app: string, provider: string) => {
 	return api.post(`app/${app}/provider/${provider}/rotate`).json<{ secret: string }>().catch(orError)
 }
 
+export const getPermissions = async (app: string | null = null) => {
+	if (app) return await api.get(`app/${app}/permission`).json<Permission[]>().catch(() => [] as Permission[]);
+	return [] as Permission[]
+}
+
 interface ThumbmarkResult {
 	thumbmark: string;
 	components: Record<string, any>;
@@ -221,6 +236,7 @@ export interface UserChanges {
 	username?: string
 	given_name?: string
 	family_name?: string
+	profile_picture?: string
 }
 
 export interface User {
@@ -330,4 +346,12 @@ export interface AdminProvider {
 	response_types: string[]
 	grant_types: string[]
 	access_token_type: string
+}
+
+export interface Permission {
+	id: string
+	created_at: number
+	updated_at: number
+	scope: string
+	description: string
 }

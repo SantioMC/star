@@ -27,6 +27,10 @@ func VerifyURL(value string) error {
 		return ErrUrlIsEmpty
 	}
 
+	if len(value) > 256 {
+		return fmt.Errorf("url is too long")
+	}
+
 	if !strings.Contains(value, "://") {
 		value = "https://" + value
 	}
