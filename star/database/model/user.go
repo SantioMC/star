@@ -8,27 +8,32 @@ import (
 	"strings"
 
 	"github.com/tubblelive/star/oidc"
-)
-
-const (
-	ServiceUserID    = "service"
-	ServiceUserKeyID = "key1"
+	"gorm.io/datatypes"
 )
 
 type User struct {
 	BaseModel
-	Username       string      `json:"username"`
-	FirstName      string      `json:"first_name"`
-	LastName       string      `json:"last_name"`
-	Email          string      `json:"email"`
-	EmailVerified  bool        `json:"email_verified"`
-	ProfilePicture string      `json:"-"`
-	EmailCode      string      `json:"-"`
-	LastLoginAt    int64       `json:"-"`
-	Roles          []Role      `json:"roles" gorm:"many2many:user_roles"`
-	Accounts       []Account   `json:"accounts"`
-	Sessions       []Session   `json:"sessions"`
-	Suspension     *Suspension `json:"-"`
+	Username       string `json:"username"`
+	FirstName      string `json:"first_name"`
+	LastName       string `json:"last_name"`
+	Email          string `json:"email"`
+	EmailVerified  bool   `json:"email_verified"`
+	ProfilePicture string `json:"-"`
+	EmailCode      string `json:"-"`
+	LastLoginAt    int64  `json:"-"`
+	ServiceAccount bool   `json:"service_account"`
+
+	Metadata *datatypes.JSONType[UserMetadata] `json:"-"`
+
+	Roles      []Role      `json:"roles" gorm:"many2many:user_roles"`
+	Accounts   []Account   `json:"accounts"`
+	Sessions   []Session   `json:"sessions"`
+	Suspension *Suspension `json:"-"`
+}
+
+type UserMetadata struct {
+	Public  map[string]any `json:"public"`
+	Private map[string]any `json:"private"`
 }
 
 func (u *User) GenerateProfilePicture() string {
@@ -43,6 +48,23 @@ func (u *User) GenerateProfilePicture() string {
 
 	// Use gravatar as the default pfp
 	return fmt.Sprintf("https://gravatar.com/avatar/%s?d=initials&r=pg", hash)
+}
+
+func (u *User) GetMetadata(public bool) UserMetadata {
+	metadata := UserMetadata{
+		Public: map[string]any{},
+		Private: map[string]any{},
+	}
+
+	if u.Metadata != nil {
+		metadata = u.Metadata.Data()
+	}
+
+	if public {
+		metadata.Private = nil
+	}
+
+	return metadata
 }
 
 var emailAlphabet = []byte("abcdefghjklnoprstvwxyz")

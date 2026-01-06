@@ -20,6 +20,10 @@
 	let logins = $state<star.AppLogins|null>(null)
 	let loading = $state<boolean>(false)
 
+	let username = $state<string>('');
+	let firstName = $state<string>('');
+	let lastName = $state<string>('');
+
 	let currentPassword = $state<string>('');
 	let newPassword = $state<string>('');
 	let confirmPassword = $state<string>('');
@@ -28,6 +32,11 @@
 		if (!browser) return
 
 		data = await star.getSelf()
+
+		username = data!.username
+		firstName = data!.first_name
+		lastName = data!.last_name
+
 		logins = await star.getLogins(star.APP_ID)
 
 		console.log(star.getLoginUrl(star.APP_ID, 'discord'))
@@ -75,6 +84,25 @@
 		goto('/logout');
 	}
 
+	const updateDetails = async (e: Event) => {
+		e.preventDefault();
+
+		loading = true;
+		const response = await star.updateUser({
+			username,
+			first_name: firstName,
+			last_name: lastName,
+		})
+
+		loading = false;
+
+		if ('error' in response) {
+			return toast.error(response.message)
+		} else {
+			toast.success('Successfully updated your details!')
+		}
+	}
+
 	const getAccount = (kind: string) => {
 		// todo: supply kind
 		return data!.accounts.find(acc => acc.id == kind);
@@ -99,52 +127,55 @@
 				<Card.CardHeader>
 					<Card.Title><Icon icon='user' /> Profile Information</Card.Title>
 				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-8">
-					<div class="flex gap-2 items-center">
-						<Avatar.Root>
-							<Avatar.Image src={data.profile_picture} alt="{data.username}'s Profile Picture" />
-						</Avatar.Root>
-						<div class="flex flex-col gap-1 items-baseline">
-							<span class="leading-4 text-lg">
-								{#if data.first_name && data.last_name}
-									{data.first_name} {data.last_name}
-								{:else}
-									{data.username}
-								{/if}
-							</span>
-							<span class="leading-4 text-sm text-primary/70">
-								Not you? <a class="text-blue-200/70" href="/logout">Log out</a>
-							</span>
-						</div>
-					</div>
 
-					<form class="flex flex-col gap-6">
-						<div class="grid gap-2">
-							<Label for="username">Username</Label>
-							<Input id="username" type="text" required value={data.username} />
-						</div>
-
-						<div class="grid gap-2">
-							<Label for="email">Email</Label>
-							<Input id="email" type="email" value={data.email} disabled />
-						</div>
-
-						<div class="flex gap-2 sm:gap-8">
-							<div class="flex-1/2 gap-2 grid">
-								<Label for="givenName">Given Name</Label>
-								<Input id="givenName" type="text" value={data.first_name} />
-							</div>
-
-							<div class="flex-1/2 gap-2 grid">
-								<Label for="familyName">Family Name</Label>
-								<Input id="familyName" type="text" value={data.last_name} />
+				<form onsubmit={updateDetails}>
+					<Card.Content class="flex flex-col gap-8">
+						<div class="flex gap-2 items-center">
+							<Avatar.Root>
+								<Avatar.Image src={data.profile_picture} alt="{username}'s Profile Picture" />
+							</Avatar.Root>
+							<div class="flex flex-col gap-1 items-baseline">
+								<span class="leading-4 text-lg">
+									{#if firstName && lastName}
+										{firstName} {lastName}
+									{:else}
+										{username}
+									{/if}
+								</span>
+								<span class="leading-4 text-sm text-primary/70">
+									Not you? <a class="text-blue-200/70" href="/logout">Log out</a>
+								</span>
 							</div>
 						</div>
-					</form>
-				</Card.Content>
-				<Card.Footer>
-					<Button class='ml-auto'>Update</Button>
-				</Card.Footer>
+
+						<div class="flex flex-col gap-6">
+							<div class="grid gap-2">
+								<Label for="username">Username</Label>
+								<Input bind:value={username} id="username" type="text" required />
+							</div>
+
+							<div class="grid gap-2">
+								<Label for="email">Email</Label>
+								<Input id="email" type="email" value={data.email} disabled />
+							</div>
+
+							<div class="flex gap-2 sm:gap-8">
+								<div class="flex-1/2 gap-2 grid">
+									<Label for="givenName">Given Name</Label>
+									<Input bind:value={firstName} id="givenName" type="text" />
+								</div>
+
+								<div class="flex-1/2 gap-2 grid">
+									<Label for="familyName">Family Name</Label>
+									<Input bind:value={lastName} id="familyName" type="text" />
+								</div>
+							</div>
+						</div>
+					</Card.Content>
+					<Card.Footer class='mt-6'>
+						<Button type='submit' class='ml-auto' onclick={updateDetails}>Update</Button>
+					</Card.Footer>
+				</form>
 			</Card.Root>
 
 			<Card.Root class='min-w-1/3 w-full md:w-auto' id='change-password'>

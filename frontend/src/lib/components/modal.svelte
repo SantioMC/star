@@ -44,7 +44,7 @@
 	bind:this={dialog}
 	onclose={() => (showModal = false)}
 	onclick={handleClick}
-	class="relative top-1/2 left-1/2 w-full -translate-1/2 rounded-lg border-none bg-card p-0 text-card-foreground backdrop:bg-black/70 sm:max-w-1/3 sm:min-w-96 md:overflow-hidden {className}"
+	class="fixed top-1/2 left-1/2 w-full -translate-1/2 rounded-lg border-none bg-card p-0 text-card-foreground backdrop:bg-black/70 sm:max-w-1/3 sm:min-w-96 md:overflow-hidden {className}"
 >
 	<div class="rounded-lg bg-card p-4 text-card-foreground">
 		{#if button}

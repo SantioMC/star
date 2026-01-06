@@ -108,9 +108,9 @@
 	}
 
 	const updateUser = async () => {
-		const result = await star.updateUser(user!.id, {
-			family_name: lastName,
-			given_name: firstName,
+		const result = await star.modifyUser(user!.id, {
+			last_name: lastName,
+			first_name: firstName,
 			username: username
 		})
 

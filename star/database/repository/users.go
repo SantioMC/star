@@ -151,6 +151,11 @@ func (store *UserStore) GetCount() int64 {
 	return users
 }
 
+func (store *UserStore) SetMetadata(userId string, metadata *model.UserMetadata) error {
+	_, err := gorm.G[model.User](store.DB).Where("id = ?", userId).Update(context.Background(), "metadata", metadata)
+	return err
+}
+
 func (store *UserStore) SuspendUser(userId string, issuerId string, reason string, duration *int64) error {
 	suspension := model.NewSuspension(userId, issuerId, reason, duration)
 	return gorm.G[model.Suspension](store.DB).Create(context.Background(), &suspension)

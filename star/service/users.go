@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -439,4 +440,15 @@ func RefreshAccessToken(
 	}
 
 	return jwt, expiresAt, nil
+}
+
+func SetMetadata(userId string, metadata *string) error {
+	var parsed *model.UserMetadata = nil
+	if metadata != nil {
+		if err := json.Unmarshal([]byte(*metadata), parsed); err != nil {
+			return err
+		}
+	}
+
+	return state.Database.UserStore.SetMetadata(userId, parsed)
 }

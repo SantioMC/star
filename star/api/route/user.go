@@ -121,6 +121,7 @@ func getMe(ctx *fiber.Ctx) error {
 	ctx.JSON(UserData{
 		User: *user,
 
+		Metadata:       user.GetMetadata(true),
 		Sessions:       sessions,
 		ProfilePicture: user.GenerateProfilePicture(),
 	})
@@ -345,7 +346,7 @@ func patchUser(ctx *fiber.Ctx) error {
 		if err := verifier.VerifyURL(*body.Picture); err != nil {
 			return helper.NewHttpError(400, err.Error())
 		}
-		
+
 		user.ProfilePicture = *body.Picture
 	}
 
@@ -482,7 +483,7 @@ func invalidateUserSessions(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	return ctx.JSON(fiber.Map{ "success": true })
+	return ctx.JSON(fiber.Map{"success": true})
 }
 
 func toAdminUserResponse(users []model.User) []UserAdminData {
@@ -496,11 +497,14 @@ func toAdminUserResponse(users []model.User) []UserAdminData {
 		}
 
 		data = append(data, UserAdminData{
-			User:           user,
-			ProfilePicture: user.GenerateProfilePicture(),
-			LastLoginAt:    user.LastLoginAt,
-			Suspension:     user.Suspension,
-			Sessions:       sessions,
+			UserData: UserData{
+				User:           user,
+				Metadata:       user.GetMetadata(false),
+				ProfilePicture: user.GenerateProfilePicture(),
+				Sessions:       sessions,
+			},
+			LastLoginAt: user.LastLoginAt,
+			Suspension:  user.Suspension,
 		})
 	}
 
@@ -508,19 +512,18 @@ func toAdminUserResponse(users []model.User) []UserAdminData {
 }
 
 type UserAdminData struct {
-	model.User
+	UserData
 
-	ProfilePicture string            `json:"profile_picture"`
-	LastLoginAt    int64             `json:"last_login_at"`
-	Suspension     *model.Suspension `json:"suspension"`
-	Sessions       []SessionResponse `json:"sessions"`
+	LastLoginAt int64             `json:"last_login_at"`
+	Suspension  *model.Suspension `json:"suspension"`
 }
 
 type UserData struct {
 	model.User
 
-	ProfilePicture string            `json:"profile_picture"`
-	Sessions       []SessionResponse `json:"sessions"`
+	Metadata       model.UserMetadata `json:"metadata"`
+	ProfilePicture string             `json:"profile_picture"`
+	Sessions       []SessionResponse  `json:"sessions"`
 }
 
 type RegisterAccountRequest struct {
@@ -545,7 +548,7 @@ type SuspendUserRequest struct {
 
 type UpdateUserRequest struct {
 	Username  *string `json:"username"`
-	FirstName *string `json:"given_name"`
-	LastName  *string `json:"family_name"`
+	FirstName *string `json:"first_name"`
+	LastName  *string `json:"last_name"`
 	Picture   *string `json:"profile_picture"`
 }

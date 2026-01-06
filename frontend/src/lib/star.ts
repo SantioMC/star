@@ -99,6 +99,12 @@ export const changePassword = async (currentPassword: string, newPassword: strin
 	}).json<{ success: boolean }>().catch(orError)
 }
 
+export const updateUser = (changes: UserChanges) => {
+	return api.patch(`user/me`, {
+		json: changes
+	}).json<User>().catch(orError)
+}
+
 export const getSessions = async () => {
 	return api.get('session').json<Session[]>().catch(_ => [] as Session[])
 }
@@ -161,7 +167,7 @@ export const forceChangePassword = async (user: string, newPassword: string) => 
 	}).json<{ success: boolean }>().catch(orError)
 }
 
-export const updateUser = (user: string, changes: UserChanges) => {
+export const modifyUser = (user: string, changes: UserChanges) => {
 	return api.patch(`user/${user}`, {
 		json: changes
 	}).json<User>().catch(orError)
@@ -234,8 +240,8 @@ export interface LoginResponse {
 
 export interface UserChanges {
 	username?: string
-	given_name?: string
-	family_name?: string
+	first_name?: string
+	last_name?: string
 	profile_picture?: string
 }
 
