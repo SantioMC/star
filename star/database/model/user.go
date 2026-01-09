@@ -20,7 +20,7 @@ type User struct {
 	EmailVerified  bool   `json:"email_verified"`
 	ProfilePicture string `json:"-"`
 	EmailCode      string `json:"-"`
-	LastLoginAt    int64  `json:"-"`
+	LastLoginAt    *int64 `json:"-"`
 	ServiceAccount bool   `json:"service_account"`
 
 	Metadata *datatypes.JSONType[UserMetadata] `json:"-"`
@@ -52,7 +52,7 @@ func (u *User) GenerateProfilePicture() string {
 
 func (u *User) GetMetadata(public bool) UserMetadata {
 	metadata := UserMetadata{
-		Public: map[string]any{},
+		Public:  map[string]any{},
 		Private: map[string]any{},
 	}
 

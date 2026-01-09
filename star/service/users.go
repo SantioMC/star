@@ -238,7 +238,6 @@ func CreateAccessToken(
 	claims []oidc.Claim,
 	impersonate bool,
 ) (string, time.Time, error) {
-	expiresAfter := time.Hour * 2
 	signingKey, err := GetSigningKey()
 	if err != nil {
 		return "", time.Time{}, err
@@ -287,6 +286,10 @@ func CreateAccessToken(
 		fields["picture"] = refreshToken.User.GenerateProfilePicture()
 	}
 
+	if slices.Contains(claims, oidc.ClaimMetadata) {
+		fields["meta"] = refreshToken.User.GetMetadata(true).Public
+	}
+
 	if slices.Contains(claims, oidc.ClaimProfile) {
 		fields["name"] = refreshToken.User.Username
 		fields["nickname"] = refreshToken.User.Username
@@ -299,6 +302,7 @@ func CreateAccessToken(
 		fields["imp"] = true
 	}
 
+	// Custom handling for our internal application (management console)
 	if app.Internal && !isSuperUser {
 		// Give ourselves frontend access to user-facing endpoints
 		perms = append(perms, scopes.ScopeUserAll.Node)
@@ -329,8 +333,9 @@ func CreateAccessToken(
 		jku = &url
 	}
 
+	duration := time.Duration(app.TokenDuration)
 	jwt, err := crypto.CreateJWT(crypto.JWTBody{
-		Duration: expiresAfter,
+		Duration: duration,
 		Fields: fields,
 	},  jku, privateKey)
 
@@ -338,7 +343,7 @@ func CreateAccessToken(
 		return "", time.Time{}, err
 	}
 
-	return string(jwt), time.Now().Add(expiresAfter), nil
+	return string(jwt), time.Now().Add(duration), nil
 }
 
 func CreateSession(
@@ -349,7 +354,8 @@ func CreateSession(
 	address string,
 	claims []oidc.Claim,
 ) (*model.Session, string, time.Time, error) {
-	session := model.NewSession(time.Hour * 24 * 7, claims)
+	duration := time.Duration(app.RefreshTokenDuration)
+	session := model.NewSession(duration, claims)
 	
 	session.User = user
 	session.Application = app
@@ -394,15 +400,26 @@ func GetUserCount() int64 {
 	return state.Database.UserStore.GetCount()
 }
 
-func RefreshAccessToken(
+func RotateSessionToken(session *model.Session) (string, error) {
+	refreshToken := model.NewSessionToken()
+
+	if err := state.Database.SessionStore.UpdateSessionToken(session.ID, refreshToken); err != nil {
+		return "", err
+	}
+
+	session.Token = refreshToken
+	return refreshToken, nil
+}
+
+func RefreshSession(
 	userId string, 
 	refreshToken string,
 	fingerprint *string,
 	userAgent string,
-) (string, time.Time, error) {
+) (*model.Session, string, time.Time, error) {
 	sessions, err := state.Database.SessionStore.GetUserSessions(userId)
 	if err != nil {
-		return "", time.Time{}, err
+		return nil, "", time.Time{}, err
 	}
 
 	var session *model.Session = nil
@@ -413,33 +430,40 @@ func RefreshAccessToken(
 	}
 
 	if session == nil {
-		return "", time.Time{}, ErrTokenInvalid
+		return nil, "", time.Time{}, ErrTokenInvalid
 	}
 
 	if session.InvalidatedAt != nil {
-		return "", time.Time{}, ErrTokenInvalid
+		return nil, "", time.Time{}, ErrTokenInvalid
 	}
 
 	if session.IsExpired() {
-		return "", time.Time{}, ErrTokenExpired
+		return nil, "", time.Time{}, ErrTokenExpired
 	}
 
 	if session.Fingerprint != nil && session.Fingerprint != fingerprint {
 		// If the fingerprint has changed, we invalidate the session
 		state.Database.SessionStore.InvalidateSession(session.ID)
-		return "", time.Time{}, ErrSuspiciousActivity
+		return nil, "", time.Time{}, ErrSuspiciousActivity
 	} else if session.Fingerprint == nil && fingerprint != nil {
-		// If we did not have a fingerprint associated but were provided one now, we'll update the session to 
+		// If we did not have a fingerprint associated but were provided one now, we'll update the session too
 		session.Fingerprint = fingerprint
 		state.Database.SessionStore.UpdateSessionFingerprint(session.ID, fingerprint)
 	}
 
-	jwt, expiresAt, err := CreateAccessToken(session, session.Application, session.Claims.Data(), false)
-	if err != nil {
-		return "", time.Time{}, err
+	if session.Application.RotateRefreshToken {
+		_, err := RotateSessionToken(session)
+		if err != nil {
+			return session, "", time.Time{}, err
+		}
 	}
 
-	return jwt, expiresAt, nil
+	jwt, expiresAt, err := CreateAccessToken(session, session.Application, session.Claims.Data(), false)
+	if err != nil {
+		return session, "", time.Time{}, err
+	}
+
+	return session, jwt, expiresAt, nil
 }
 
 func SetMetadata(userId string, metadata *string) error {

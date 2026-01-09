@@ -13,6 +13,7 @@ import (
 	"github.com/tubblelive/star/star/state"
 	"github.com/tubblelive/star/star/state/scopes"
 	"github.com/tubblelive/star/star/verifier"
+	"gorm.io/datatypes"
 )
 
 func UserRouter(r fiber.Router) {
@@ -113,18 +114,7 @@ func getMe(ctx *fiber.Ctx) error {
 		user.EmailVerified = true
 	}
 
-	sessions := []SessionResponse{}
-	if helper.HasPermission(ctx, scopes.ScopeReadSessions) {
-		sessions = findSessions(user.ID)
-	}
-
-	ctx.JSON(UserData{
-		User: *user,
-
-		Metadata:       user.GetMetadata(true),
-		Sessions:       sessions,
-		ProfilePicture: user.GenerateProfilePicture(),
-	})
+	ctx.JSON(toUserResponse(ctx, *user))
 
 	return nil
 }
@@ -164,14 +154,6 @@ func patchMe(ctx *fiber.Ctx) error {
 		}
 
 		user.Username = *body.Username
-	}
-
-	if body.Picture != nil {
-		if err := verifier.VerifyURL(*body.Picture); err != nil {
-			return helper.NewHttpError(400, err.Error())
-		}
-
-		user.ProfilePicture = *body.Picture
 	}
 
 	if body.FirstName != nil && len(*body.FirstName) < 64 {
@@ -255,7 +237,7 @@ func getAllUsers(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	return ctx.JSON(toAdminUserResponse(users))
+	return ctx.JSON(toAdminUsersResponse(users))
 }
 
 func getUser(ctx *fiber.Ctx) error {
@@ -272,7 +254,7 @@ func getUser(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "user not found")
 	}
 
-	adminUser := toAdminUserResponse([]model.User{*user})[0]
+	adminUser := toAdminUsersResponse([]model.User{*user})[0]
 	return ctx.JSON(adminUser)
 }
 
@@ -324,7 +306,7 @@ func patchUser(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "user not found")
 	}
 
-	var body UpdateUserRequest
+	var body AdminUpdateUserRequest
 	if err := ctx.BodyParser(&body); err != nil {
 		return err
 	}
@@ -358,11 +340,33 @@ func patchUser(ctx *fiber.Ctx) error {
 		user.LastName = *body.LastName
 	}
 
-	if err := service.SaveUser(*user); err != nil {
+	if body.Email != nil {
+		user.Email = *body.Email
+	}
+
+	if body.EmailVerified != nil {
+		user.EmailVerified = *body.EmailVerified
+	}
+
+	if body.Picture != nil {
+		if err := verifier.VerifyURL(*body.Picture); err != nil {
+			return helper.NewHttpError(400, err.Error())
+		}
+
+		user.ProfilePicture = *body.Picture
+	}
+
+	if body.Metadata != nil {
+		json := datatypes.NewJSONType(*body.Metadata)
+		user.Metadata = &json
+	}
+
+	u := *user
+	if err := service.SaveUser(u); err != nil {
 		return err
 	}
 
-	return ctx.JSON(user)
+	return ctx.JSON(toAdminUserResponse(u))
 }
 
 func deleteUser(ctx *fiber.Ctx) error {
@@ -462,7 +466,7 @@ func searchUsers(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	return ctx.JSON(toAdminUserResponse(users))
+	return ctx.JSON(toAdminUsersResponse(users))
 }
 
 func invalidateUserSessions(ctx *fiber.Ctx) error {
@@ -486,26 +490,45 @@ func invalidateUserSessions(ctx *fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{"success": true})
 }
 
-func toAdminUserResponse(users []model.User) []UserAdminData {
+func toUserResponse(ctx *fiber.Ctx, user model.User) UserData {
+	sessions := []SessionResponse{}
+	if helper.HasPermission(ctx, scopes.ScopeReadSessions) {
+		sessions = findSessions(user.ID)
+	}
+
+	return UserData{
+		User: user,
+
+		Metadata:       user.GetMetadata(true),
+		Sessions:       sessions,
+		ProfilePicture: user.GenerateProfilePicture(),
+	}
+}
+
+func toAdminUserResponse(user model.User) UserAdminData {
+	sessions := []SessionResponse{}
+
+	for _, session := range user.Sessions {
+		sessions = append(sessions, toSessionResponse(&session))
+	}
+
+	return UserAdminData{
+		UserData: UserData{
+			User:           user,
+			Metadata:       user.GetMetadata(false),
+			ProfilePicture: user.GenerateProfilePicture(),
+			Sessions:       sessions,
+		},
+		LastLoginAt: user.LastLoginAt,
+		Suspension:  user.Suspension,
+	}
+}
+
+func toAdminUsersResponse(users []model.User) []UserAdminData {
 	data := []UserAdminData{}
 
 	for _, user := range users {
-		sessions := []SessionResponse{}
-
-		for _, session := range user.Sessions {
-			sessions = append(sessions, toSessionResponse(&session))
-		}
-
-		data = append(data, UserAdminData{
-			UserData: UserData{
-				User:           user,
-				Metadata:       user.GetMetadata(false),
-				ProfilePicture: user.GenerateProfilePicture(),
-				Sessions:       sessions,
-			},
-			LastLoginAt: user.LastLoginAt,
-			Suspension:  user.Suspension,
-		})
+		data = append(data, toAdminUserResponse(user))
 	}
 
 	return data
@@ -514,7 +537,7 @@ func toAdminUserResponse(users []model.User) []UserAdminData {
 type UserAdminData struct {
 	UserData
 
-	LastLoginAt int64             `json:"last_login_at"`
+	LastLoginAt *int64            `json:"last_login_at"`
 	Suspension  *model.Suspension `json:"suspension"`
 }
 
@@ -550,5 +573,13 @@ type UpdateUserRequest struct {
 	Username  *string `json:"username"`
 	FirstName *string `json:"first_name"`
 	LastName  *string `json:"last_name"`
-	Picture   *string `json:"profile_picture"`
+}
+
+type AdminUpdateUserRequest struct {
+	UpdateUserRequest
+
+	Picture       *string             `json:"profile_picture"`
+	EmailVerified *bool               `json:"email_verified"`
+	Email         *string             `json:"email"`
+	Metadata      *model.UserMetadata `json:"metadata"`
 }

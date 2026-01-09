@@ -116,8 +116,8 @@ func (store *UserStore) SearchUsers(query string, page int, size int) ([]model.U
 }
 
 func (store *UserStore) SaveUser(user model.User) error {
-	_, err := gorm.G[model.User](store.DB).Where("id = ?", user.ID).Updates(context.Background(), user)
-	return err
+	//todo: switch to generics api
+	return store.DB.Save(&user).Error
 }
 
 func (store *UserStore) DeleteUser(userId string) error {

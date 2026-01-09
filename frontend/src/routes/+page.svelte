@@ -32,18 +32,15 @@
 		if (!browser) return
 
 		data = await star.getSelf()
+		if (data == null) {
+			goto('/login')
+		}
 
 		username = data!.username
 		firstName = data!.first_name
 		lastName = data!.last_name
 
 		logins = await star.getLogins(star.APP_ID)
-
-		console.log(star.getLoginUrl(star.APP_ID, 'discord'))
-
-		if (data == null) {
-			goto('/login')
-		}
 	})
 
 	const removeSession = (session: star.Session) => {

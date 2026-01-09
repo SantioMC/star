@@ -13,11 +13,13 @@ const (
 	ClaimRoles Claim = "star:roles"
 	// Includes the 'picture' claim (specified profile picture, or the generated default)
 	ClaimPicture Claim = "star:picture"
+	// Includes the 'meta' claim (the user's public metadata in star)
+	ClaimMetadata Claim = "star:metadata"
 )
 
 // Supported claims by Star
 var SupportedClaims []Claim = []Claim{
-	ClaimEmail, ClaimGroups, ClaimRoles, ClaimProfile,
+	ClaimEmail, ClaimGroups, ClaimRoles, ClaimProfile, ClaimMetadata,
 }
 
 // Additional claims that can be requested for userinfo

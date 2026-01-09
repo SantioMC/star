@@ -38,6 +38,9 @@ var (
 
 	// Admin role scopes, must be granted
 	ScopeAdminReadRoles Scope = NewScope("star:admin:read:roles", "Permits reading all roles")
+	ScopeAdminModifyRoles Scope = NewScope("star:admin:update:roles", "Permits modifying existing roles")
+	ScopeAdminCreateRoles Scope = NewScope("star:admin:create:roles", "Permits creating new roles")
+	ScopeAdminDeleteRoles Scope = NewScope("star:admin:delete:roles", "Permits deleting roles")
 
 	// Admin app scopes, must be granted
 	ScopeAdminReadApps Scope = NewScope("star:admin:read:apps", "Permits viewing all application information")
@@ -52,7 +55,7 @@ var DefaultScopes = []Scope{
 	ScopeReadMetrics,
 	ScopeAdminAll,
 	ScopeAdminReadUsers, ScopeAdminModifyUsers, ScopeAdminDeleteUsers,
-	ScopeAdminReadRoles,
+	ScopeAdminReadRoles, ScopeAdminModifyRoles, ScopeAdminCreateRoles, ScopeAdminDeleteRoles,
 	ScopeAdminReadApps, ScopeAdminModifyApps, ScopeAdminCreateApps, ScopeAdminDeleteApps,
 }
 

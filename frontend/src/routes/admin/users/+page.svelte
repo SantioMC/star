@@ -90,7 +90,13 @@
 							<Badge variant='outline' class='border-red-400/60 text-red-400'>Suspended</Badge>
 						{/if}
 					</Table.Cell>
-					<Table.Cell>{relativeTime(user.last_login_at)} ago</Table.Cell>
+					<Table.Cell>
+						{#if user.last_login_at}
+							{relativeTime(user.last_login_at)} ago
+						{:else}
+							Never logged in
+						{/if}
+					</Table.Cell>
 					<Table.Cell>{relativeTime(user.created_at)} ago</Table.Cell>
 					<Table.Cell class='w-0'><Button variant='secondary' class='ml-auto' size='sm' onclick={() => goto(`/admin/users/${user.id}`)}>Manage</Button></Table.Cell>
 				</Table.Row>

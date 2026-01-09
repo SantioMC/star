@@ -22,7 +22,7 @@
 		event.preventDefault();
 		error = '';
 		
-		const data = await star.login(username, password);
+		const data = await star.login(star.APP_ID, username, password);
 		
 		if ('error' in data) {
 			error = data.message 

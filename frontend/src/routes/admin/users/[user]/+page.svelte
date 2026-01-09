@@ -41,6 +41,7 @@
 	let user = $state<star.AdminUser|null>(null);
 	let suspender = $state<star.AdminUser|null>(null);
 
+	let metadata = $derived(!user ? '' : JSON.stringify(user!.metadata, null, 4).trim())
 	let sessions = $derived(user?.sessions?.toSorted((a, b) => b.created_at - a.created_at) ?? [] as star.Session[])
 
 	onMount(async () => {
@@ -131,9 +132,45 @@
 		toast.success('You have invalidated the session')
 	}
 
+	const invalidateAllSessions = async () => {
+		const result = await star.invalidateUserSessions(user!.id)
+
+		if ('error' in result) {
+			toast.error(result.message)
+		} else {
+			user!.sessions = user!.sessions.map((session) => {
+				session.expired = true
+				session.expires_at = Date.now() // not perfect, but this is perfectly fine for UI
+				return session;
+			});
+			
+			toast.success('Successfully invalidated all user sessions')
+		}
+	}
+
 	const getAccount = (kind: string) => {
 		// todo: supply kind
 		return user!.accounts.find(acc => acc.id == kind);
+	}
+
+	const updateMetadata = async () => {
+		let data: star.Metadata | null; 
+		try {
+			data = JSON.parse(metadata) as star.Metadata	
+		} catch {
+			return toast.error("invalid json for metadata")
+		}
+
+		const result = await star.modifyUser(user!.id, {
+			metadata: data
+		})
+
+		if ('error' in result) {
+			return toast.error(result.message)
+		} 
+		
+		metadata = JSON.stringify(result.metadata, null, 4).trim()
+		toast.success('Successfully updated metadata')
 	}
 </script>
 
@@ -171,6 +208,10 @@
 						<span>
 							<Icon icon='calendar-event' />
 							Joined {dateFormatter.format(new Date(user.created_at * 1000))}
+						</span>
+						<span>
+							<Icon icon='lock-open' />
+							Last login {dateFormatter.format(new Date(user.last_login_at * 1000))}
 						</span>
 					</div>
 					{#if user.roles.length > 0}
@@ -328,6 +369,19 @@
 				</Card.Footer>
 			</Card.Root>
 
+			<Card.Root class='min-w-1/3 w-full md:w-auto'>
+				<Card.CardHeader>
+					<Card.Title><Icon icon='code' /> User Metadata</Card.Title>
+					<Card.Description>View and modify the custom metadata attached to this user. The metadata must be valid JSON. The <code>public</code> key is visible to users, and is what's set in the <code>meta</code> claim in the access token.</Card.Description>
+				</Card.CardHeader>
+				<Card.Content>
+					<textarea class='w-full! p-4! resize-none' rows={metadata.split('\n').length} bind:value={metadata}></textarea>
+				</Card.Content>
+				<Card.Footer>
+					<Button class='ml-auto' onclick={updateMetadata}>Update</Button>
+				</Card.Footer>
+			</Card.Root>
+
 			{#if logins && logins.providers.length > 0}
 				<Card.Root class='min-w-1/3 w-full md:w-auto'>
 					<Card.CardHeader>
@@ -361,7 +415,7 @@
 				</Card.Content>
 				{#if sessions.length != 0}
 					<Card.Footer>
-						<Button class='ml-auto' variant='destructive'>Sign out all sessions</Button>
+						<Button class='ml-auto' variant='destructive' onclick={invalidateAllSessions}>Sign out all sessions</Button>
 					</Card.Footer>
 				{/if}
 			</Card.Root>

@@ -38,7 +38,7 @@ func GetUserClaims(ctx *fiber.Ctx) (*claims.UserJWT, error) {
 
 	claims, err := crypto.VerifyJWT(token, &signingKey.PublicKey)
 	if err != nil {
-		slog.Warn("client attempted to provide unverified jwt", "token", token, "err", err)
+		slog.Warn("client attempted to provide unverified jwt", "err", err)
 		return nil, NewHttpError(401, "Unauthorized")
 	}
 

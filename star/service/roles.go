@@ -5,14 +5,20 @@ import (
 
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/state"
+	"github.com/tubblelive/star/star/util"
+	"gorm.io/datatypes"
 )
 
 func GetRoleByID(id string) (*model.Role, error) {
 	return state.Database.RoleStore.GetRoleByID(id)
 }
 
-func CreateRole(name string) (*model.Role, error) {
+func CreateRole(name string, permissions *[]string) (*model.Role, error) {
 	role := model.NewRole(name)
+
+	if permissions != nil {
+		role.Permissions = datatypes.NewJSONType(util.Unique(*permissions))
+	}
 	
 	if err := state.Database.RoleStore.SaveRole(&role); err != nil {
 		return nil, err
@@ -29,8 +35,21 @@ func GetAllRoles() ([]model.Role, error) {
 	return state.Database.RoleStore.GetAllRoles()
 }
 
+func SetPermissions(role string, permissions []string) error {
+	return state.Database.RoleStore.SetPermissions(role, util.Unique(permissions))
+}
+
+func RenameRole(role string, name string) error {
+	return state.Database.RoleStore.RenameRole(role, name)
+}
+
+func DeleteRole(role string) error {
+	return state.Database.RoleStore.DeleteRole(role)
+}
+
 func CreateSuperUserRole() (*model.Role, error) {
 	role := model.NewRole("superuser")
+	role.Description = "The default superuser role, permitting all actions"
 	role.SuperRole = true
 
 	if err := state.Database.RoleStore.SaveRole(&role); err != nil {
@@ -42,6 +61,7 @@ func CreateSuperUserRole() (*model.Role, error) {
 
 func CreateDefaultRole() (*model.Role, error) {
 	role := model.NewRole("default")
+	role.Description = "The default role, given to all users automatically"
 	role.Global = true
 
 	if err := state.Database.RoleStore.SaveRole(&role); err != nil {

@@ -45,6 +45,11 @@ func (store SessionStore) UpdateSessionFingerprint(id string, fingerprint *strin
 	return err
 }
 
+func (store SessionStore) UpdateSessionToken(id string, refreshToken string) error {
+	_, err := gorm.G[model.Session](store.DB).Where("id = ?", id).Update(context.Background(), "refresh_token", refreshToken)
+	return err
+}
+
 func (store SessionStore) InvalidateAllSessions(userId string) error {
 	_, err := gorm.G[model.Session](store.DB).Where("user_id = ?", userId).Update(context.Background(), "invalidated_at", time.Now().Unix())
 	return err

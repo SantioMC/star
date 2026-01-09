@@ -32,16 +32,18 @@ type Session struct {
 }
 
 func NewSession(duration time.Duration, claims []oidc.Claim) Session {
-	token := crypto.CreateRandString(48)
-
 	return Session{
 		BaseModel: BaseModel{
 			ID: CreateTypedId("ses", 12),
 		},
-		Token:    token,
+		Token:    NewSessionToken(),
 		Duration: duration,
 		Claims:   datatypes.NewJSONType(claims),
 	}
+}
+
+func NewSessionToken() string {
+	return crypto.CreateRandString(48)
 }
 
 func (s *Session) ExpiresAt() int64 {

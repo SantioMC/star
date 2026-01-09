@@ -5,6 +5,7 @@ import (
 
 	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type RoleStore struct {
@@ -26,7 +27,28 @@ func (store *RoleStore) SaveRole(role *model.Role) error {
 }
 
 func (store *RoleStore) GetAllRoles() ([]model.Role, error) {
-	return gorm.G[model.Role](store.DB).Find(context.Background())
+	var roles []model.Role
+	
+	if err := store.DB.Preload(clause.Associations).Find(&roles).Error; err != nil {
+		return []model.Role{}, err
+	}
+
+	return roles, nil
+}
+
+func (store *RoleStore) SetPermissions(role string, permissions []string) error {
+	_, err := gorm.G[model.Role](store.DB).Where("id = ?", role).Update(context.Background(), "permissions", permissions)
+	return err
+}
+
+func (store *RoleStore) RenameRole(role string, name string) error {
+	_, err := gorm.G[model.Role](store.DB).Where("id = ?", role).Update(context.Background(), "name", name)
+	return err
+}
+
+func (store *RoleStore) DeleteRole(role string) error {
+	_, err := gorm.G[model.Role](store.DB).Where("id = ?", role).Delete(context.Background())
+	return err
 }
 
 func (store *RoleStore) GetDefaultRoles() ([]model.Role, error) {
