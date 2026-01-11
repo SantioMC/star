@@ -39,8 +39,8 @@
 </script>
 
 <div class="h-full w-full flex items-center justify-center">
-	<form onsubmit={login}>
-		<Card.Root class="-my-4 w-full max-w-sm">
+	<form onsubmit={login} class='w-full sm:w-fit'>
+		<Card.Root class="-my-4 w-full sm:w-sm">
 			<Card.Header>
 				<Card.Title>Login to your account</Card.Title>
 				<Card.Description>

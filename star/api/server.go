@@ -82,6 +82,7 @@ func StartAPIServer(server *state.Server) *fiber.App {
 
 	global.Get("/healthz", route.Health)
 	global.Route("/.well-known", route.WellKnownRouter)
+	global.Route("/oauth", route.OAuthRouter)
 
 	// API
 	api := app.Group("/api", limiter.New(limiter.Config{
@@ -93,6 +94,7 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	}))
 	
 	api.Route("/", route.LoginRouter)
+
 	api.Route("/user", route.UserRouter)
 	api.Route("/session", route.SessionRouter)
 	api.Route("/role", route.RoleRouter)

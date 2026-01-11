@@ -47,7 +47,7 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, bool, 
 	db.AutoMigrate(&model.Application{})
 	db.AutoMigrate(&model.AuthRequest{})
 	db.AutoMigrate(&model.Keypair{})
-	db.AutoMigrate(&model.Provider{})
+	db.AutoMigrate(&model.OAuthProvider{})
 	db.AutoMigrate(&model.LoginState{})
 	db.AutoMigrate(&model.Suspension{})
 	db.AutoMigrate(&model.Permission{})

@@ -52,7 +52,7 @@ func StartServer(config *config.Config) {
 
 	stopTicker := database.StartTicker(db)
 	go api.StartAPIServer(server)
-	
+
 	<-interrupt
 
 	println("")

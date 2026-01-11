@@ -171,7 +171,7 @@ func loginWithProvider(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "Invalid provider provided")
 	}
 
-	userAgent := ctx.Query("ua", "")
+	userAgent := ctx.Get(fiber.HeaderUserAgent)
 	address := ctx.IP()
 
 	code, err := service.CreateState(app, userAgent, address)

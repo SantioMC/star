@@ -12,14 +12,14 @@
 	import { Spinner } from '@/components/ui/spinner';
 	import { dateFormatter, titleCase } from '@/utils';
 	import { toast } from 'svelte-sonner';
-	import { } from './../star.ts';
+	import { } from '../star.ts';
 
 	const { 
 		provider,
 		modifiable,
 		ondelete
 	}: {
-		provider: star.AdminProvider
+		provider: star.OAuthProvider
 		modifiable?: boolean
 		ondelete?: () => void
 	} = $props()
@@ -27,7 +27,7 @@
 	let deleteModal = $state<Modal>()
 
 	let loading = $state<boolean>(false);
-	let secret = $derived(provider.secret)
+	let secret = $derived(provider.client_secret)
 
 	const deleteProvider = async () => {
 		loading = true;
@@ -59,7 +59,7 @@
 			<Icon icon="key" class="text-4xl" />
 			<div class="flex flex-col gap-0.5">
 				<div class="flex flex-row items-center">
-					{titleCase(provider.type)}
+					OAuth2
 					<Badge
 						variant="outline"
 						class="border-emerald-600/60 text-emerald-500 mx-2"
@@ -101,23 +101,28 @@
 		<div
 			class="flex flex-col gap-4 justify-center items-baseline flex-1"
 		>
-			<Categorizied title='Client Secret'>
-				<Hidden content={secret} />
+			<Categorizied title='Client ID'>
+				<code class='w-auto! gap-2 flex! items-center'>
+					<Icon icon='tag' />{provider.client_id}<Copy content={provider.id} class='ml-auto' />
+				</code>
 			</Categorizied>
+			{#if provider.application_type == 'confidential'}
+				<Categorizied title='Client Secret'>
+					<Hidden content={secret} />
+				</Categorizied>
+			{:else}
+				<Categorizied title='Client Secret'>
+					<span class='text-primary/60 max-w-3/4 select-none'>
+						This is not a confidential application, so it has no client secret.
+					</span>
+				</Categorizied>
+			{/if}
 			<Categorizied title='Application Type'>
 				<Badge
 					variant="outline"
 					class="border-blue-400/60 text-blue-300"
 				>
 					{titleCase(provider.application_type)}
-				</Badge>
-			</Categorizied>
-			<Categorizied title='Auth Method'>
-				<Badge
-					variant="outline"
-					class="border-purple-400/60 text-purple-300"
-				>
-					{provider.auth_method.toLowerCase()}
 				</Badge>
 			</Categorizied>
 			<Categorizied title='Access Token Type'>

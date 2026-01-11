@@ -17,11 +17,11 @@ type Application struct {
 	Callback string `json:"callback"`
 	Internal bool   `json:"internal"`
 
-	RotateRefreshToken   bool  `json:"rotate_refresh_token"`
 	TokenDuration        int64 `json:"token_duration"`
 	RefreshTokenDuration int64 `json:"refresh_token_duration"`
 
-	Providers []Provider `json:"providers"`
+	OauthProvider   *OAuthProvider `json:"oauth_provider"`
+	OauthProviderID *string        `json:"-"`
 }
 
 func NewApplication(name string) Application {
@@ -39,10 +39,7 @@ func NewApplication(name string) Application {
 		Internal: false,
 
 		// Base Settings
-		RotateRefreshToken:   true,
 		TokenDuration:        int64(DefaultAccessTokenDuration.Seconds()),
 		RefreshTokenDuration: int64(DefaultRefreshTokenDuration.Seconds()),
-
-		Providers: []Provider{},
 	}
 }

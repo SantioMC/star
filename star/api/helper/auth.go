@@ -1,7 +1,10 @@
 package helper
 
 import (
+	"crypto/subtle"
+	"encoding/base64"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,7 +15,7 @@ import (
 )
 
 func getBearerToken(ctx *fiber.Ctx) (string, error) {
-	authHeader := ctx.Get("Authorization")
+	authHeader := ctx.Get(fiber.HeaderAuthorization)
 	if authHeader == "" {
 		return "", NewHttpError(401, "Unauthorized")
 	}
@@ -75,4 +78,22 @@ func EnforcePermission(ctx *fiber.Ctx, permission scopes.Scope) error {
 	}
 
 	return nil
+}
+
+func IsBasicAuth(ctx *fiber.Ctx, username string, password string) bool {
+	authHeader := ctx.Get(fiber.HeaderAuthorization)
+	if authHeader == "" {
+		return false
+	}
+
+	data := strings.Split(authHeader, " ")
+	if len(data) < 2 || strings.ToLower(data[0]) != "basic" {
+		return false
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(
+		[]byte(url.QueryEscape(username) + ":" + url.QueryEscape(password)),
+	)
+
+	return subtle.ConstantTimeCompare([]byte(encoded), []byte(data[1])) == 1
 }

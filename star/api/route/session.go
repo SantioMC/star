@@ -56,6 +56,10 @@ func getSession(ctx *fiber.Ctx) error {
 		return err
 	}
 
+	if session == nil || session.RotatedAt != nil {
+		return helper.NewHttpError(404, "session not found")
+	}
+
 	return ctx.JSON(toSessionResponse(session))
 }
 

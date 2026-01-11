@@ -9,7 +9,7 @@
 	import Copy from '@/components/copy.svelte';
 	import Icon from '@/components/icon.svelte';
 	import Modal from '@/components/modal.svelte';
-	import Provider from '@/components/provider.svelte';
+	import OauthProvider from '@/components/oauth_provider.svelte';
 	import Sidebar from '@/components/sidebar.svelte';
 	import { Badge } from '@/components/ui/badge';
 	import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@
 	let permissions = $state<star.Permission[]>([])
 
 	let loading = $state<boolean>(false);
+	let hasProviders = $state<boolean>(false);
 	let callbackUrl = $state<string>('');
 
 	let createProviderModal = $state<Modal>()
@@ -49,6 +50,7 @@
 		if (app == null) return goto('/admin/apps');
 
 		permissions = await star.getPermissions(app.id);
+		hasProviders = !!app.oauth_provider
 	});
 
 	const deleteApp = async () => {
@@ -89,13 +91,8 @@
 		if ('error' in result) {
 			toast.error(result.message)
 		} else {
-			app!.providers.push(result)
-			createProviderModal?.close()
+			location.reload()
 		}
-	}
-
-	const removeProvider = (provider: star.AdminProvider) => {
-		app!.providers = app!.providers.filter(p => p.id != provider.id);
 	}
 </script>
 
@@ -294,7 +291,7 @@
 				Providers
 			</h3>
 
-			{#if app.providers.length == 0}
+			{#if !hasProviders}
 				<div class="flex flex-col gap-4 items-center w-full my-32">
 					<span class="text-xl font-semibold leading-2">No Providers</span>
 					<span class="text-primary/60 leading-2">
@@ -306,9 +303,9 @@
 				</div>
 			{/if}
 
-			{#each app.providers as provider (provider.id)}
-				<Provider modifiable={canModify} ondelete={() => removeProvider(provider)} {provider} />
-			{/each}
+			{#if app.oauth_provider}
+				<OauthProvider modifiable={canModify} provider={app.oauth_provider} ondelete={() => app!.oauth_provider = null} />
+			{/if}
 		</div>
 	{/if}
 </Sidebar>
@@ -318,7 +315,7 @@
 	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Create a new provider for this application, allowing the app to authenticate against star using an authorization protocol</h2>
 
 	<div class="flex flex-row gap-4 flex-wrap my-4">
-		<CardChoice image={oauth2} class='w-[calc(33%-0.75rem)] h-48' recommended name='oauth2' onclick={() => createProvider('oauth2')} />
+		<CardChoice image={oauth2} class='w-[calc(33%-0.75rem)] h-48' recommended name='oauth2' onclick={() => createProvider('oauth')} />
 	</div>
 </Modal>
 

@@ -33,6 +33,7 @@
 
 		data = await star.getSelf()
 		if (data == null) {
+			console.error('Failed to self user data, token might have expired')
 			goto('/login')
 		}
 

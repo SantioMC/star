@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/tubblelive/star/star/database/model"
@@ -55,6 +54,13 @@ func CreateStarApp(url string) (*model.Application, error) {
 	// Set to `/callback` if no url is specified
 	app.Callback = strings.TrimSuffix(app.Url, "/") + "/callback"
 
+	// Set up our oidc provider
+	provider := model.NewOAuthProvider(&app)
+	provider.ApplicationType = model.AppTypePublic
+	
+	app.OauthProvider = &provider
+	app.OauthProviderID = &provider.ID
+
 	err := state.Database.AppStore.SaveApp(&app)
 	if err != nil {
 		return nil, err
@@ -71,23 +77,22 @@ func UpdateApp(app *model.Application) error {
 	return state.Database.AppStore.SaveApp(app)
 }
 
-func GetAppProviderByID(id string) (*model.Provider, error) {
+func GetAppProviderByID(id string) (*model.OAuthProvider, error) {
 	provider, err := state.Database.AppStore.GetProviderByID(id)
 	if err != nil {
-		return &model.Provider{}, err
+		return &model.OAuthProvider{}, err
 	}
 	
 	return provider, nil
 }
 
-func CreateAppProvider(app *model.Application, kind model.ProviderKind) (model.Provider, error) {
-	if (!slices.Contains(model.AllProviderKinds, kind)) {
-		return model.Provider{}, fmt.Errorf("unknown provider kind")
-	}
-	
-	provider := model.NewProvider(app, kind)
-	if err := state.Database.AppStore.SaveProvider(&provider); err != nil {
-		return model.Provider{}, err
+func CreateAppOAuthProvider(app *model.Application) (model.OAuthProvider, error) {
+	provider := model.NewOAuthProvider(app)
+	app.OauthProvider = &provider
+	app.OauthProviderID = &provider.ID
+
+	if err := state.Database.AppStore.SaveApp(app); err != nil {
+		return provider, err
 	}
 
 	return provider, nil
@@ -97,7 +102,11 @@ func DeleteAppProvider(id string) error {
 	return state.Database.AppStore.DeleteProvider(id)
 }
 
-func RotateAppProvider(provider model.Provider) error {
+func RotateAppProvider(provider model.OAuthProvider) error {
 	provider.RotateSecret()
+	return state.Database.AppStore.SaveProvider(&provider)
+}
+
+func SaveProvider(provider model.OAuthProvider) error {
 	return state.Database.AppStore.SaveProvider(&provider)
 }

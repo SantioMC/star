@@ -1,11 +1,11 @@
 import { browser } from "$app/environment";
-import type { StarPermission } from "@/star";
+import * as star from "$lib/star";
 import { get, writable, type Writable } from "svelte/store";
 
 const persistentWritable = (key: string): Writable<string|null> => {
-	if (!browser) return writable<string|null>(null);
+	if (!browser) return writable<string | null>(null);
 
-	const store = writable<string|null>(localStorage.getItem(key))
+	const store = writable<string | null>(localStorage.getItem(key))
 	store.subscribe(newValue => {
 		if (!newValue) localStorage.removeItem(key)
 		else localStorage.setItem(key, newValue)
@@ -41,7 +41,7 @@ export const getJWT = (accessToken: string | null = get(token)): JWTDetails | nu
 }
 
 // amazing hack to take in any string, but also still have intellisense on the arg, idek
-export const hasPermission = (permission: StarPermission | (string & {})) => {
+export const hasPermission = (permission: star.StarPermission | (string & {})) => {
 	const jwt = getJWT();
 	if (!jwt) return false;
 
@@ -60,12 +60,26 @@ export const hasPermission = (permission: StarPermission | (string & {})) => {
 	return false;
 }
 
-token.subscribe(newValue => {
-	const data = getJWT(newValue)
-	if (!data) return
+export const refreshAccessToken = async (): Promise<string | null> => {
+	const value = get(refreshToken)
+	if (!value) {
+		console.error("No refresh token found, unable to refresh access token");
+		return null
+	}
 
-	// todo: refresh token
-})
+	const result = await star.refreshToken(value)
+	if ('error' in result) {
+		console.error(`Failed to refresh access token (${result.error}): ${result.error_description ?? 'No description provided'}`)
+		return null
+	}
+
+	token.set(result.access_token)
+	if (result.refresh_token) {
+		refreshToken.set(result.refresh_token)
+	}
+
+	return result.access_token
+}
 
 export interface JWTDetails {
 	sub: string

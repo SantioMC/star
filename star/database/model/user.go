@@ -67,6 +67,16 @@ func (u *User) GetMetadata(public bool) UserMetadata {
 	return metadata
 }
 
+func (u *User) GetInternalAccount() *Account {
+	for _, account := range u.Accounts {
+		if account.ProviderID == nil {
+			return &account
+		}
+	}
+
+	return nil
+}
+
 var emailAlphabet = []byte("abcdefghjklnoprstvwxyz")
 
 func createEmailCode() string {

@@ -120,7 +120,7 @@
 
 		<div class='flex items-center gap-2 justify-end mt-6'>
 			<Button variant='secondary' onclick={() => createAppModal?.close()}>Cancel</Button>
-			<Button disabled={loading} onclick={createApp}>
+			<Button disabled={loading} onclick={createApp} type='submit'>
 				{#if loading}
 					<Spinner />
 				{/if}

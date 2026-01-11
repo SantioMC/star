@@ -29,6 +29,7 @@ type Session struct {
 	Duration time.Duration
 
 	InvalidatedAt *int64
+	RotatedAt     *int64
 }
 
 func NewSession(duration time.Duration, claims []oidc.Claim) Session {
@@ -39,6 +40,27 @@ func NewSession(duration time.Duration, claims []oidc.Claim) Session {
 		Token:    NewSessionToken(),
 		Duration: duration,
 		Claims:   datatypes.NewJSONType(claims),
+	}
+}
+
+func CopySession(previous Session) Session {
+	return Session{
+		BaseModel: BaseModel{
+			ID: CreateTypedId("ses", 12),
+		},
+
+		Token: NewSessionToken(),
+
+		UserID:        previous.UserID,
+		User:          previous.User,
+		ApplicationID: previous.ApplicationID,
+		Application:   previous.Application,
+
+		Duration:    previous.Duration,
+		Claims:      previous.Claims,
+		Fingerprint: previous.Fingerprint,
+		UserAgent:   previous.UserAgent,
+		Address:     previous.Address,
 	}
 }
 

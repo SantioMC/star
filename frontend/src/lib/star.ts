@@ -1,12 +1,12 @@
 // Super simple library for working with the Star API
 
 import { env } from "$env/dynamic/public";
-import { token } from "@/index";
+import { getJWT, refreshAccessToken, token } from "@/index";
 import { Thumbmark } from '@thumbmarkjs/thumbmarkjs';
 import ky, { HTTPError, type KyRequest } from "ky";
 import { get } from "svelte/store";
 
-export const API_URL = env.PUBLIC_API_URL ?? "/api";
+export const API_URL = env.PUBLIC_API_URL ?? '/';
 export const APP_ID = "star";
 
 export type StarPermission = "star:*"
@@ -52,29 +52,48 @@ export const api = ky.extend({
 	}
 })
 
-const getAuth = async () => get(token)
+const getAuth = async () => {
+	const value = get(token)
+	if (!value) return null
+
+	console.log(`value beforehand is`, token)
+
+	const data = getJWT(value)
+	if (!data) return null
+
+	// If our token is expired or will be in 5 seconds, we'll refresh it
+	if (Math.floor(Date.now() / 1000) + 5 > data.exp) {
+		const a = await refreshAccessToken()
+		console.log(`value now is`, token)
+		return a
+	}
+
+	return value
+}
 
 const thumbmark = new Thumbmark({
 	logging: false,
 })
 
-const orError = async (e: Error): Promise<StarError> => {
+const orTypedError = async <E>(e: Error): Promise<E> => {
 	if (!(e instanceof HTTPError)) {
 		throw new Error("ky didn't provide an http error??")
 	}
 
-	return e.response.json<StarError>()
+	return e.response.json<E>()
 }
 
+const orError = async (e: Error) => orTypedError<StarError>(e)
+
 export const getLogins = async (app: string) => {
-	return api.get(`app/${encodeURIComponent(app)}/logins`).json<AppLogins>()
+	return api.get(`api/app/${encodeURIComponent(app)}/logins`).json<AppLogins>()
 		.catch(_ => null)
 }
 
 export const login = async (app: string, username: string, password: string) => {
 	const fingerprint = await thumbmark.get() as ThumbmarkResult
 
-	return api.post(`app/${encodeURIComponent(app)}/login`, {
+	return api.post(`api/app/${encodeURIComponent(app)}/login`, {
 		json: {
 			username,
 			password,
@@ -84,8 +103,21 @@ export const login = async (app: string, username: string, password: string) => 
 	}).json<LoginResponse>().catch(orError)
 }
 
+export const refreshToken = async (refreshToken: string) => {
+	const fingerprint = await thumbmark.get() as ThumbmarkResult
+
+	const searchParams = new URLSearchParams();
+	searchParams.set('grant_type', `refresh_token`);
+	searchParams.set('refresh_token', refreshToken);
+	searchParams.set('fp', fingerprint.thumbmark);
+
+	return ky.post(`${API_URL}/oauth/token`, {
+		body: searchParams
+	}).json<OAuthTokenResponse>().catch(e => orTypedError<OAuthTokenError>(e))
+}
+
 export const getLoginUrl = (app: string, provider: string) => {
-	return `${API_URL}/app/${encodeURIComponent(app)}/login/${encodeURIComponent(provider)}?ua=${encodeURIComponent(navigator.userAgent)}`
+	return `${API_URL}/api/app/${encodeURIComponent(app)}/login/${encodeURIComponent(provider)}`
 }
 
 export const loginWithProvider = (provider: string) => {
@@ -93,64 +125,64 @@ export const loginWithProvider = (provider: string) => {
 }
 
 export const getSelf = async () => {
-	return api.get('user/me').json<User>().catch(_ => null)
+	return api.get('api/user/me').json<User>().catch(_ => null)
 }
 
 export const changePassword = async (currentPassword: string, newPassword: string) => {
-	return api.post(`user/me/password`, {
+	return api.post(`api/user/me/password`, {
 		json: { current_password: currentPassword, new_password: newPassword }
 	}).json<{ success: boolean }>().catch(orError)
 }
 
 export const updateUser = (changes: UserChanges) => {
-	return api.patch(`user/me`, {
+	return api.patch(`api/user/me`, {
 		json: changes
 	}).json<User>().catch(orError)
 }
 
 export const getSessions = async () => {
-	return api.get('session').json<Session[]>().catch(_ => [] as Session[])
+	return api.get('api/session').json<Session[]>().catch(_ => [] as Session[])
 }
 
 export const getSession = async (id: string) => {
-	return api.get(`session/${encodeURIComponent(id)}`).json<Session>().catch(_ => null)
+	return api.get(`api/session/${encodeURIComponent(id)}`).json<Session>().catch(_ => null)
 }
 
 export const invalidateSession = async (id: string) => {
-	return api.delete(`session/${encodeURIComponent(id)}`).json<{ success: boolean }>().catch(orError)
+	return api.delete(`api/session/${encodeURIComponent(id)}`).json<{ success: boolean }>().catch(orError)
 }
 
 export const invalidateAllSessions = async () => {
-	return api.delete(`session`).json<{ success: boolean }>().catch(orError)
+	return api.delete(`api/session`).json<{ success: boolean }>().catch(orError)
 }
 
 export const invalidateUserSessions = async (userId: string) => {
-	return api.post(`user/${encodeURIComponent(userId)}/invalidate`).json<{ success: boolean }>().catch(orError)
+	return api.post(`api/user/${encodeURIComponent(userId)}/invalidate`).json<{ success: boolean }>().catch(orError)
 }
 
 export const getMetrics = async () => {
-	return api.get(`metrics`).json<Metrics>().catch(_ => null)
+	return api.get(`api/metrics`).json<Metrics>().catch(_ => null)
 }
 
 export const getAllUsers = async (page: number = 1) => {
-	return api.get(`user?page=${encodeURIComponent(page)}`).json<AdminUser[]>().catch(_ => [] as AdminUser[])
+	return api.get(`api/user?page=${encodeURIComponent(page)}`).json<AdminUser[]>().catch(_ => [] as AdminUser[])
 }
 
 export const searchUsers = async (query: string, page: number = 1) => {
-	return api.get(`user/search?query=${encodeURIComponent(query)}&page=${encodeURIComponent(page)}`).json<AdminUser[]>()
+	return api.get(`api/user/search?query=${encodeURIComponent(query)}&page=${encodeURIComponent(page)}`).json<AdminUser[]>()
 		.catch(_ => [] as AdminUser[])
 }
 
 export const getUser = async (id: string) => {
-	return api.get(`user/${encodeURIComponent(id)}`).json<AdminUser>().catch(_ => null)
+	return api.get(`api/user/${encodeURIComponent(id)}`).json<AdminUser>().catch(_ => null)
 }
 
 export const deleteUser = async (id: string) => {
-	return api.delete(`user/${encodeURIComponent(id)}`).json<{ success: boolean }>().catch(orError)
+	return api.delete(`api/user/${encodeURIComponent(id)}`).json<{ success: boolean }>().catch(orError)
 }
 
 export const suspendUser = async (id: string, reason: string, duration: number | null = null) => {
-	return api.post(`user/${encodeURIComponent(id)}/suspend`, {
+	return api.post(`api/user/${encodeURIComponent(id)}/suspend`, {
 		json: {
 			reason,
 			duration
@@ -159,11 +191,11 @@ export const suspendUser = async (id: string, reason: string, duration: number |
 }
 
 export const unsuspendUser = async (id: string) => {
-	return api.post(`user/${encodeURIComponent(id)}/unsuspend`).json<{ success: boolean }>().catch(orError)
+	return api.post(`api/user/${encodeURIComponent(id)}/unsuspend`).json<{ success: boolean }>().catch(orError)
 }
 
 export const forceChangePassword = async (user: string, newPassword: string) => {
-	return api.post(`user/${encodeURIComponent(user)}/password`, {
+	return api.post(`api/user/${encodeURIComponent(user)}/password`, {
 		json: {
 			password: newPassword
 		}
@@ -171,62 +203,62 @@ export const forceChangePassword = async (user: string, newPassword: string) => 
 }
 
 export const modifyUser = (user: string, changes: AdminUserChanges) => {
-	return api.patch(`user/${encodeURIComponent(user)}`, {
+	return api.patch(`api/user/${encodeURIComponent(user)}`, {
 		json: changes
 	}).json<User>().catch(orError)
 }
 
 export const getAllApps = async () => {
-	return api.get(`app`).json<AdminApplication[]>().catch(_ => [] as any[])
+	return api.get(`api/app`).json<AdminApplication[]>().catch(_ => [] as any[])
 }
 
 export const getApplication = async (id: string) => {
-	return api.get(`app/${encodeURIComponent(id)}`).json<AdminApplication>().catch(_ => null)
+	return api.get(`api/app/${encodeURIComponent(id)}`).json<AdminApplication>().catch(_ => null)
 }
 
 export const createApplication = async (data: CreateAppRequest) => {
-	return api.post(`app`, { json: data }).json<AdminApplication>().catch(orError)
+	return api.post(`api/app`, { json: data }).json<AdminApplication>().catch(orError)
 }
 
 export const deleteApplication = async (app: string) => {
-	return api.delete(`app/${encodeURIComponent(app)}`).json<{ success: boolean }>().catch(orError)
+	return api.delete(`api/app/${encodeURIComponent(app)}`).json<{ success: boolean }>().catch(orError)
 }
 
 export const updateApplication = async (app: string, changes: AppChanges) => {
-	return api.patch(`app/${encodeURIComponent(app)}`, { json: changes }).json<AdminApplication>().catch(orError)
+	return api.patch(`api/app/${encodeURIComponent(app)}`, { json: changes }).json<AdminApplication>().catch(orError)
 }
 
 export const createProvider = async (app: string, kind: string) => {
-	return api.post(`app/${encodeURIComponent(app)}/provider`, { json: { kind } }).json<AdminProvider>().catch(orError)
+	return api.post(`api/app/${encodeURIComponent(app)}/provider`, { json: { kind } }).json<OAuthProvider>().catch(orError)
 }
 
 export const deleteProvider = async (app: string, provider: string) => {
-	return api.delete(`app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}`).json<{ success: boolean }>().catch(orError)
+	return api.delete(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}`).json<{ success: boolean }>().catch(orError)
 }
 
 export const rotateProvider = async (app: string, provider: string) => {
-	return api.post(`app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/rotate`).json<{ secret: string }>().catch(orError)
+	return api.post(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/rotate`).json<{ secret: string }>().catch(orError)
 }
 
 export const getPermissions = async (app: string | null = null) => {
-	if (app) return await api.get(`app/${encodeURIComponent(app)}/permission`).json<Permission[]>().catch(() => [] as Permission[]);
+	if (app) return await api.get(`api/app/${encodeURIComponent(app)}/permission`).json<Permission[]>().catch(() => [] as Permission[]);
 	return [] as Permission[]
 }
 
 export const getRoles = async () => {
-	return api.get('role').json<Role[]>().catch(() => [] as Role[])
+	return api.get('api/role').json<Role[]>().catch(() => [] as Role[])
 }
 
 export const getRole = async (id: string) => {
-	return api.get(`role/${encodeURIComponent(id)}`).json<Role>().catch(_ => null)
+	return api.get(`api/role/${encodeURIComponent(id)}`).json<Role>().catch(_ => null)
 }
 
 export const createRole = async (data: CreateRoleRequest) => {
-	return api.post('role', { json: data }).json<Role>().catch(orError)
+	return api.post('api/role', { json: data }).json<Role>().catch(orError)
 }
 
 export const deleteRole = async (id: string) => {
-	return api.delete(`role/${id}`).json<{ success: boolean }>().catch(orError)
+	return api.delete(`api/role/${id}`).json<{ success: boolean }>().catch(orError)
 }
 
 interface ThumbmarkResult {
@@ -386,20 +418,20 @@ export interface AdminApplication {
 	url: string
 	callback: string
 	internal: boolean
-	providers: AdminProvider[]
+	oauth_provider: OAuthProvider | null
 }
 
-export interface AdminProvider {
+export interface OAuthProvider {
 	id: string
 	created_at: number
 	updated_at: number
 	application_id: string
-	type: 'oauth2'
-	secret: string
+	client_id: string
+	client_secret: string
+	rotate_refresh_token: boolean
 	redirect_uris: string[]
 	redirect_uri_globs: string[]
-	application_type: string
-	auth_method: string
+	application_type: 'public' | 'confidential'
 	response_types: string[]
 	grant_types: string[]
 	access_token_type: string
@@ -411,4 +443,17 @@ export interface Permission {
 	updated_at: number
 	scope: string
 	description: string
+}
+
+export interface OAuthTokenResponse {
+	access_token: string
+	token_type: string
+	expires_in: number
+	refresh_token?: string
+}
+
+export interface OAuthTokenError {
+	error: string
+	error_description?: string
+	error_uri?: string
 }

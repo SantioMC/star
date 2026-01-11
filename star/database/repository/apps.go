@@ -29,8 +29,8 @@ func (store *AppStore) GetAppByID(id string) (*model.Application, error) {
 	return &app, nil
 }
 
-func (store *AppStore) GetProviderByID(id string) (*model.Provider, error) {
-	provider, err := gorm.G[model.Provider](store.DB).Where("id = ?", id).First(context.Background())
+func (store *AppStore) GetProviderByID(id string) (*model.OAuthProvider, error) {
+	provider, err := gorm.G[model.OAuthProvider](store.DB).Where("id = ?", id).First(context.Background())
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -39,7 +39,13 @@ func (store *AppStore) GetProviderByID(id string) (*model.Provider, error) {
 }
 
 func (store *AppStore) GetAllApps() ([]model.Application, error) {
-	return gorm.G[model.Application](store.DB).Preload("Providers", nil).Find(context.Background())
+	var apps []model.Application
+
+	if err := store.DB.Preload(clause.Associations).Find(&apps).Error; err != nil {
+		return nil, err
+	}
+
+	return apps, nil
 }
 
 func (store *AppStore) GetAppBySlug(slug string) (*model.Application, error) {
@@ -76,7 +82,7 @@ func (store *AppStore) DeleteApp(appId string) error {
 }
 
 func (store *AppStore) DeleteProvider(id string) error {
-	_, err := gorm.G[model.Provider](store.DB).Where("id = ?", id).Delete(context.Background())
+	_, err := gorm.G[model.OAuthProvider](store.DB).Where("id = ?", id).Delete(context.Background())
 	return err
 }
 
@@ -84,6 +90,6 @@ func (store *AppStore) SaveApp(app *model.Application) error {
 	return store.DB.Save(app).Error
 }
 
-func (store *AppStore) SaveProvider(provider *model.Provider) error {
+func (store *AppStore) SaveProvider(provider *model.OAuthProvider) error {
 	return store.DB.Save(provider).Error
 }

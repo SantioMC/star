@@ -172,13 +172,7 @@ func CreateUserFromSocial(provider *model.SocialProvider, token string) (*model.
 }
 
 func getInternalAccount(user *model.User) (*model.Account, error) {
-	var internalAccount *model.Account
-	for _, account := range user.Accounts {
-		if account.Provider == nil {
-			internalAccount = &account
-			break
-		}
-	}
+	internalAccount := user.GetInternalAccount() 
 
 	if internalAccount == nil {
 		return nil, fmt.Errorf("no internal account found")
@@ -233,7 +227,7 @@ func UpdateLastLogin(userId string, time time.Time) error {
 }
 
 func CreateAccessToken(
-	refreshToken *model.Session, 
+	session *model.Session, 
 	app *model.Application, 
 	claims []oidc.Claim,
 	impersonate bool,
@@ -243,13 +237,13 @@ func CreateAccessToken(
 		return "", time.Time{}, err
 	}
 
-	roles := make([]interface{}, len(refreshToken.User.Roles))
+	roles := make([]interface{}, len(session.User.Roles))
 	isSuperUser := false
 
 	var groups []string 
 	var perms []string 
 
-	for idx, role := range refreshToken.User.Roles {
+	for idx, role := range session.User.Roles {
 		if !isSuperUser && role.SuperRole {
 			isSuperUser = true
 		}
@@ -263,14 +257,14 @@ func CreateAccessToken(
 	}
 
 	fields := map[string]any{
-		"sub": refreshToken.User.ID,
+		"sub": session.User.ID,
 		"aud": app.ID,
-		"sid": refreshToken.ID,
+		"sid": session.ID,
 	}
 
 	if slices.Contains(claims, oidc.ClaimEmail) {
-		fields["email"] = refreshToken.User.Email
-		fields["email_verified"] = refreshToken.User.EmailVerified
+		fields["email"] = session.User.Email
+		fields["email_verified"] = session.User.EmailVerified
 		perms = append(perms, scopes.ScopeReadEmail.Node) // Allow apps to read email
 	}
 
@@ -283,19 +277,19 @@ func CreateAccessToken(
 	}
 
 	if slices.Contains(claims, oidc.ClaimPicture) {
-		fields["picture"] = refreshToken.User.GenerateProfilePicture()
+		fields["picture"] = session.User.GenerateProfilePicture()
 	}
 
 	if slices.Contains(claims, oidc.ClaimMetadata) {
-		fields["meta"] = refreshToken.User.GetMetadata(true).Public
+		fields["meta"] = session.User.GetMetadata(true).Public
 	}
 
 	if slices.Contains(claims, oidc.ClaimProfile) {
-		fields["name"] = refreshToken.User.Username
-		fields["nickname"] = refreshToken.User.Username
-		fields["given_name"] = refreshToken.User.FirstName
-		fields["family_name"] = refreshToken.User.LastName
-		fields["picture"] = refreshToken.User.GenerateProfilePicture()
+		fields["name"] = session.User.Username
+		fields["nickname"] = session.User.Username
+		fields["given_name"] = session.User.FirstName
+		fields["family_name"] = session.User.LastName
+		fields["picture"] = session.User.GenerateProfilePicture()
 	}
 
 	if impersonate {
@@ -311,7 +305,7 @@ func CreateAccessToken(
 		perms = append(perms, scopes.ScopeAll.Node)
 	}
 
-	permissions, err := GetUserPermissions(refreshToken.User)
+	permissions, err := GetUserPermissions(session.User)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -333,7 +327,7 @@ func CreateAccessToken(
 		jku = &url
 	}
 
-	duration := time.Duration(app.TokenDuration)
+	duration := time.Duration(app.TokenDuration) * time.Second
 	jwt, err := crypto.CreateJWT(crypto.JWTBody{
 		Duration: duration,
 		Fields: fields,
@@ -354,7 +348,7 @@ func CreateSession(
 	address string,
 	claims []oidc.Claim,
 ) (*model.Session, string, time.Time, error) {
-	duration := time.Duration(app.RefreshTokenDuration)
+	duration := time.Duration(app.RefreshTokenDuration) * time.Second
 	session := model.NewSession(duration, claims)
 	
 	session.User = user
@@ -411,29 +405,23 @@ func RotateSessionToken(session *model.Session) (string, error) {
 	return refreshToken, nil
 }
 
+func GetSessionByToken(refreshToken string) (*model.Session, error) {
+	return state.Database.SessionStore.GetSessionByToken(refreshToken)
+}
+
 func RefreshSession(
-	userId string, 
-	refreshToken string,
+	session model.Session,
 	fingerprint *string,
 	userAgent string,
+	rotate bool,
 ) (*model.Session, string, time.Time, error) {
-	sessions, err := state.Database.SessionStore.GetUserSessions(userId)
-	if err != nil {
-		return nil, "", time.Time{}, err
-	}
-
-	var session *model.Session = nil
-	for _, s := range sessions {
-		if s.Token == refreshToken {
-			session = &s
-		}
-	}
-
-	if session == nil {
+	if session.InvalidatedAt != nil {
 		return nil, "", time.Time{}, ErrTokenInvalid
 	}
 
-	if session.InvalidatedAt != nil {
+	if session.RotatedAt != nil {
+		// This session was rotated and yet attempted to get a new access token from? This is likely malicious
+		// todo: report malicious behaviour
 		return nil, "", time.Time{}, ErrTokenInvalid
 	}
 
@@ -441,29 +429,45 @@ func RefreshSession(
 		return nil, "", time.Time{}, ErrTokenExpired
 	}
 
-	if session.Fingerprint != nil && session.Fingerprint != fingerprint {
+	if session.Fingerprint != nil && *session.Fingerprint != *fingerprint {
 		// If the fingerprint has changed, we invalidate the session
-		state.Database.SessionStore.InvalidateSession(session.ID)
+		if err := state.Database.SessionStore.InvalidateSession(session.ID); err != nil {
+			return nil, "", time.Time{}, err
+		}
+
 		return nil, "", time.Time{}, ErrSuspiciousActivity
 	} else if session.Fingerprint == nil && fingerprint != nil {
-		// If we did not have a fingerprint associated but were provided one now, we'll update the session too
+		// If we did not have a fingerprint associated but we're provided one now, we'll update the session too
 		session.Fingerprint = fingerprint
-		state.Database.SessionStore.UpdateSessionFingerprint(session.ID, fingerprint)
-	}
-
-	if session.Application.RotateRefreshToken {
-		_, err := RotateSessionToken(session)
-		if err != nil {
-			return session, "", time.Time{}, err
+		
+		if err := state.Database.SessionStore.UpdateSessionFingerprint(session.ID, fingerprint); err != nil {
+			return nil, "", time.Time{}, err
 		}
 	}
 
-	jwt, expiresAt, err := CreateAccessToken(session, session.Application, session.Claims.Data(), false)
-	if err != nil {
-		return session, "", time.Time{}, err
+	if rotate {
+		// Mark this session as rotated for detecting malicious activity, and create a new one
+		now := time.Now().Unix()
+		session.RotatedAt = &now
+		
+		if err := state.Database.SessionStore.MarkSessionRotated(session.ID, now); err != nil {
+			return nil, "", time.Time{}, err
+		}
+
+		// Create the new session
+		session = model.CopySession(session)
+
+		if err := state.Database.SessionStore.CreateSession(&session); err != nil {
+			return nil, "", time.Time{}, err
+		}
 	}
 
-	return session, jwt, expiresAt, nil
+	jwt, expiresAt, err := CreateAccessToken(&session, session.Application, session.Claims.Data(), false)
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+
+	return &session, jwt, expiresAt, nil
 }
 
 func SetMetadata(userId string, metadata *string) error {

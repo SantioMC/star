@@ -23,6 +23,7 @@ func AppRouter(r fiber.Router) {
 	r.Post("/:app/provider", createProvider)
 
 	r.Delete("/:app/provider/:provider", deleteProvider)
+	r.Patch("/:app/provider/:provider", patchProvider)
 	r.Post("/:app/provider/:provider/rotate", rotateProvider)
 }
 
@@ -219,16 +220,17 @@ func createProvider(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	if (!slices.Contains(model.AllProviderKinds, body.Kind)) {
+	switch body.Kind {
+	case "oauth":
+		provider, err := service.CreateAppOAuthProvider(app)
+		if err != nil {
+			return err
+		}
+
+		return ctx.JSON(provider)
+	default:
 		return helper.NewHttpError(400, "unknown provider kind provided")
 	}
-
-	provider, err := service.CreateAppProvider(app, body.Kind)
-	if err != nil {
-		return err
-	}
-
-	return ctx.JSON(provider)
 }
 
 func deleteProvider(ctx *fiber.Ctx) error {
@@ -249,7 +251,43 @@ func deleteProvider(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	return ctx.JSON(fiber.Map{ "success": true })
+	return ctx.JSON(fiber.Map{"success": true})
+}
+
+func patchProvider(ctx *fiber.Ctx) error {
+	if err := helper.EnforcePermission(ctx, scopes.ScopeAdminModifyApps); err != nil {
+		return err
+	}
+
+	app, provider, err := getProviderFromCtx(ctx)
+	if err != nil {
+		return err
+	}
+
+	if app.Internal {
+		return helper.NewHttpError(403, "app is internal and can not be modified")
+	}
+
+	var body PatchProviderRequest
+	if err := ctx.BodyParser(&body); err != nil {
+		return err
+	}
+
+	if body.ApplicationType != nil {
+		appType := *body.ApplicationType
+
+		if !slices.Contains(model.KnownAppTypes, appType) {
+			return helper.NewHttpError(400, "invalid application type provided")
+		}
+
+		provider.ApplicationType = appType
+	}
+
+	if err := service.SaveProvider(provider); err != nil {
+		return err
+	}
+
+	return ctx.JSON(provider)
 }
 
 func rotateProvider(ctx *fiber.Ctx) error {
@@ -273,23 +311,23 @@ func rotateProvider(ctx *fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{"secret": provider.Secret})
 }
 
-func getProviderFromCtx(ctx *fiber.Ctx) (model.Application, model.Provider, error) {
+func getProviderFromCtx(ctx *fiber.Ctx) (model.Application, model.OAuthProvider, error) {
 	app, err := service.GetAppByID(ctx.Params("app", ""))
 	if err != nil {
-		return model.Application{}, model.Provider{}, err
+		return model.Application{}, model.OAuthProvider{}, err
 	}
 
 	if app == nil {
-		return model.Application{}, model.Provider{}, helper.NewHttpError(404, "app not found")
+		return model.Application{}, model.OAuthProvider{}, helper.NewHttpError(404, "app not found")
 	}
 
 	provider, err := service.GetAppProviderByID(ctx.Params("provider", ""))
 	if err != nil {
-		return *app, model.Provider{}, err
+		return *app, model.OAuthProvider{}, err
 	}
 
 	if provider == nil || provider.ApplicationID != app.ID {
-		return *app, model.Provider{}, helper.NewHttpError(404, "app not found")
+		return *app, model.OAuthProvider{}, helper.NewHttpError(404, "app not found")
 	}
 
 	return *app, *provider, nil
@@ -313,7 +351,10 @@ type PatchAppRequest struct {
 	CallbackURL *string `json:"callback_url"`
 }
 
-type CreateProviderRequest struct {
-	Kind model.ProviderKind `json:"kind"`
+type PatchProviderRequest struct {
+	ApplicationType *model.AppType `json:"application_type"`
 }
 
+type CreateProviderRequest struct {
+	Kind string `json:"kind"`
+}
