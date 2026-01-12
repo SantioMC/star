@@ -185,10 +185,14 @@ func getAppLogins(ctx *fiber.Ctx) error {
 
 	// todo: restrict which providers can login to which apps
 	providers, err := service.GetProviders()
-	logins := []string{}
+	logins := []LoginProvider{}
 
 	for _, provider := range providers {
-		logins = append(logins, provider.Name)
+		logins = append(logins, LoginProvider{
+			ID: provider.ID,
+			Name: provider.Name,
+			Icon: provider.Icon,
+		})
 	}
 
 	return ctx.JSON(AppLoginsResponse{
@@ -334,8 +338,14 @@ func getProviderFromCtx(ctx *fiber.Ctx) (model.Application, model.OAuthProvider,
 }
 
 type AppLoginsResponse struct {
-	Internal  bool     `json:"user_pass_login"`
-	Providers []string `json:"providers"`
+	Internal  bool            `json:"user_pass_login"`
+	Providers []LoginProvider `json:"providers"`
+}
+
+type LoginProvider struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Icon string `json:"icon"`
 }
 
 type CreateAppRequest struct {

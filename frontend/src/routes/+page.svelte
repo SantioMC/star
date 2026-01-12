@@ -32,10 +32,7 @@
 		if (!browser) return
 
 		data = await star.getSelf()
-		if (data == null) {
-			console.error('Failed to self user data, token might have expired')
-			goto('/login')
-		}
+		if (data == null) return goto('/login')
 
 		username = data!.username
 		firstName = data!.first_name
@@ -101,9 +98,8 @@
 		}
 	}
 
-	const getAccount = (kind: string) => {
-		// todo: supply kind
-		return data!.accounts.find(acc => acc.id == kind);
+	const getAccount = (id: string) => {
+		return data!.accounts.find(acc => acc.id == id);
 	}
 </script>
 
@@ -211,7 +207,7 @@
 					</Card.CardHeader>
 					<Card.Content class="flex flex-row gap-2 flex-wrap">
 						{#each logins?.providers as provider}
-							<SocialAccount modifiable type={provider} account={getAccount(provider)} />
+							<SocialAccount modifiable {provider} account={getAccount(provider.id)} />
 						{/each}
 					</Card.Content>
 				</Card.Root>

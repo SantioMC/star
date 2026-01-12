@@ -1,6 +1,7 @@
 package route
 
 import (
+	"log/slog"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -361,6 +362,16 @@ func patchUser(ctx *fiber.Ctx) error {
 		user.Metadata = &json
 	}
 
+	if body.Roles != nil {
+		roles, err := service.FindNonDefaultRolesById(*body.Roles)
+		if err != nil {
+			return err
+		}
+
+		slog.Info("setting user roles to", "amount", len(roles))
+		user.Roles = roles
+	}
+
 	u := *user
 	if err := service.SaveUser(u); err != nil {
 		return err
@@ -582,4 +593,5 @@ type AdminUpdateUserRequest struct {
 	EmailVerified *bool               `json:"email_verified"`
 	Email         *string             `json:"email"`
 	Metadata      *model.UserMetadata `json:"metadata"`
+	Roles         *[]string           `json:"roles"`
 }

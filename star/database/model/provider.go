@@ -61,6 +61,10 @@ func NewOAuthProvider(application *Application) OAuthProvider {
 	}
 }
 
+func (OAuthProvider) TableName() string {
+    return "oauth_providers"
+}
+
 func (p *OAuthProvider) RotateSecret() {
 	p.Secret = crypto.CreateRandString(32)
 }

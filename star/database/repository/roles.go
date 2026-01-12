@@ -36,6 +36,16 @@ func (store *RoleStore) GetAllRoles() ([]model.Role, error) {
 	return roles, nil
 }
 
+func (store *RoleStore) FindNonDefaultRolesById(ids []string) ([]model.Role, error) {
+	var roles []model.Role
+	
+	if err := store.DB.Where("id IN ? AND global = ?", ids, false).Preload(clause.Associations).Find(&roles).Error; err != nil {
+		return []model.Role{}, err
+	}
+
+	return roles, nil
+}
+
 func (store *RoleStore) SetPermissions(role string, permissions []string) error {
 	_, err := gorm.G[model.Role](store.DB).Where("id = ?", role).Update(context.Background(), "permissions", permissions)
 	return err

@@ -4,6 +4,7 @@
 	import * as star from '$lib/star';
 	import Icon from "@/components/icon.svelte";
 	import Sidebar from "@/components/sidebar.svelte";
+	import { Badge } from "@/components/ui/badge";
 	import { Button } from "@/components/ui/button";
 	import * as Table from '@/components/ui/table';
 	import { hasPermission } from "@/index";
@@ -15,7 +16,7 @@
 	onMount(async () => {
 		if (!browser) return
 		if (!hasPermission('star:admin:read:roles')) return location.href = '/'
-		roles = await star.getRoles()
+		roles = await star.getAllRoles()
 	})
 </script>
 
@@ -44,7 +45,12 @@
 					<Table.Cell class='flex flex-row gap-2 items-center'>
 						<Icon class='text-3xl' icon='package' />
 						<div class="flex flex-col items-start">
-							<span>{titleCase(role.name)}</span>
+							<div class='flex items-center gap-2'>
+								<span>{titleCase(role.name)}</span>
+								{#if role.global}
+									<Badge variant='secondary'>Default role</Badge>
+								{/if}
+							</div>
 							<span class='text-primary/70'>{role.description}</span>
 						</div>
 					</Table.Cell>

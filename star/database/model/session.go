@@ -15,7 +15,6 @@ type Session struct {
 	BaseModel
 
 	UserID        string
-	User          *User
 	ApplicationID string
 	Application   *Application
 
@@ -52,7 +51,6 @@ func CopySession(previous Session) Session {
 		Token: NewSessionToken(),
 
 		UserID:        previous.UserID,
-		User:          previous.User,
 		ApplicationID: previous.ApplicationID,
 		Application:   previous.Application,
 

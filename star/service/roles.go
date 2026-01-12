@@ -84,3 +84,7 @@ func GetPermissions(appId string) []model.Permission {
 
 	return permissions
 }
+
+func FindNonDefaultRolesById(roles []string) ([]model.Role, error) {
+	return state.Database.RoleStore.FindNonDefaultRolesById(roles)
+}

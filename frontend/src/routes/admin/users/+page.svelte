@@ -73,7 +73,7 @@
 			<Table.Body>
 				{#each users as user (user.id)}
 				<Table.Row>
-					<Table.Cell class='flex flex-row gap-2 items-center'>
+					<Table.Cell class='flex flex-row gap-3 items-center'>
 						<img src={user.profile_picture ?? ""} alt="{user.username}'s profile picture" class='w-10 h-10 rounded-full' />
 						<div class="flex flex-col items-start">
 							<span>{user.username}</span>

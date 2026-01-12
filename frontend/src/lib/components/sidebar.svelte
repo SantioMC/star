@@ -73,7 +73,7 @@
     }
   ]
 
-  const props: { 
+  let props: { 
     children?: Snippet,
     hidden?: boolean,
     class?: ClassValue,

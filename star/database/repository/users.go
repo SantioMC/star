@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/tubblelive/star/star/config"
@@ -116,8 +117,14 @@ func (store *UserStore) SearchUsers(query string, page int, size int) ([]model.U
 }
 
 func (store *UserStore) SaveUser(user model.User) error {
-	//todo: switch to generics api
-	return store.DB.Save(&user).Error
+	slog.Info("saving into user with data", "user", user)
+
+	_, err := gorm.G[model.User](store.DB).
+		Where("id = ?", user.ID).
+		Select("*", "Roles").
+		Updates(context.Background(), user)
+
+	return err
 }
 
 func (store *UserStore) DeleteUser(userId string) error {

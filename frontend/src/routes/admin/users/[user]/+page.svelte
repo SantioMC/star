@@ -5,6 +5,7 @@
 	import * as star from '$lib/star';
 	import Icon from "@/components/icon.svelte";
 	import Modal from "@/components/modal.svelte";
+	import RoleSelector from "@/components/role-selector.svelte";
 	import Session from "@/components/session.svelte";
 	import Sidebar from "@/components/sidebar.svelte";
 	import SocialAccount from "@/components/social-account.svelte";
@@ -14,6 +15,7 @@
 	import * as DropdownMenu from '@/components/ui/dropdown-menu';
 	import { Input } from "@/components/ui/input";
 	import { Label } from "@/components/ui/label";
+	import { Spinner } from "@/components/ui/spinner";
 	import { hasPermission } from "@/index";
 	import { relativeTime, titleCase } from "@/utils";
 	import { onMount } from "svelte";
@@ -25,10 +27,13 @@
 		year: "numeric",
 	});
 
+	let loading = $state<boolean>(false);
+
 	let deleteUserModal = $state<Modal>();
 	let suspendUserModal = $state<Modal>();
 	let unsuspendUserModal = $state<Modal>();
 	let changePasswordModal = $state<Modal>();
+	let changeRolesModal = $state<Modal>();
 
 	let reason = $state<string>('');
 	let password = $state<string>('');
@@ -36,6 +41,7 @@
 	let profilePicture = $state<string>('');
 	let firstName = $state<string>('');
 	let lastName = $state<string>('');
+	let roles = $state<star.Role[]>([]);
 
 	let logins = $state<star.AppLogins|null>(null)
 	let user = $state<star.AdminUser|null>(null);
@@ -57,6 +63,7 @@
 		profilePicture = user.profile_picture;
 		firstName = user.first_name;
 		lastName = user.last_name;
+		roles = user.roles;
 
 		if (user.suspension?.issued_by) {
 			suspender = await star.getUser(user.suspension.issued_by);
@@ -119,6 +126,7 @@
 			firstName = user!.first_name
 			lastName = user!.last_name
 			username = user!.username
+			toast.error(result.message)
 		} else {
 			user!.first_name = firstName
 			user!.last_name = lastName
@@ -148,9 +156,25 @@
 		}
 	}
 
-	const getAccount = (kind: string) => {
-		// todo: supply kind
-		return user!.accounts.find(acc => acc.id == kind);
+	const updateRoles = async () => {
+		loading = true;
+		const result = await star.modifyUser(user!.id, {
+			roles: roles.map(r => r.id)
+		})
+
+		loading = false;
+		if ('error' in result) {
+			roles = user!.roles
+			toast.error(result.message)
+		} else {
+			user!.roles = result.roles
+			toast.success('Successfully updated the user\'s roles')
+			changeRolesModal?.close()
+		}
+	}
+
+	const getAccount = (id: string) => {
+		return user!.accounts.find(acc => acc.id == id);
 	}
 
 	const updateMetadata = async () => {
@@ -211,7 +235,11 @@
 						</span>
 						<span>
 							<Icon icon='lock-open' />
-							Last login {dateFormatter.format(new Date(user.last_login_at * 1000))}
+							{#if user.last_login_at}
+							Last logged in {dateFormatter.format(new Date(user.last_login_at * 1000))}
+							{:else}
+							Never logged in
+							{/if}
 						</span>
 					</div>
 					{#if user.roles.length > 0}
@@ -315,7 +343,7 @@
 						<div class="flex flex-col gap-4 items-center w-full my-16">
 							<span class='text-xl font-semibold leading-2'>No Roles</span>
 							<span class='text-primary/60 leading-2'>This user currently has no assigned roles</span>
-							<Button class='mt-1'>Add Role</Button>
+							<Button class='mt-1' onclick={() => changeRolesModal?.open()}>Add Role</Button>
 						</div>
 					{:else}
 						<p class="text-primary/60 text-sm">The user has the following roles:</p>
@@ -327,7 +355,7 @@
 									<Icon icon='x' class='p-1 hidden opacity-0 transition-all' />
 								</Badge>
 							{/each}
-							<Badge variant='secondary' class='w-fit hover:bg-secondary/60 transition-colors cursor-pointer'>
+							<Badge variant='secondary' class='w-fit hover:bg-secondary/60 transition-colors cursor-pointer' onclick={() => changeRolesModal?.open()}>
 								<Icon icon='plus' class='p-1' /> Add Role
 							</Badge>
 						</div>
@@ -390,7 +418,7 @@
 					</Card.CardHeader>
 					<Card.Content class="flex flex-row gap-2 flex-wrap">
 						{#each logins?.providers as provider}
-							<SocialAccount type={provider} account={getAccount(provider)} />
+							<SocialAccount provider={provider} account={getAccount(provider.id)} />
 						{/each}
 					</Card.Content>
 				</Card.Root>
@@ -447,7 +475,7 @@
 
 		<div class='flex items-center gap-2 justify-end mt-6'>
 			<Button variant='secondary' onclick={() => suspendUserModal?.close()}>Cancel</Button>
-			<Button variant='destructive' onclick={suspendUser}>Suspend User</Button>
+			<Button variant='destructive' onclick={suspendUser} type='submit'>Suspend User</Button>
 		</div>
 	</form>
 </Modal>
@@ -459,7 +487,7 @@
 	<form onsubmit={unsuspendUser} class='mt-6'>
 		<div class='flex items-center gap-2 justify-end mt-6'>
 			<Button variant='secondary' onclick={() => unsuspendUserModal?.close()}>Cancel</Button>
-			<Button onclick={unsuspendUser}>Revoke Suspension</Button>
+			<Button onclick={unsuspendUser} type='submit'>Revoke Suspension</Button>
 		</div>
 	</form>
 </Modal>
@@ -478,7 +506,26 @@
 
 		<div class='flex items-center gap-2 justify-end mt-6'>
 			<Button variant='secondary' onclick={() => changePasswordModal?.close()}>Cancel</Button>
-			<Button onclick={changePassword}>Change Password</Button>
+			<Button onclick={changePassword} type='submit'>Change Password</Button>
+		</div>
+	</form>
+</Modal>
+
+<Modal bind:this={changeRolesModal} button class='xl:w-xl!'>
+	<h1 class='text-xl font-semibold'>Change Roles</h1>
+	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Add or remove roles from this user</h2>
+
+	<form onsubmit={updateRoles} class='mt-6'>
+		<RoleSelector bind:roles={roles} />
+
+		<div class='flex items-center gap-2 justify-end mt-6'>
+			<Button variant='secondary' onclick={() => changeRolesModal?.close()}>Cancel</Button>
+			<Button disabled={loading} onclick={updateRoles} type='submit'>
+				{#if loading}
+					<Spinner />
+				{/if}
+				Apply Changes
+			</Button>
 		</div>
 	</form>
 </Modal>

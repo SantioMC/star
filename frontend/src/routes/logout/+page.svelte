@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
+	import * as star from '$lib/star';
 	import * as Card from '@/components/ui/card';
 	import { Spinner } from '@/components/ui/spinner';
-	import { refreshToken, token } from '@/index';
+	import { getJWT, refreshToken, token } from '@/index';
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 
-	onMount(() => {
+	onMount(async () => {
 		if (!browser) return
+
+		const currentToken = get(token);
+		if (currentToken != null) {
+			const data = await getJWT(currentToken)
+			if (data) await star.invalidateSession(data.sid)
+		}
 
 		token.set(null)
 		refreshToken.set(null)

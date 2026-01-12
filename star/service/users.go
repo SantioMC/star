@@ -22,7 +22,7 @@ func CreateSuperUser(password string, role *model.Role) (*model.User, error) {
 	user := model.NewUser("admin", "root@star")
 	user.EmailVerified = true
 	user.Roles = []model.Role{*role}
-	
+
 	if err := state.Database.UserStore.SaveUser(user); err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func SearchUsers(query string, page int, size int) ([]model.User, error) {
 	if query == "" {
 		return GetAllUsers(page, size)
 	}
-	
+
 	return state.Database.UserStore.SearchUsers(query, page, size)
 }
 
@@ -112,7 +112,7 @@ func CreateUser(username string, email string, password string) (*model.User, *m
 	if err := state.Database.UserStore.SaveAccount(&account); err != nil {
 		return &user, nil, err
 	}
-	
+
 	return &user, &account, nil
 }
 
@@ -133,7 +133,7 @@ func FindUsername(username string, iteration int) (string, error) {
 	}
 
 	if existing != nil {
-		return FindUsername(check, iteration + 1)
+		return FindUsername(check, iteration+1)
 	}
 
 	return check, nil
@@ -172,7 +172,7 @@ func CreateUserFromSocial(provider *model.SocialProvider, token string) (*model.
 }
 
 func getInternalAccount(user *model.User) (*model.Account, error) {
-	internalAccount := user.GetInternalAccount() 
+	internalAccount := user.GetInternalAccount()
 
 	if internalAccount == nil {
 		return nil, fmt.Errorf("no internal account found")
@@ -227,8 +227,8 @@ func UpdateLastLogin(userId string, time time.Time) error {
 }
 
 func CreateAccessToken(
-	session *model.Session, 
-	app *model.Application, 
+	session *model.Session,
+	app *model.Application,
 	claims []oidc.Claim,
 	impersonate bool,
 ) (string, time.Time, error) {
@@ -237,34 +237,39 @@ func CreateAccessToken(
 		return "", time.Time{}, err
 	}
 
-	roles := make([]interface{}, len(session.User.Roles))
+	user, err := GetUserByID(session.UserID)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	roles := make([]interface{}, len(user.Roles))
 	isSuperUser := false
 
-	var groups []string 
-	var perms []string 
+	var groups []string
+	var perms []string
 
-	for idx, role := range session.User.Roles {
+	for idx, role := range user.Roles {
 		if !isSuperUser && role.SuperRole {
 			isSuperUser = true
 		}
 
 		groups = append(groups, role.Name)
 		roles[idx] = map[string]any{
-			"id": role.ID,
-			"name": role.Name,
+			"id":    role.ID,
+			"name":  role.Name,
 			"super": role.SuperRole,
 		}
 	}
 
 	fields := map[string]any{
-		"sub": session.User.ID,
+		"sub": session.UserID,
 		"aud": app.ID,
 		"sid": session.ID,
 	}
 
 	if slices.Contains(claims, oidc.ClaimEmail) {
-		fields["email"] = session.User.Email
-		fields["email_verified"] = session.User.EmailVerified
+		fields["email"] = user.Email
+		fields["email_verified"] = user.EmailVerified
 		perms = append(perms, scopes.ScopeReadEmail.Node) // Allow apps to read email
 	}
 
@@ -277,19 +282,19 @@ func CreateAccessToken(
 	}
 
 	if slices.Contains(claims, oidc.ClaimPicture) {
-		fields["picture"] = session.User.GenerateProfilePicture()
+		fields["picture"] = user.GenerateProfilePicture()
 	}
 
 	if slices.Contains(claims, oidc.ClaimMetadata) {
-		fields["meta"] = session.User.GetMetadata(true).Public
+		fields["meta"] = user.GetMetadata(true).Public
 	}
 
 	if slices.Contains(claims, oidc.ClaimProfile) {
-		fields["name"] = session.User.Username
-		fields["nickname"] = session.User.Username
-		fields["given_name"] = session.User.FirstName
-		fields["family_name"] = session.User.LastName
-		fields["picture"] = session.User.GenerateProfilePicture()
+		fields["name"] = user.Username
+		fields["nickname"] = user.Username
+		fields["given_name"] = user.FirstName
+		fields["family_name"] = user.LastName
+		fields["picture"] = user.GenerateProfilePicture()
 	}
 
 	if impersonate {
@@ -305,7 +310,7 @@ func CreateAccessToken(
 		perms = append(perms, scopes.ScopeAll.Node)
 	}
 
-	permissions, err := GetUserPermissions(session.User)
+	permissions, err := GetUserPermissions(user)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -330,8 +335,8 @@ func CreateAccessToken(
 	duration := time.Duration(app.TokenDuration) * time.Second
 	jwt, err := crypto.CreateJWT(crypto.JWTBody{
 		Duration: duration,
-		Fields: fields,
-	},  jku, privateKey)
+		Fields:   fields,
+	}, jku, privateKey)
 
 	if err != nil {
 		return "", time.Time{}, err
@@ -350,10 +355,11 @@ func CreateSession(
 ) (*model.Session, string, time.Time, error) {
 	duration := time.Duration(app.RefreshTokenDuration) * time.Second
 	session := model.NewSession(duration, claims)
-	
-	session.User = user
+
+	session.UserID = user.ID
 	session.Application = app
-	
+	session.ApplicationID = app.ID
+
 	session.UserAgent = userAgent
 	session.Fingerprint = fingerprint
 	session.Address = address
@@ -439,7 +445,7 @@ func RefreshSession(
 	} else if session.Fingerprint == nil && fingerprint != nil {
 		// If we did not have a fingerprint associated but we're provided one now, we'll update the session too
 		session.Fingerprint = fingerprint
-		
+
 		if err := state.Database.SessionStore.UpdateSessionFingerprint(session.ID, fingerprint); err != nil {
 			return nil, "", time.Time{}, err
 		}
@@ -449,7 +455,7 @@ func RefreshSession(
 		// Mark this session as rotated for detecting malicious activity, and create a new one
 		now := time.Now().Unix()
 		session.RotatedAt = &now
-		
+
 		if err := state.Database.SessionStore.MarkSessionRotated(session.ID, now); err != nil {
 			return nil, "", time.Time{}, err
 		}

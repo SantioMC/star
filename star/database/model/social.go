@@ -23,6 +23,7 @@ type SocialProvider struct {
 	ClientID     string                       `json:"client_id"`
 	ClientSecret string                       `json:"client_secret" encrypt:"true"`
 	Scopes       datatypes.JSONType[[]string] `json:"scopes"`
+	Icon         string                       `json:"icon"`
 
 	DiscoveryURL *string `json:"oidc_url"`
 	AuthURL      string  `json:"auth_url"`
@@ -75,7 +76,9 @@ func NewSocialProviderFromPreset(name string, config oidc.Configuration, clientI
 		BaseModel: BaseModel{
 			ID: CreateTypedId("scp", 12),
 		},
+
 		Name: name,
+		Icon: config.Icon,
 
 		ClientID:     clientId,
 		ClientSecret: clientSecret,
@@ -147,7 +150,7 @@ func (p *SocialProvider) GetLoginURL(state string, redirectUri string) (string, 
 func (p *SocialProvider) ExchangeCode(hostname string, code string) (*oidc.TokenExchange, error) {
 	redirectUri := p.GetCallbackURL(hostname, p.Name)
 
-	// We'll just include client details in both body and header to support 
+	// We'll just include client details in both body and header to support
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -201,7 +204,7 @@ func (p *SocialProvider) GetUserInfo(token string) (*oidc.UserInfo, error) {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer " + token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
 	res, err := http.DefaultClient.Do(req)

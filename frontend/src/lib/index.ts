@@ -41,8 +41,10 @@ export const getJWT = (accessToken: string | null = get(token)): JWTDetails | nu
 }
 
 // amazing hack to take in any string, but also still have intellisense on the arg, idek
-export const hasPermission = (permission: star.StarPermission | (string & {})) => {
-	const jwt = getJWT();
+export const hasPermission = (permission: star.StarPermission | (string & {}), accessToken: string | null = get(token)) => {
+	if (!accessToken) return false;
+
+	const jwt = getJWT(accessToken);
 	if (!jwt) return false;
 
 	for (const scope of jwt.scopes) {

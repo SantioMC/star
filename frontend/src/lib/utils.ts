@@ -4,29 +4,6 @@ import ms from "ms";
 import type { ChangeEventHandler } from "svelte/elements";
 import { twMerge } from "tailwind-merge";
 
-export const knownProviders = {
-	"discord": {
-		icon: "brand-discord",
-		color: "#5865F2"
-	},
-	"twitch": {
-		icon: "brand-twitch",
-		color: "#9146FF"
-	},
-	"google": {
-		icon: "brand-google",
-		color: "#4285f4"
-	},
-	"slack": {
-		icon: "brand-slack",
-		color: "#4A154B"
-	},
-	"github": {
-		icon: "brand-github",
-		color: "#222222"
-	}
-} as Record<string, { icon: string, color: string }>
-
 let debounceTask: number | null = null
 
 export const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -68,6 +45,7 @@ export function cn(...inputs: ClassValue[]) {
 export function titleCase(text: string): string {
 	// just some edge cases, we don't care a whole lot tbh
 	if (text == 'oauth2') return 'OAuth2';
+	if (text.length == 1) return text.toUpperCase()
 
 	return text.charAt(0).toUpperCase() + text.substring(1).toLowerCase();
 }

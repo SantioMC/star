@@ -9,6 +9,7 @@ import { get } from "svelte/store";
 export const API_URL = env.PUBLIC_API_URL ?? '/';
 export const APP_ID = "star";
 
+// Permissions in the star management console, purely for typescript typings
 export type StarPermission = "star:*"
 	| "star:user:*"
 	| "star:user:email"
@@ -28,12 +29,6 @@ export type StarPermission = "star:*"
 	| "star:admin:update:applications"
 	| "star:admin:create:applications"
 	| "star:admin:delete:applications"
-
-export type DefaultSocialProvider = 'google'
-	| 'github'
-	| 'twitch'
-	| 'slack'
-	| 'discord'
 
 export const api = ky.extend({
 	prefixUrl: API_URL,
@@ -56,16 +51,12 @@ const getAuth = async () => {
 	const value = get(token)
 	if (!value) return null
 
-	console.log(`value beforehand is`, token)
-
 	const data = getJWT(value)
 	if (!data) return null
 
 	// If our token is expired or will be in 5 seconds, we'll refresh it
 	if (Math.floor(Date.now() / 1000) + 5 > data.exp) {
-		const a = await refreshAccessToken()
-		console.log(`value now is`, token)
-		return a
+		return await refreshAccessToken()
 	}
 
 	return value
@@ -245,7 +236,7 @@ export const getPermissions = async (app: string | null = null) => {
 	return [] as Permission[]
 }
 
-export const getRoles = async () => {
+export const getAllRoles = async () => {
 	return api.get('api/role').json<Role[]>().catch(() => [] as Role[])
 }
 
@@ -278,9 +269,15 @@ export interface StarError {
 	message: string
 }
 
+export interface SocialProvider {
+	id: string
+	name: string
+	icon: string
+}
+
 export interface AppLogins {
 	user_pass_login: boolean
-	providers: string[]
+	providers: SocialProvider[]
 }
 
 export interface LoginResponse {
@@ -336,6 +333,7 @@ export interface AdminUserChanges extends UserChanges {
 	profile_picture?: string
 	metadata?: Metadata
 	email?: string
+	roles?: string[]
 }
 
 export interface User {

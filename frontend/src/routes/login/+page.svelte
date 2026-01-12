@@ -7,7 +7,7 @@
 	import { Label } from '@/components/ui/label';
 	import { Spinner } from '@/components/ui/spinner';
 	import { refreshToken, token } from '@/index';
-	import { knownProviders, titleCase } from '@/utils';
+	import { titleCase } from '@/utils';
 	import { onMount } from 'svelte';
 
 	let logins = $state<star.AppLogins | null>(null);
@@ -85,12 +85,12 @@
 					<hr />
 				{/if}
 
-				{#each logins?.providers as provider}
-					<Button type="submit" variant='outline' class="w-full" onclick={() => star.loginWithProvider(provider)}>
-						{#if !!knownProviders[provider]}
-							<Icon icon={knownProviders[provider].icon} class='text-lg' />
+				{#each logins?.providers as provider (provider.id)}
+					<Button type="submit" variant='outline' class="w-full" onclick={() => star.loginWithProvider(provider.name)}>
+						{#if provider.icon}
+							<Icon icon={provider.icon} class='text-lg' />
 						{/if}
-						Login with {titleCase(provider)}
+						Login with {titleCase(provider.name)}
 					</Button>
 				{/each}
 			</Card.Footer>

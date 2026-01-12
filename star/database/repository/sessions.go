@@ -14,7 +14,7 @@ type SessionStore struct {
 }
 
 func (store SessionStore) GetSessionByID(id string) (*model.Session, error) {
-	session, err := gorm.G[model.Session](store.DB).Preload("User", nil).Preload("Application", nil).Where("id = ?", id).First(context.Background())
+	session, err := gorm.G[model.Session](store.DB).Preload("Application", nil).Where("id = ?", id).First(context.Background())
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -28,7 +28,7 @@ func (store SessionStore) GetSessionByID(id string) (*model.Session, error) {
 }
 
 func (store SessionStore) GetSessionByToken(token string) (*model.Session, error) {
-	session, err := gorm.G[model.Session](store.DB).Preload("User", nil).Preload("Application", nil).Where("token = ?", token).First(context.Background())
+	session, err := gorm.G[model.Session](store.DB).Preload("Application", nil).Where("token = ?", token).First(context.Background())
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -42,7 +42,7 @@ func (store SessionStore) GetSessionByToken(token string) (*model.Session, error
 }
 
 func (store SessionStore) GetUserSessions(userId string) ([]model.Session, error) {
-	return gorm.G[model.Session](store.DB).Where("user_id = ?", userId).Preload("User", nil).Preload("Application", nil).Find(context.Background())
+	return gorm.G[model.Session](store.DB).Where("user_id = ?", userId).Preload("Application", nil).Find(context.Background())
 }
 
 func (store SessionStore) CreateSession(session *model.Session) error {
