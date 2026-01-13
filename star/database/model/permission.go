@@ -4,7 +4,7 @@ type Permission struct {
 	BaseModel
 
 	Application   *Application `json:"-"`
-	ApplicationID string       `json:"role_id"`
+	ApplicationID string       `json:"application_id"`
 
 	Permission  string `json:"scope"`
 	Description string `json:"description"`

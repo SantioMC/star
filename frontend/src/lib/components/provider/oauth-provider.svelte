@@ -6,13 +6,13 @@
 	import Icon from '@/components/icon.svelte';
 	import Modal from '@/components/modal.svelte';
 	import { Badge } from '@/components/ui/badge';
-	import { Button } from '@/components/ui/button';
+	import { Button, buttonVariants } from '@/components/ui/button';
 	import * as Card from '@/components/ui/card';
 	import * as DropdownMenu from '@/components/ui/dropdown-menu';
+	import * as Sheet from '@/components/ui/sheet';
 	import { Spinner } from '@/components/ui/spinner';
 	import { dateFormatter, titleCase } from '@/utils';
 	import { toast } from 'svelte-sonner';
-	import { } from '../star.ts';
 
 	const { 
 		provider,
@@ -27,6 +27,7 @@
 	let deleteModal = $state<Modal>()
 
 	let loading = $state<boolean>(false);
+	let showInformation = $state<boolean>(false);
 	let secret = $derived(provider.client_secret)
 
 	const deleteProvider = async () => {
@@ -69,21 +70,27 @@
 				</div>
 				<span class="text-primary/70 text-xs">{provider.id}</span>
 			</div>
-			{#if modifiable}
-				<div class="ml-auto">
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class='ml-auto'>
-							<Button variant='ghost' size='icon'>
-								<Icon icon='dots' class='text-2xl' />
-							</Button>
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content>
-							<DropdownMenu.Group>
+			<div class="ml-auto">
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger class='ml-auto'>
+						<Button variant='ghost' size='icon'>
+							<Icon icon='dots' class='text-2xl' />
+						</Button>
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content>
+						<DropdownMenu.Group>
+							<DropdownMenu.Item onclick={() => showInformation = true}>
+								<Icon icon='info-circle' />
+								View Information
+							</DropdownMenu.Item>
+							{#if modifiable}
 								<DropdownMenu.Item onclick={() => rotateProvider()}>
 									<Icon icon='rotate' />
 									Rotate Secret
 								</DropdownMenu.Item>
-							</DropdownMenu.Group>
+							{/if}
+						</DropdownMenu.Group>
+						{#if modifiable}
 							<DropdownMenu.Separator />
 							<DropdownMenu.Group>
 								<DropdownMenu.Item variant='destructive' onclick={() => deleteModal?.open()}>
@@ -91,10 +98,10 @@
 									Delete
 								</DropdownMenu.Item>
 							</DropdownMenu.Group>
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				</div>
-			{/if}
+						{/if}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			</div>
 		</Card.Title>
 	</Card.CardHeader>
 	<Card.Content class="flex flex-row justify-between items-stretch">
@@ -125,12 +132,12 @@
 					{titleCase(provider.application_type)}
 				</Badge>
 			</Categorizied>
-			<Categorizied title='Access Token Type'>
+			<Categorizied title='Session Handling'>
 				<Badge
 					variant="outline"
 					class="border-orange-400/60 text-orange-300"
 				>
-					{titleCase(provider.access_token_type)}
+					{provider.rotate_refresh_token ? 'Rotating Sessions' : 'Static'}
 				</Badge>
 			</Categorizied>
 			<Categorizied title='Response Types'>
@@ -210,3 +217,61 @@
 		</Button>
 	</div>
 </Modal>
+
+<Sheet.Root bind:open={showInformation}>
+	<Sheet.Content side="right" class='max-w-xl!'>
+		<Sheet.Header>
+			<Sheet.Title>Provider Information</Sheet.Title>
+			<Sheet.Description>
+				View necessary information for setting up this OAuth2 provider to allow users to sign in with star.
+			</Sheet.Description>
+		</Sheet.Header>
+
+		<div class="px-2 flex flex-col gap-2">
+			<Categorizied title='Client ID'>
+				<code class='gap-2 flex! items-center'>
+					{provider.client_id}<Copy content={provider.id} class='ml-auto' />
+				</code>
+			</Categorizied>
+			{#if provider.application_type == 'confidential'}
+				<Categorizied title='Client Secret'>
+					<Hidden content={secret} class='w-full!' />
+				</Categorizied>
+			{:else}
+				<Categorizied title='Client Secret'>
+					<span class='text-primary/60 max-w-3/4 select-none'>
+						This is not a confidential application, so it has no client secret.
+					</span>
+				</Categorizied>
+			{/if}
+			<Categorizied title='Discovery URL'>
+				<code class='gap-2 flex! items-center'>
+					{star.getDiscoveryURL()}
+					<Copy content={star.getDiscoveryURL()} class='ml-auto' />
+				</code>
+			</Categorizied>
+			<Categorizied title='Authorization URL'>
+				<code class='gap-2 flex! items-center'>
+					{star.getAuthUrl()}
+					<Copy content={star.getAuthUrl()} class='ml-auto' />
+				</code>
+			</Categorizied>
+			<Categorizied title='Token URL'>
+				<code class='gap-2 flex! items-center'>
+					{star.getTokenUrl()}
+					<Copy content={star.getTokenUrl()} class='ml-auto' />
+				</code>
+			</Categorizied>
+			<Categorizied title='Userinfo URL'>
+				<code class='gap-2 flex! items-center'>
+					{star.getUserinfoUrl()}
+					<Copy content={star.getUserinfoUrl()} class='ml-auto' />
+				</code>
+			</Categorizied>
+		</div>
+
+		<Sheet.Footer>
+			<Sheet.Close class={buttonVariants({ variant: 'default' })}>Close</Sheet.Close>
+		</Sheet.Footer>
+	</Sheet.Content>
+</Sheet.Root>

@@ -71,8 +71,16 @@ func CreateDefaultRole() (*model.Role, error) {
 	return &role, nil
 }
 
-func CreatePermission(application *model.Application, permission string, description string) error {
+func GetPermissionByID(id string) (*model.Permission, error) {
+	return state.Database.RoleStore.GetPermissionByID(id)
+}
+
+func CreatePermission(application *model.Application, permission string, description string) (model.Permission, error) {
 	return state.Database.RoleStore.CreatePermission(application, permission, description)
+}
+
+func DeletePermission(id string) error {
+	return state.Database.RoleStore.DeletePermission(id)
 }
 
 func GetPermissions(appId string) []model.Permission {

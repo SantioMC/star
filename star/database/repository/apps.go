@@ -66,11 +66,6 @@ func (store *AppStore) GetPermissions(appId string) ([]model.Permission, error) 
 	return gorm.G[model.Permission](store.DB).Where("application_id = ?", appId).Find(context.Background())
 }
 
-func (store *RoleStore) CreatePermission(app *model.Application, permission string, description string) error {
-	perm := model.NewPermission(app, permission, description)
-	return gorm.G[model.Permission](store.DB).Create(context.Background(), &perm)
-}
-
 func (store *RoleStore) SetPermissionDescription(id string, description string) error {
 	_, err := gorm.G[model.Permission](store.DB).Where("id = ?", id).Update(context.Background(), "description", description)
 	return err

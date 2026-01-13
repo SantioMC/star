@@ -45,7 +45,8 @@ func NewSession(duration time.Duration, claims []oidc.Claim) Session {
 func CopySession(previous Session) Session {
 	return Session{
 		BaseModel: BaseModel{
-			ID: CreateTypedId("ses", 12),
+			ID:        CreateTypedId("ses", 12),
+			CreatedAt: previous.CreatedAt,
 		},
 
 		Token: NewSessionToken(),

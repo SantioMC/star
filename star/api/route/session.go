@@ -26,6 +26,10 @@ func findSessions(userId string) []SessionResponse {
 
 	response := []SessionResponse{}
 	for _, session := range sessions {
+		if session.RotatedAt != nil {
+			continue
+		}
+		
 		response = append(response, toSessionResponse(&session))
 	}
 

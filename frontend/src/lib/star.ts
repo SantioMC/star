@@ -81,17 +81,40 @@ export const getLogins = async (app: string) => {
 		.catch(_ => null)
 }
 
-export const login = async (app: string, username: string, password: string) => {
+export const getAuthUrl = () => `${API_URL}/api/oauth/authorize`
+export const getTokenUrl = () => `${API_URL}/api/oauth/token`
+export const getUserinfoUrl = () => `${API_URL}/api/oauth/userinfo`
+export const getDiscoveryURL = () => `${API_URL}/.well-known/openid-configuration`
+
+export const login = async (data: LoginRequest) => {
 	const fingerprint = await thumbmark.get() as ThumbmarkResult
 
-	return api.post(`api/app/${encodeURIComponent(app)}/login`, {
+	return api.post(`api/app/${encodeURIComponent(data.app)}/login`, {
 		json: {
-			username,
-			password,
+			username: data.username,
+			password: data.password,
 			fingerprint: fingerprint.thumbmark,
-			userAgent: navigator.userAgent
-		}
+		},
+		headers: data.captcha ? {
+			"X-Captcha-Token": data.captcha
+		} : {}
 	}).json<LoginResponse>().catch(orError)
+}
+
+export const register = async (data: RegisterRequest) => {
+	const fingerprint = await thumbmark.get() as ThumbmarkResult
+
+	return api.post(`api/user/register`, {
+		json: {
+			username: data.username,
+			password: data.password,
+			email: data.email,
+			fingerprint: fingerprint.thumbmark,
+		},
+		headers: data.captcha ? {
+			"X-Captcha-Token": data.captcha
+		} : {}
+	}).json<RegisterResponse>().catch(orError)
 }
 
 export const refreshToken = async (refreshToken: string) => {
@@ -232,8 +255,22 @@ export const rotateProvider = async (app: string, provider: string) => {
 }
 
 export const getPermissions = async (app: string | null = null) => {
-	if (app) return await api.get(`api/app/${encodeURIComponent(app)}/permission`).json<Permission[]>().catch(() => [] as Permission[]);
+	if (app) return api.get(`api/app/${encodeURIComponent(app)}/permission`).json<Permission[]>().catch(() => [] as Permission[]);
+	// todo: needs making
 	return [] as Permission[]
+}
+
+export const createPermission = async (data: CreatePermissionRequest) => {
+	return api.post(`api/app/${encodeURIComponent(data.app)}/permission`, {
+		json: {
+			name: data.permission,
+			description: data.description
+		}
+	}).json<Permission>().catch(orError);
+}
+
+export const deletePermission = async (app: string, permission: string) => {
+	return api.delete(`api/app/${encodeURIComponent(app)}/permission/${encodeURIComponent(permission)}`).json<{ success: boolean }>().catch(orError);
 }
 
 export const getAllRoles = async () => {
@@ -269,6 +306,29 @@ export interface StarError {
 	message: string
 }
 
+export interface LoginRequest {
+	app: string
+	username: string
+	password: string
+	captcha?: string
+}
+
+export interface RegisterRequest {
+	application_id?: string
+	username: string
+	email: string
+	password: string
+	captcha?: string
+}
+
+export interface RegisterResponse {
+	username: string
+	email: string
+	id: string
+	access_token: string | undefined
+	refresh_token: string | undefined
+}
+
 export interface SocialProvider {
 	id: string
 	name: string
@@ -290,6 +350,12 @@ export interface CreateAppRequest {
 	name: string
 	slug?: string
 	url: string
+}
+
+export interface CreatePermissionRequest {
+	app: string
+	permission: string
+	description?: string
 }
 
 export interface CreateRoleRequest {
@@ -439,6 +505,7 @@ export interface Permission {
 	id: string
 	created_at: number
 	updated_at: number
+	application_id: string
 	scope: string
 	description: string
 }

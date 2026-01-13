@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/tubblelive/star/frontend"
 	"github.com/tubblelive/star/star/api/route"
 	"github.com/tubblelive/star/star/state"
@@ -73,6 +76,8 @@ func StartAPIServer(server *state.Server) *fiber.App {
 		return nil
 	})
 
+	app.Use(recover.New())
+
 	// Route handlers
 
 	// Global
@@ -105,6 +110,27 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	api.Route("/metrics", route.MetricRouter)
 
 	// Frontend
+	captcha := server.Config.CaptchaVerifier
+	siteKey := ""
+
+	if captcha != nil {
+		siteKey = (*captcha).GetSiteKey()
+	}
+
+	environment, err := json.Marshal(FrontendEnvironment{
+		APIUrl: os.Getenv("URL"),
+		SiteKey: siteKey,
+	})
+
+	if err != nil {
+		panic("failed to marshal frontend environment")
+	}
+
+	app.Get("/_app/env.js", func(ctx *fiber.Ctx) error {
+		ctx.Set("Content-Type", "application/javascript")
+		return ctx.SendString("export const env=" + string(environment))
+	})
+
 	app.Use(
 		"/_app/*",
 		filesystem.New(filesystem.Config{
@@ -126,10 +152,15 @@ func StartAPIServer(server *state.Server) *fiber.App {
 		slog.Warn("origins is set to '*', you are vulnerable to security vulnerabilities")
 	}
 
-	err := app.Listen(bind)
+	err = app.Listen(bind)
 	if err != nil {
 		slog.Error("failed to start api server", "error", err)
 	}
 
 	return app
+}
+
+type FrontendEnvironment struct {
+	APIUrl  string `json:"PUBLIC_API_URL,omitempty"`
+	SiteKey string `json:"PUBLIC_SITE_KEY,omitempty"`
 }

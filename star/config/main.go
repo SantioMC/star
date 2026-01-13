@@ -19,7 +19,7 @@ type Config struct {
 	TrustProxy      bool
 	Port            int
 	AccessToken     [32]byte
-	CaptchaVerifier captcha.Verifier
+	CaptchaVerifier *captcha.Verifier
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -59,7 +59,9 @@ func LoadFromEnv() (*Config, error) {
 	}
 
 	config.TrustProxy = fromEnv("TRUST_PROXY", "false") == "true"
-	config.CaptchaVerifier = loadCaptchaFromEnv()
+
+	captcha := loadCaptchaFromEnv()
+	config.CaptchaVerifier = &captcha
 
 	if config.CaptchaVerifier == nil {
 		slog.Warn("running star without a captcha configured")
@@ -76,13 +78,19 @@ func loadCaptchaFromEnv() captcha.Verifier {
 
 	switch strings.ToLower(captcha) {
 	case "cloudflare", "turnstile":
-		captchaToken := fromEnv("CLOUDFLARE_TOKEN", "")
-		if captchaToken == "" {
-			slog.Error("expected CLOUDFLARE_TOKEN to be set when CAPTCHA is set to 'cloudflare'")
+		siteKey := fromEnv("TURNSTILE_SITE_KEY", "")
+		if siteKey == "" {
+			slog.Error("expected TURNSTILE_SITE_KEY to be set", "captcha", captcha)
 			os.Exit(1)
 		}
 
-		turnstile := turnstile.NewTurnstileValidator(captchaToken)
+		captchaToken := fromEnv("TURNSTILE_TOKEN", "")
+		if captchaToken == "" {
+			slog.Error("expected TURNSTILE_TOKEN to be set", "captcha", captcha)
+			os.Exit(1)
+		}
+
+		turnstile := turnstile.NewTurnstileValidator(siteKey, captchaToken)
 		return &turnstile
 	default:
 		slog.Warn("unknown captcha software", "captcha", captcha)

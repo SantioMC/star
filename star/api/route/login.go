@@ -10,6 +10,8 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/api/helper"
+	"github.com/tubblelive/star/star/api/middleware"
+	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/service"
 	"github.com/tubblelive/star/star/state"
 )
@@ -21,7 +23,7 @@ var loginClaims []oidc.Claim = []oidc.Claim{
 func LoginRouter(r fiber.Router) {
 	limiter := limiter.New(helper.HeavyLimiter)
 
-	r.Post("/app/:app/login", limiter, login)
+	r.Post("/app/:app/login", limiter, middleware.RequireCaptcha, login)
 	r.Get("/app/:app/login/:provider", limiter, loginWithProvider)
 	r.Get("/callback/:provider", limiter, loginCallback)
 }
@@ -68,13 +70,8 @@ func loginCallback(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	suspended, err := service.GetActiveSuspension(user.ID)
-	if err != nil {
+	if err := postLoginChecks(user); err != nil {
 		return err
-	}
-
-	if suspended != nil {
-		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
 	}
 
 	refreshToken, accessToken, _, err := service.CreateSession(
@@ -122,13 +119,8 @@ func login(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(401, "Invalid username or password")
 	}
 
-	suspended, err := service.GetActiveSuspension(user.ID)
-	if err != nil {
+	if err := postLoginChecks(user); err != nil {
 		return err
-	}
-
-	if suspended != nil {
-		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
 	}
 
 	userAgent := ""
@@ -193,6 +185,23 @@ func loginWithProvider(ctx *fiber.Ctx) error {
 	return ctx.Redirect(loginUrl)
 }
 
+func postLoginChecks(user *model.User) error {
+	suspended, err := service.GetActiveSuspension(user.ID)
+	if err != nil {
+		return err
+	}
+
+	if suspended != nil {
+		return helper.NewHttpError(403, "Your account has been suspended by an administrator")
+	}
+
+	if !user.EmailVerified {
+		return helper.NewHttpError(403, "Your account has not had it's email verified")
+	}
+	
+	return nil
+}
+
 type LoginRequest struct {
 	Username    string  `json:"username"`
 	Password    string  `json:"password"`
@@ -201,8 +210,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	RefreshToken  string `json:"refresh_token"`
-	AccessToken   string `json:"access_token"`
+	RefreshToken  string `json:"refresh_token,omitempty"`
+	AccessToken   string `json:"access_token,omitempty"`
 	ExpiresAt     int64  `json:"expires_at"`
 	ApplicationID string `json:"app_id"`
 	UserID        string `json:"user_id"`

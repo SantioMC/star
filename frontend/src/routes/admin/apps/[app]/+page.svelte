@@ -9,7 +9,8 @@
 	import Copy from '@/components/copy.svelte';
 	import Icon from '@/components/icon.svelte';
 	import Modal from '@/components/modal.svelte';
-	import OauthProvider from '@/components/oauth_provider.svelte';
+	import Permission from '@/components/permission.svelte';
+	import OauthProvider from '@/components/provider/oauth-provider.svelte';
 	import Sidebar from '@/components/sidebar.svelte';
 	import { Badge } from '@/components/ui/badge';
 	import { Button } from '@/components/ui/button';
@@ -29,10 +30,13 @@
 	let loading = $state<boolean>(false);
 	let hasProviders = $state<boolean>(false);
 	let callbackUrl = $state<string>('');
+	let permissionName = $state<string>('');
+	let description = $state<string>('');
 
 	let createProviderModal = $state<Modal>()
 	let deleteAppModal = $state<Modal>()
 	let editCallbackURLModal = $state<Modal>()
+	let createPermissionModal = $state<Modal>()
 
 	let currentCallbackUrl = $derived(
 		app?.callback?.startsWith('/') ? app?.url + app?.callback : app?.callback
@@ -93,6 +97,30 @@
 		} else {
 			location.reload()
 		}
+	}
+
+	const createPermission = async () => {
+		loading = true
+		const result = await star.createPermission({
+			app: app!.id,
+			permission: permissionName,
+			description: description
+		});
+
+		loading = false;
+
+		if ('error' in result) {
+			toast.error(result.message)
+		} else {
+			permissionName = ''
+			description = ''
+			permissions.push(result)
+			createPermissionModal?.close()
+		}
+	}
+
+	const removePermission = (permission: star.Permission) => {
+		permissions = permissions.filter(p => p.id != permission.id)
 	}
 </script>
 
@@ -255,28 +283,17 @@
 								Leverage star's permission system to keep all access managed by star. Permissions are a great way to have consistent RBAC between all your applications.
 							</span>
 							{#if canModify}
-								<Button>Create Permission</Button>
+								<Button onclick={() => createPermissionModal?.open()}>Create Permission</Button>
 							{/if}
 						</div>
 					{:else}
 						<div class="w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
 							{#each permissions as permission (permission.id)}
-								<div role='button' class='w-full h-16 py-1 px-3 border border-primary/30 rounded-md flex gap-2 hover:*:opacity-100'>
-									<div class='flex flex-col items-baseline'>
-										<span class="text-md overflow-hidden text-clip">{permission.scope}</span>
-										<span class="text-xs text-primary/60 overflow-hidden text-clip">{permission.description}</span>
-									</div>
-
-									{#if canModify}
-										<Button variant='destructive' size='icon' class='ml-auto my-auto opacity-0 transition-all'>
-											<Icon icon='trash' class='text-lg' />
-										</Button>
-									{/if}
-								</div>
+								<Permission {permission} modifiable={canModify} ondelete={() => removePermission(permission)} />
 							{/each}
 
 							{#if canModify && permissions.length > 0}
-								<Button class='w-full border border-primary/30 h-full hover:bg-primary/80! hover:text-secondary!' variant='ghost'>
+								<Button class='w-full border border-primary/30 h-16 hover:bg-primary/80! hover:text-secondary!' variant='ghost' onclick={() => createPermissionModal?.open()}>
 									<Icon icon='plus' />
 									<span class="text-md">Create</span>
 								</Button>
@@ -350,6 +367,35 @@
 		<div class='flex items-center gap-2 justify-end mt-6'>
 			<Button variant='secondary' onclick={() => editCallbackURLModal?.close()}>Cancel</Button>
 			<Button onclick={updateCallbackURL}>Change Callback</Button>
+		</div>
+	</form>
+</Modal>
+
+<Modal bind:this={createPermissionModal}>
+	<h1 class='text-xl font-semibold'>Create Application</h1>
+	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Create a new application, allowing it to authenticate users that are registered with star</h2>
+
+	<form onsubmit={createPermission} class='mt-6'>
+		<div class="flex flex-col gap-6 w-full mx-auto">
+			<div class="grid gap-2">
+				<Label for="name">Permission</Label>
+				<Input id="name" type="text" placeholder='star:user:read' bind:value={permissionName} required />
+			</div>
+			<div class="grid gap-2">
+				<Label for="description">Description</Label>
+				<Input id="description" type="text" placeholder='Permits reading user details' bind:value={description} required />
+			</div>
+		</div>
+
+		<div class='flex items-center gap-2 justify-end mt-6'>
+			<Button variant='secondary' onclick={() => createPermissionModal?.close()}>Cancel</Button>
+			<Button disabled={loading} onclick={createPermission}>
+				{#if loading}
+					<Spinner />
+				{/if}
+
+				Create Permission
+			</Button>
 		</div>
 	</form>
 </Modal>

@@ -48,7 +48,7 @@
 					<Badge variant='outline' class='border-red-400/60 text-red-400'>Expired</Badge>
 				{/if}
 
-				{#if currentSession}
+			{#if currentSession}
 					<Badge variant='outline' class='border-emerald-600/60 text-emerald-500'>Current Session</Badge>
 				{/if}
 			</p>

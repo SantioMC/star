@@ -19,7 +19,7 @@ func getMetrics(ctx *fiber.Ctx) error {
 
 	ctx.JSON(MetricsResponse{
 		TotalUsers:    service.GetUserCount(),
-		TotalSessions: service.GetSessionCount(),
+		TotalSessions: service.GetActiveSessionCount(),
 		StartedAt:     star.StartedAt.Unix(),
 		NodeID:        star.NodeID,
 		Version:       star.GetVersion(),

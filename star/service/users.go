@@ -392,8 +392,8 @@ func InvalidateAllSessions(userId string) error {
 	return state.Database.SessionStore.InvalidateAllSessions(userId)
 }
 
-func GetSessionCount() int64 {
-	return state.Database.SessionStore.GetCount()
+func GetActiveSessionCount() int64 {
+	return state.Database.SessionStore.GetActiveCount()
 }
 
 func GetUserCount() int64 {

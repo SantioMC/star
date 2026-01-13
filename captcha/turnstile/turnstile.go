@@ -10,6 +10,7 @@ import (
 )
 
 type TurnstileValidator struct {
+	siteKey string
 	secret string
 }
 
@@ -26,10 +27,15 @@ type Response struct {
 	Action string `json:"action"`
 }
 
-func NewTurnstileValidator(secret string) TurnstileValidator {
+func NewTurnstileValidator(siteKey string, secret string) TurnstileValidator {
 	return TurnstileValidator{
+		siteKey: siteKey,
 		secret: secret,
 	}
+}
+
+func (v *TurnstileValidator) GetSiteKey() string {
+	return v.siteKey
 }
 
 func (v *TurnstileValidator) ValidateToken(token string) bool {

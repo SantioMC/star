@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
@@ -32,7 +33,7 @@ func (store *RoleStore) GetAllRoles() ([]model.Role, error) {
 	if err := store.DB.Preload(clause.Associations).Find(&roles).Error; err != nil {
 		return []model.Role{}, err
 	}
-
+	
 	return roles, nil
 }
 
@@ -48,6 +49,30 @@ func (store *RoleStore) FindNonDefaultRolesById(ids []string) ([]model.Role, err
 
 func (store *RoleStore) SetPermissions(role string, permissions []string) error {
 	_, err := gorm.G[model.Role](store.DB).Where("id = ?", role).Update(context.Background(), "permissions", permissions)
+	return err
+}
+
+func (store *RoleStore) GetPermissionByID(id string) (*model.Permission, error) {
+	permission, err := gorm.G[model.Permission](store.DB).Preload("Application", nil).Where("id = ?", id).First(context.Background())
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return &permission, nil
+}
+
+func (store *RoleStore) CreatePermission(app *model.Application, permission string, description string) (model.Permission, error) {
+	perm := model.NewPermission(app, permission, description)
+	return perm, gorm.G[model.Permission](store.DB).Create(context.Background(), &perm)
+}
+
+func (store *RoleStore) DeletePermission(id string) error {
+	_, err := gorm.G[model.Permission](store.DB).Where("id = ?", id).Delete(context.Background())
 	return err
 }
 

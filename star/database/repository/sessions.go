@@ -74,8 +74,11 @@ func (store SessionStore) InvalidateAllSessions(userId string) error {
 	return err
 }
 
-func (store *SessionStore) GetCount() int64 {
-	sessions, err := gorm.G[model.Session](store.DB).Count(context.Background(), "*")
+func (store *SessionStore) GetActiveCount() int64 {
+	sessions, err := gorm.G[model.Session](store.DB).
+		Where("invalidated_at IS NULL OR rotated_at IS NULL").
+		Count(context.Background(), "*")
+	
 	if err != nil {
 		return 0
 	}

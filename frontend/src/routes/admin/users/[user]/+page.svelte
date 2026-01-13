@@ -14,6 +14,7 @@
 	import * as Card from '@/components/ui/card';
 	import * as DropdownMenu from '@/components/ui/dropdown-menu';
 	import { Input } from "@/components/ui/input";
+	import * as Item from '@/components/ui/item';
 	import { Label } from "@/components/ui/label";
 	import { Spinner } from "@/components/ui/spinner";
 	import { hasPermission } from "@/index";
@@ -63,7 +64,7 @@
 		profilePicture = user.profile_picture;
 		firstName = user.first_name;
 		lastName = user.last_name;
-		roles = user.roles;
+		roles = Array.from(user.roles);
 
 		if (user.suspension?.issued_by) {
 			suspender = await star.getUser(user.suspension.issued_by);
@@ -337,6 +338,9 @@
 			<Card.Root class='min-w-1/3 w-full md:w-auto'>
 				<Card.CardHeader>
 					<Card.Title><Icon icon='gavel' /> Roles</Card.Title>
+					{#if user.roles.length > 0}
+						<Card.Description>The roles the user has, roles are typically used to permit access to resources.</Card.Description>
+					{/if}
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-1">
 					{#if user.roles.length == 0}
@@ -346,21 +350,26 @@
 							<Button class='mt-1' onclick={() => changeRolesModal?.open()}>Add Role</Button>
 						</div>
 					{:else}
-						<p class="text-primary/60 text-sm">The user has the following roles:</p>
 						<div class='flex gap-2 items-center'>
 							{#each user.roles as role (role.id)}
-								<Badge variant='secondary' class='hover:*:block hover:*:opacity-100 hover:bg-secondary/60 cursor-pointer transition-all'>
-									<Icon icon='folder' class='p-1' />
-									<span class="pr-1">{titleCase(role.name)}</span>
-									<Icon icon='x' class='p-1 hidden opacity-0 transition-all' />
-								</Badge>
+								<Item.Root variant='outline' class='w-full'>
+									<Item.Content class='flex flex-row items-center gap-2'>
+										<Icon class='text-xl' icon={'folder'} />
+										<div class="flex flex-col">
+											<p class="text-md flex items-center gap-2">{titleCase(role.name)}</p>
+											<p class="text-primary/60 text-md flex items-center gap-2">{role.description}</p>
+										</div>
+									</Item.Content>
+								</Item.Root>
 							{/each}
-							<Badge variant='secondary' class='w-fit hover:bg-secondary/60 transition-colors cursor-pointer' onclick={() => changeRolesModal?.open()}>
-								<Icon icon='plus' class='p-1' /> Add Role
-							</Badge>
 						</div>
 					{/if}
 				</Card.Content>
+				{#if user.roles.length > 0}
+					<Card.Footer>
+						<Button class='ml-auto' onclick={() => changeRolesModal?.open()}>Modify Roles</Button>
+					</Card.Footer>
+				{/if}
 			</Card.Root>
 
 			<Card.Root class='min-w-1/3 w-full md:w-auto'>

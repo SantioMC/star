@@ -1,17 +1,15 @@
 package route
 
 import (
-	"log/slog"
-	"net/mail"
 	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/tubblelive/star/star/api/helper"
+	"github.com/tubblelive/star/star/api/middleware"
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/service"
-	"github.com/tubblelive/star/star/state"
 	"github.com/tubblelive/star/star/state/scopes"
 	"github.com/tubblelive/star/star/verifier"
 	"gorm.io/datatypes"
@@ -25,7 +23,7 @@ func UserRouter(r fiber.Router) {
 	r.Delete("/me", deleteMe)
 
 	// Routes /api/user/register
-	r.Post("/register", limiter.New(helper.HeavyLimiter), registerAccount)
+	r.Post("/register", limiter.New(helper.HeavyLimiter), middleware.RequireCaptcha, registerAccount)
 
 	// Routes privileged endpoints
 	r.Get("/", getAllUsers)
@@ -40,27 +38,17 @@ func UserRouter(r fiber.Router) {
 }
 
 func registerAccount(ctx *fiber.Ctx) error {
-	body := new(RegisterAccountRequest)
-	if err := ctx.BodyParser(body); err != nil {
+	var body RegisterAccountRequest
+	if err := ctx.BodyParser(&body); err != nil {
 		return err
 	}
 
-	captcha := state.StarState.Config.CaptchaVerifier
-	if captcha != nil {
-		token := ctx.Get("X-Turnstile-Token", "")
-		valid := captcha.ValidateToken(token)
-
-		if !valid {
-			return helper.NewHttpError(400, "Invalid captcha token provided")
-		}
-	}
-
-	email, err := mail.ParseAddress(body.Email)
+	email, err := verifier.VerifyEmail(body.Email)
 	if err != nil {
 		return helper.NewHttpError(400, "Invalid email address provided")
 	}
 
-	err = verifier.VerifyUsername(body.Username)
+	username, err := verifier.VerifyUsername(body.Username)
 	if err != nil {
 		return helper.NewHttpError(400, "Invalid username, "+err.Error())
 	}
@@ -70,8 +58,16 @@ func registerAccount(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "Invalid password, "+err.Error())
 	}
 
-	existing, err := service.GetUserByEmail(email.Address)
+	existing, err := service.GetUserByUsername(username)
+	if err != nil {
+		return err
+	}
 
+	if existing != nil {
+		return helper.NewHttpError(409, "The username provided is already in use")
+	}
+
+	existing, err = service.GetUserByEmail(email)
 	if err != nil {
 		return err
 	}
@@ -81,18 +77,51 @@ func registerAccount(ctx *fiber.Ctx) error {
 	}
 
 	user, _, err := service.CreateUser(
-		body.Username, email.Address, body.Password,
+		username, email, body.Password,
 	)
 
 	if err != nil {
 		return err
 	}
 
-	return ctx.JSON(fiber.Map{
+	response := fiber.Map{
 		"username": body.Username,
-		"email":    email.Address,
+		"email":    email,
 		"id":       user.ID,
-	})
+	}
+
+	// important: we probably dont want this! we need them to first pass email verification!!!!!!!
+
+	// if body.Application != nil {
+	// 	app, err := service.GetAppByID(*body.Application)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	if app == nil {
+	// 		return helper.NewHttpError(404, "application not found, account was created but no login has been made.")
+	// 	}
+
+	// 	userAgent := ctx.Get(fiber.HeaderUserAgent)
+	// 	fingerprint := ""
+	// 	if body.Fingerprint != nil {
+	// 		fingerprint = *body.Fingerprint
+	// 	}
+
+	// 	session, jwt, _, err := service.CreateSession(
+	// 		user, 
+	// 		app, 
+	// 		&fingerprint,
+	// 		userAgent,
+	// 		ctx.IP(),
+	// 		loginClaims,
+	// 	)
+
+	// 	response["access_token"] = jwt
+	// 	response["refresh_token"] = session.Token
+	// }
+
+	return ctx.JSON(response)
 }
 
 func getMe(ctx *fiber.Ctx) error {
@@ -150,11 +179,12 @@ func patchMe(ctx *fiber.Ctx) error {
 			return helper.NewHttpError(400, "username is already in use")
 		}
 
-		if err := verifier.VerifyUsername(*body.Username); err != nil {
+		username, err := verifier.VerifyUsername(*body.Username)
+		if err != nil {
 			return err
 		}
 
-		user.Username = *body.Username
+		user.Username = username
 	}
 
 	if body.FirstName != nil && len(*body.FirstName) < 64 {
@@ -307,6 +337,15 @@ func patchUser(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "user not found")
 	}
 
+	userId, err := helper.GetUserId(ctx)
+	if err != nil {
+		return err
+	}
+
+	if user.ID == userId {
+		return helper.NewHttpError(401, "you may not modify your own user, do so in user details")
+	}
+
 	var body AdminUpdateUserRequest
 	if err := ctx.BodyParser(&body); err != nil {
 		return err
@@ -368,7 +407,6 @@ func patchUser(ctx *fiber.Ctx) error {
 			return err
 		}
 
-		slog.Info("setting user roles to", "amount", len(roles))
 		user.Roles = roles
 	}
 
@@ -520,6 +558,10 @@ func toAdminUserResponse(user model.User) UserAdminData {
 	sessions := []SessionResponse{}
 
 	for _, session := range user.Sessions {
+		if session.RotatedAt != nil {
+			continue
+		}
+
 		sessions = append(sessions, toSessionResponse(&session))
 	}
 
@@ -561,9 +603,11 @@ type UserData struct {
 }
 
 type RegisterAccountRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Application *string `json:"application_id"`
+	Fingerprint *string `json:"fingerprint"`
+	Username    string  `json:"username"`
+	Email       string  `json:"email"`
+	Password    string  `json:"password"`
 }
 
 type ChangePasswordRequest struct {
