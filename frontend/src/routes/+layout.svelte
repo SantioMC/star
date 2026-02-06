@@ -8,14 +8,19 @@
 
 	let { children } = $props();
 
-	const PUBLIC_ROUTES = ['/login', '/register', '/callback']
+	const PUBLIC_ROUTES = [
+		'/login',
+		'/register',
+		'/callback',
+		'/oauth/authorize'
+	];
 
 	if (browser && !PUBLIC_ROUTES.includes(page.url.pathname) && !isLoggedIn()) {
-		location.href = "/login"
+		location.href = '/login';
 	}
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
-<Toaster duration={2000} position='bottom-right' closeButton={true} />
+<Toaster duration={2000} position="bottom-right" closeButton={true} />
 
 {@render children()}

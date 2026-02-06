@@ -266,11 +266,11 @@
 										<Icon icon='password' />
 										Change Password
 									</DropdownMenu.Item>
-									<DropdownMenu.Item onclick={() => changePasswordModal?.open()}>
+									<DropdownMenu.Item disabled>
 										<Icon icon='photo' />
 										Update Profile Picture
 									</DropdownMenu.Item>
-									<DropdownMenu.Item>
+									<DropdownMenu.Item disabled>
 										<Icon icon='spy' />
 										Impersonate User
 									</DropdownMenu.Item>
