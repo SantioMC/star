@@ -55,17 +55,17 @@ func StartAPIServer(server *state.Server) *fiber.App {
 		if err != nil {
 			switch data := err.(type) {
 			case *fiber.Error:
-				slog.Error(strconv.Itoa(data.Code) + " " + request, "err", err)
+				slog.Error(strconv.Itoa(data.Code)+" "+request, "err", err)
 				c.Status(data.Code).JSON(fiber.Map{
-					"error": true,
-					"status": data.Code,
+					"error":   true,
+					"status":  data.Code,
 					"message": data.Message,
 				})
 			default:
-				slog.Error("500 " + request, "params", c.AllParams(), "err", err)
+				slog.Error("500 "+request, "params", c.AllParams(), "err", err)
 				c.Status(500).JSON(fiber.Map{
-					"error": true,
-					"status": 500,
+					"error":   true,
+					"status":  500,
 					"message": data.Error(),
 				})
 			}
@@ -97,15 +97,16 @@ func StartAPIServer(server *state.Server) *fiber.App {
 			return fiber.ErrTooManyRequests
 		},
 	}))
-	
+
 	api.Route("/", route.LoginRouter)
 
 	api.Route("/user", route.UserRouter)
 	api.Route("/session", route.SessionRouter)
 	api.Route("/role", route.RoleRouter)
-	
+
 	api.Route("/app", route.AppRouter)
 	api.Route("/app/:app/permission", route.PermissionRouter)
+	api.Route("/app/:app/provider", route.ProviderRouter)
 
 	api.Route("/metrics", route.MetricRouter)
 
@@ -118,7 +119,7 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	}
 
 	environment, err := json.Marshal(FrontendEnvironment{
-		APIUrl: os.Getenv("URL"),
+		APIUrl:  os.Getenv("URL"),
 		SiteKey: siteKey,
 	})
 
@@ -134,9 +135,9 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	app.Use(
 		"/_app/*",
 		filesystem.New(filesystem.Config{
-			Root: http.FS(frontend.FrontendFS),
+			Root:       http.FS(frontend.FrontendFS),
 			PathPrefix: "build",
-			Browse: true,
+			Browse:     true,
 		}),
 	)
 

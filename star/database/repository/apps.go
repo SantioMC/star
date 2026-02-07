@@ -22,7 +22,7 @@ func (store *AppStore) GetAppByID(id string) (*model.Application, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-		
+
 		return nil, err
 	}
 
@@ -31,6 +31,15 @@ func (store *AppStore) GetAppByID(id string) (*model.Application, error) {
 
 func (store *AppStore) GetProviderByID(id string) (*model.OAuthProvider, error) {
 	provider, err := gorm.G[model.OAuthProvider](store.DB).Where("id = ?", id).First(context.Background())
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+
+	return &provider, err
+}
+
+func (store *AppStore) GetProviderByClientID(id string) (*model.OAuthProvider, error) {
+	provider, err := gorm.G[model.OAuthProvider](store.DB).Where("client_id = ?", id).First(context.Background())
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

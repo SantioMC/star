@@ -22,6 +22,7 @@ type Database struct {
 	AppStore     *repository.AppStore
 	SocialStore  *repository.SocialStore
 	RequestStore *repository.RequestStore
+	OAuthStore   *repository.OAuthStore
 }
 
 func Connect(dialector gorm.Dialector, config *config.Config) (*Database, bool, error) {
@@ -63,6 +64,7 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, bool, 
 		AppStore:     &repository.AppStore{DB: db, Config: config},
 		SocialStore:  &repository.SocialStore{DB: db, Config: config},
 		RequestStore: &repository.RequestStore{DB: db},
+		OAuthStore:   &repository.OAuthStore{DB: db, Config: config},
 	}
 
 	return database, firstStart, nil

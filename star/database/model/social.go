@@ -14,6 +14,7 @@ import (
 )
 
 var ErrRequestFailed = fmt.Errorf("response returned a non-200 status code")
+var ErrNoUserinfoEndpoint = fmt.Errorf("no oidc userinfo field was found")
 
 type SocialProvider struct {
 	BaseModel
@@ -54,6 +55,10 @@ func NewSocialProviderFromDiscovery(name string, discoveryUri string, clientId s
 		return nil, err
 	}
 
+	if config.UserInfoEndpoint == nil {
+		return nil, ErrNoUserinfoEndpoint
+	}
+
 	return &SocialProvider{
 		BaseModel: BaseModel{
 			ID: CreateTypedId("scp", 12),
@@ -66,7 +71,7 @@ func NewSocialProviderFromDiscovery(name string, discoveryUri string, clientId s
 		DiscoveryURL: &discoveryUri,
 		AuthURL:      config.AuthEndpoint,
 		TokenURL:     config.TokenEndpoint,
-		UserInfoURL:  config.UserInfoEndpoint,
+		UserInfoURL:  *config.UserInfoEndpoint,
 	}, nil
 }
 

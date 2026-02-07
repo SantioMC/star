@@ -30,8 +30,7 @@ type OAuthProvider struct {
 	ClientID string `json:"client_id"`
 	Secret   string `json:"client_secret" encrypt:"true"`
 
-	RedirectURIs     datatypes.JSONType[[]string] `json:"redirect_uris"`
-	RedirectURIGlobs datatypes.JSONType[[]string] `json:"redirect_uri_globs"`
+	RedirectURIs datatypes.JSONType[[]string] `json:"redirect_uris"`
 
 	ResponseTypes   datatypes.JSONType[[]oidc.ResponseType] `json:"response_types"`
 	GrantTypes      datatypes.JSONType[[]oidc.GrantType]    `json:"grant_types"`
@@ -52,8 +51,7 @@ func NewOAuthProvider(application *Application) OAuthProvider {
 		ClientID: crypto.CreateRandString(24),
 		Secret:   crypto.CreateRandString(32),
 
-		RedirectURIs:     datatypes.NewJSONType([]string{}),
-		RedirectURIGlobs: datatypes.NewJSONType([]string{}),
+		RedirectURIs: datatypes.NewJSONType([]string{}),
 
 		ResponseTypes:   datatypes.NewJSONType([]oidc.ResponseType{oidc.ResponseTypeCode, oidc.ResponseTypeIDTokenOnly, oidc.ResponseTypeIDToken}),
 		GrantTypes:      datatypes.NewJSONType([]oidc.GrantType{oidc.GrantTypeCode, oidc.GrantTypeRefreshToken, oidc.GrantTypeTokenExchange}),
@@ -62,7 +60,7 @@ func NewOAuthProvider(application *Application) OAuthProvider {
 }
 
 func (OAuthProvider) TableName() string {
-    return "oauth_providers"
+	return "oauth_providers"
 }
 
 func (p *OAuthProvider) RotateSecret() {

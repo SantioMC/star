@@ -2,10 +2,12 @@ package service
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/tubblelive/star/star/database/model"
 	"github.com/tubblelive/star/star/state"
+	"gorm.io/datatypes"
 )
 
 func GetAppByID(id string) (*model.Application, error) {
@@ -20,7 +22,7 @@ func GetAppBySlug(slug string) (*model.Application, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("provided slug was empty")
 	}
-	
+
 	return state.Database.AppStore.GetAppBySlug(slug)
 }
 
@@ -57,7 +59,7 @@ func CreateStarApp(url string) (*model.Application, error) {
 	// Set up our oidc provider
 	provider := model.NewOAuthProvider(&app)
 	provider.ApplicationType = model.AppTypePublic
-	
+
 	app.OauthProvider = &provider
 	app.OauthProviderID = &provider.ID
 
@@ -80,9 +82,18 @@ func UpdateApp(app *model.Application) error {
 func GetAppProviderByID(id string) (*model.OAuthProvider, error) {
 	provider, err := state.Database.AppStore.GetProviderByID(id)
 	if err != nil {
-		return &model.OAuthProvider{}, err
+		return nil, err
 	}
-	
+
+	return provider, nil
+}
+
+func GetAppProviderByClientID(id string) (*model.OAuthProvider, error) {
+	provider, err := state.Database.AppStore.GetProviderByClientID(id)
+	if err != nil {
+		return nil, err
+	}
+
 	return provider, nil
 }
 
@@ -104,6 +115,35 @@ func DeleteAppProvider(id string) error {
 
 func RotateAppProvider(provider model.OAuthProvider) error {
 	provider.RotateSecret()
+	return state.Database.AppStore.SaveProvider(&provider)
+}
+
+func CreateRedirrect(provider model.OAuthProvider, redirectUri string) error {
+	redirects := provider.RedirectURIs.Data()
+	if slices.Contains(redirects, redirectUri) {
+		return fmt.Errorf("redirect uri already exists")
+	}
+
+	redirects = append(redirects, redirectUri)
+	provider.RedirectURIs = datatypes.NewJSONType(redirects)
+
+	return state.Database.AppStore.SaveProvider(&provider)
+}
+
+func DeleteRedirect(provider model.OAuthProvider, redirectUri string) error {
+	redirects := provider.RedirectURIs.Data()
+	if !slices.Contains(redirects, redirectUri) {
+		return fmt.Errorf("redirect uri does not exist")
+	}
+
+	for i, uri := range redirects {
+		if uri == redirectUri {
+			redirects = append(redirects[:i], redirects[i+1:]...)
+			break
+		}
+	}
+
+	provider.RedirectURIs = datatypes.NewJSONType(redirects)
 	return state.Database.AppStore.SaveProvider(&provider)
 }
 

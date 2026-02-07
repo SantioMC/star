@@ -9,13 +9,19 @@ import (
 
 var ErrRequestFailed = fmt.Errorf("request returned a non-200 status code")
 
-// Not a complete model of the /.well-known/openid-configuration, but contains only the info we care about
-type OpenIDConfiguration struct {
-	Issuer           string `json:"issuer"`
-	AuthEndpoint     string `json:"authorization_endpoint"`
-	TokenEndpoint    string `json:"token_endpoint"`
-	UserInfoEndpoint string `json:"userinfo_endpoint"`
-	JwksEndpoint     string `json:"jwks_uri"`
+type OpenIDDiscovery struct {
+	Issuer           string  `json:"issuer"`
+	AuthEndpoint     string  `json:"authorization_endpoint"`
+	TokenEndpoint    string  `json:"token_endpoint"`
+
+	RegisterEndpoint *string `json:"registration_endpoint"`
+	UserInfoEndpoint *string `json:"userinfo_endpoint"`
+	JwksEndpoint     *string `json:"jwks_uri"`
+
+	SupportedTokenAuth *[]string `json:"token_endpoint_auth_methods_supported"`
+	SupportedTokenAlg  *[]string `json:"token_endpoint_auth_signing_alg_values_supported"`
+
+	SupportedScopes *[]string `json:"scopes_supported"`
 }
 
 type TokenExchange struct {
@@ -34,7 +40,7 @@ type UserInfo struct {
 	Email          string `json:"email"`
 }
 
-func Discover(discoveryUri string) (*OpenIDConfiguration, error) {
+func Discover(discoveryUri string) (*OpenIDDiscovery, error) {
 	res, err := http.Get(discoveryUri)
 	if err != nil {
 		return nil, err
@@ -51,7 +57,7 @@ func Discover(discoveryUri string) (*OpenIDConfiguration, error) {
 		return nil, err
 	}
 
-	var data *OpenIDConfiguration
+	var data *OpenIDDiscovery
 	err = json.Unmarshal(body, &body)
 
 	if err != nil {

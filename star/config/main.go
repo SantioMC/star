@@ -15,6 +15,7 @@ import (
 type Config struct {
 	Database        string
 	Url             string
+	Email           string
 	Origins         []string
 	TrustProxy      bool
 	Port            int
@@ -26,10 +27,15 @@ func LoadFromEnv() (*Config, error) {
 	config := Config{
 		Database:    fromEnv("DATABASE", "sqlite://./data.db"),
 		Url:         fromEnv("URL", ""),
+		Email:       fromEnv("EMAIL", ""),
 		Origins:     []string{"*"},
 		TrustProxy:  false,
 		AccessToken: [32]byte{},
 		Port:        8080,
+	}
+
+	if config.Url == "" {
+		return nil, fmt.Errorf("URL env is required")
 	}
 
 	var err error
@@ -42,8 +48,7 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("ACCESS_TOKEN env is required")
 	} else {
 		config.AccessToken = sha256.Sum256([]byte(accessToken))
-		// There should be no reason for us to ever ask for it again, as bonus we only store the hash in memory
-		os.Unsetenv("ACCESS_TOKEN") 
+		os.Unsetenv("ACCESS_TOKEN")
 	}
 
 	origins := os.Getenv("ORIGINS")

@@ -1,15 +1,71 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import * as star from '$lib/star';
 	import { Button } from '@/components/ui/button';
 	import * as Card from '@/components/ui/card';
+	import { Spinner } from '@/components/ui/spinner';
+	import { isLoggedIn } from '@/index';
+	import { onMount } from 'svelte';
 
-	let error = page.url.searchParams.get('error');
+	let error = $state<string | null>(null);
+	let loading = $state<boolean>(true);
+	let loggingIn = $state<boolean>(false);
+	let application = $state<star.PublicApplication | null>(null);
+
+	onMount(async () => {
+		error = page.url.searchParams.get('error');
+
+		const clientId = page.url.searchParams.get('client_id');
+		if (!clientId) return;
+
+		if (!isLoggedIn()) {
+			// Redirect to the login page before authorizing
+			localStorage.setItem(
+				'star-auth-redirect',
+				page.url.searchParams.toString()
+			);
+
+			return goto('/login');
+		}
+
+		application = await star.getOAuthApplication(clientId);
+		if (application?.implicit) {
+			return submit();
+		}
+
+		loading = false;
+	});
 
 	const submit = async () => {
-		if (!!error) {
+		if (!!error || !application) {
 			history.back();
 			return;
 		}
+
+		loading = false;
+		loggingIn = true;
+
+		const authCode = await star.getOAuthAuthCode(
+			application.id,
+			page.url.searchParams.get('scopes')?.split(' ') ?? null,
+			page.url.searchParams.get('redirect_uri'),
+			page.url.searchParams.get('state')
+		);
+
+		if ('error' in authCode) {
+			error = authCode.message;
+			loading = false;
+			loggingIn = false;
+			return;
+		}
+
+		let redirectUri = authCode.redirect + '?code=' + authCode.code;
+		if (authCode.state) {
+			redirectUri += '&state=' + authCode.state;
+		}
+
+		window.location.href = redirectUri;
 	};
 </script>
 
@@ -31,6 +87,47 @@
 				</Card.Content>
 				<Card.Footer class="flex-col gap-2">
 					<Button type="submit" class="w-full">Go back</Button>
+				</Card.Footer>
+			{:else if loading}
+				<Card.Header>
+					<Card.Title>One Moment...</Card.Title>
+					<Card.Description>
+						Loading application information, please wait...
+					</Card.Description>
+				</Card.Header>
+				<Card.Content class="w-96 flex items-center flex-col gap-2">
+					<Spinner class="my-8" />
+				</Card.Content>
+			{:else if !application}
+				<Card.Header>
+					<Card.Title>Failed to get application</Card.Title>
+					<Card.Description>
+						Failed to get the application information, please try again or
+						contact the site administrator if the problem persists.
+					</Card.Description>
+				</Card.Header>
+				<Card.Footer class="flex-col gap-2">
+					<Button type="submit" class="w-full">Go back</Button>
+				</Card.Footer>
+			{:else if loggingIn}
+				<Card.Header>
+					<Card.Title>One Moment...</Card.Title>
+					<Card.Description>
+						You are being logged in, please wait...
+					</Card.Description>
+				</Card.Header>
+				<Card.Content class="w-96 flex items-center flex-col gap-2">
+					<Spinner class="my-8" />
+				</Card.Content>
+			{:else}
+				<Card.Header>
+					<Card.Title>Login to {application.name}</Card.Title>
+					<Card.Description>
+						Click on the 'Continue' button to continue logging in to {application.name}.
+					</Card.Description>
+				</Card.Header>
+				<Card.Footer class="flex-col gap-2">
+					<Button class="w-full" onclick={submit}>Continue</Button>
 				</Card.Footer>
 			{/if}
 		</Card.Root>

@@ -17,6 +17,7 @@ type Application struct {
 	Callback string `json:"callback"`
 	Internal bool   `json:"internal"`
 
+	ImplicitAuth         bool  `json:"implicit_authorization"`
 	TokenDuration        int64 `json:"token_duration"`
 	RefreshTokenDuration int64 `json:"refresh_token_duration"`
 
@@ -39,6 +40,7 @@ func NewApplication(name string) Application {
 		Internal: false,
 
 		// Base Settings
+		ImplicitAuth:         false,
 		TokenDuration:        int64(DefaultAccessTokenDuration.Seconds()),
 		RefreshTokenDuration: int64(DefaultRefreshTokenDuration.Seconds()),
 	}

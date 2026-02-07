@@ -138,6 +138,20 @@ export const loginWithProvider = (provider: string) => {
 	location.href = getLoginUrl(APP_ID, provider)
 }
 
+export const getOAuthApplication = (clientId: string) => {
+	return api.get(`oauth/application/${encodeURIComponent(clientId)}`).json<PublicApplication>().catch(_ => null)
+}
+
+export const getOAuthAuthCode = async (appId: string, scopes: string[] | null, redirectUri: string | null, state: string | null) => {
+	return api.post(`oauth/login/code`, {
+		json: {
+			application_id: appId,
+			redirect_uri: redirectUri ?? undefined,
+			state: state ?? undefined
+		}
+	}).json<AuthorizationCodeResponse>().catch(orError)
+}
+
 export const getSelf = async () => {
 	return api.get('api/user/me').json<User>().catch(_ => null)
 }
@@ -254,6 +268,19 @@ export const rotateProvider = async (app: string, provider: string) => {
 	return api.post(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/rotate`).json<{ secret: string }>().catch(orError)
 }
 
+export const addRedirectUri = async (app: string, provider: string, redirectUri: string) => {
+	return api.post(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/redirect`, {
+		json: {
+			redirect_uri: redirectUri
+		}
+	}).json<OAuthProvider>().catch(orError)
+}
+
+export const removeRedirectUri = async (app: string, provider: string, index: number) => {
+	return api.delete(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/redirect/${encodeURIComponent(index)}`)
+		.json<OAuthProvider>().catch(orError)
+}
+
 export const getPermissions = async (app: string | null = null) => {
 	if (app) return api.get(`api/app/${encodeURIComponent(app)}/permission`).json<Permission[]>().catch(() => [] as Permission[]);
 	// todo: needs making
@@ -338,6 +365,18 @@ export interface SocialProvider {
 export interface AppLogins {
 	user_pass_login: boolean
 	providers: SocialProvider[]
+}
+
+export interface PublicApplication {
+	id: string
+	name: string
+	implicit: boolean
+}
+
+export interface AuthorizationCodeResponse {
+	code: string
+	state: string | null
+	redirect: string
 }
 
 export interface LoginResponse {
@@ -494,7 +533,6 @@ export interface OAuthProvider {
 	client_secret: string
 	rotate_refresh_token: boolean
 	redirect_uris: string[]
-	redirect_uri_globs: string[]
 	application_type: 'public' | 'confidential'
 	response_types: string[]
 	grant_types: string[]

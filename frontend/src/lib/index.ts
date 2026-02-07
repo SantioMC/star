@@ -1,8 +1,9 @@
 import { browser } from "$app/environment";
+import { goto } from "$app/navigation";
 import * as star from "$lib/star";
 import { get, writable, type Writable } from "svelte/store";
 
-const persistentWritable = (key: string): Writable<string|null> => {
+const persistentWritable = (key: string): Writable<string | null> => {
 	if (!browser) return writable<string | null>(null);
 
 	const store = writable<string | null>(localStorage.getItem(key))
@@ -19,6 +20,15 @@ export const refreshToken = persistentWritable('refresh_token')
 
 export const isLoggedIn = (): boolean => {
 	return get(token) != null && get(refreshToken) != null
+}
+
+// Continues the login, register, or oauth flow
+export const continueFlow = async () => {
+	const redirect = localStorage.getItem('star-auth-redirect');
+	if (!redirect) return goto('/');
+
+	localStorage.removeItem('star-auth-redirect');
+	await goto('/oauth/authorize?' + redirect);
 }
 
 const base64UrlDecode = (str: string): string => {
