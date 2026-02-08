@@ -17,7 +17,6 @@
 			sitekey: env.PUBLIC_SITE_KEY,
 			theme: 'auto',
 			callback: function (token: string) {
-				console.log('Captcha solved!', token);
 				onsuccess?.(token);
 			},
 			'error-callback': function (errorCode: any) {

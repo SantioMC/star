@@ -21,7 +21,7 @@ func RequireCaptcha(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "Invalid captcha token")
 	}
 
-	valid := (*captcha).ValidateToken(token)
+	valid := captcha.ValidateToken(token)
 	if !valid {
 		return helper.NewHttpError(400, "Invalid captcha token provided")
 	}

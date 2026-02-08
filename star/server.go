@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/tubblelive/star/email/emails"
 	"github.com/tubblelive/star/star/api"
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database"
@@ -42,7 +43,7 @@ func StartServer(config *config.Config) {
 	}
 
 	server := &state.Server{
-		Config:   config,
+		Config:     config,
 		SigningKey: signingKey,
 	}
 
@@ -53,11 +54,26 @@ func StartServer(config *config.Config) {
 	stopTicker := database.StartTicker(db)
 	go api.StartAPIServer(server)
 
+	// test
+	go func() {
+		if state.StarState.Config.EmailProvider == nil {
+			return
+		}
+
+		if err := state.StarState.Config.EmailProvider.Send(
+			"admin@santio.me",
+			"Test - Account Registration",
+			emails.Registration,
+		); err != nil {
+			slog.Error("failed to send test email", "error", err)
+		}
+	}()
+
 	<-interrupt
 
 	println("")
 	slog.Info("star authorization server shutting down")
-	
+
 	stopTicker <- true
 	sqlDb, err := state.Database.DB.DB()
 

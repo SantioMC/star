@@ -19,7 +19,7 @@ const (
 
 // Supported claims by Star
 var SupportedClaims []Claim = []Claim{
-	ClaimEmail, ClaimGroups, ClaimRoles, ClaimProfile, ClaimMetadata,
+	ClaimEmail, ClaimGroups, ClaimRoles, ClaimProfile, ClaimPicture, ClaimMetadata,
 }
 
 // Additional claims that can be requested for userinfo
@@ -28,21 +28,21 @@ func CreateClaimsQuery(userInfoClaims []string, idTokenClaims []string) map[stri
 
 	if len(userInfoClaims) > 0 {
 		claims := make(map[string]any)
-		
+
 		for _, claim := range userInfoClaims {
 			claims[claim] = nil
-		} 
-		
+		}
+
 		values["userinfo"] = claims
 	}
 
 	if len(idTokenClaims) > 0 {
 		claims := make(map[string]any)
-		
+
 		for _, claim := range idTokenClaims {
 			claims[claim] = nil
-		} 
-		
+		}
+
 		values["id_token"] = claims
 	}
 

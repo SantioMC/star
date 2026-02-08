@@ -10,28 +10,31 @@ import (
 
 	"github.com/tubblelive/star/captcha"
 	"github.com/tubblelive/star/captcha/turnstile"
+	"github.com/tubblelive/star/email"
+	"github.com/tubblelive/star/email/provider"
 )
 
 type Config struct {
 	Database        string
 	Url             string
-	Email           string
+	SecurityEmail   string
 	Origins         []string
 	TrustProxy      bool
 	Port            int
 	AccessToken     [32]byte
-	CaptchaVerifier *captcha.Verifier
+	CaptchaVerifier captcha.Verifier
+	EmailProvider   email.EmailProvider
 }
 
 func LoadFromEnv() (*Config, error) {
 	config := Config{
-		Database:    fromEnv("DATABASE", "sqlite://./data.db"),
-		Url:         fromEnv("URL", ""),
-		Email:       fromEnv("EMAIL", ""),
-		Origins:     []string{"*"},
-		TrustProxy:  false,
-		AccessToken: [32]byte{},
-		Port:        8080,
+		Database:      fromEnv("DATABASE", "sqlite://./data.db"),
+		Url:           fromEnv("URL", ""),
+		SecurityEmail: fromEnv("SECURITY_EMAIL", ""),
+		Origins:       []string{"*"},
+		TrustProxy:    false,
+		AccessToken:   [32]byte{},
+		Port:          8080,
 	}
 
 	if config.Url == "" {
@@ -66,13 +69,28 @@ func LoadFromEnv() (*Config, error) {
 	config.TrustProxy = fromEnv("TRUST_PROXY", "false") == "true"
 
 	captcha := loadCaptchaFromEnv()
-	config.CaptchaVerifier = &captcha
-
+	config.CaptchaVerifier = captcha
 	if config.CaptchaVerifier == nil {
 		slog.Warn("running star without a captcha configured")
 	}
 
+	email := loadEmailFromEnv()
+	config.EmailProvider = email
+	if config.EmailProvider == nil {
+		slog.Warn("running star without an email provider configured")
+	}
+
 	return &config, nil
+}
+
+func getOrFail(env string, def string) string {
+	value := fromEnv(env, def)
+	if value == "" {
+		slog.Error("expected " + env + " to be set")
+		os.Exit(1)
+	}
+
+	return value
 }
 
 func loadCaptchaFromEnv() captcha.Verifier {
@@ -83,22 +101,51 @@ func loadCaptchaFromEnv() captcha.Verifier {
 
 	switch strings.ToLower(captcha) {
 	case "cloudflare", "turnstile":
-		siteKey := fromEnv("TURNSTILE_SITE_KEY", "")
-		if siteKey == "" {
-			slog.Error("expected TURNSTILE_SITE_KEY to be set", "captcha", captcha)
-			os.Exit(1)
-		}
-
-		captchaToken := fromEnv("TURNSTILE_TOKEN", "")
-		if captchaToken == "" {
-			slog.Error("expected TURNSTILE_TOKEN to be set", "captcha", captcha)
-			os.Exit(1)
-		}
+		siteKey := getOrFail("TURNSTILE_SITE_KEY", "")
+		captchaToken := getOrFail("TURNSTILE_TOKEN", "")
 
 		turnstile := turnstile.NewTurnstileValidator(siteKey, captchaToken)
 		return &turnstile
 	default:
 		slog.Warn("unknown captcha software", "captcha", captcha)
+	}
+
+	return nil
+}
+
+func loadEmailFromEnv() email.EmailProvider {
+	email := fromEnv("EMAIL_PROVIDER", "")
+	if email == "" {
+		return nil
+	}
+
+	sender := getOrFail("EMAIL_SENDER", "")
+
+	switch strings.ToLower(email) {
+	case "resend":
+		apiKey := getOrFail("RESEND_API_KEY", "")
+		return provider.NewResendProvider(sender, apiKey)
+	case "smtp":
+		host := getOrFail("SMTP_HOST", "")
+		rawPort := getOrFail("SMTP_PORT", "465")
+		username := getOrFail("SMTP_USERNAME", "")
+		password := getOrFail("SMTP_PASSWORD", "")
+
+		port, err := strconv.Atoi(rawPort)
+		if err != nil {
+			slog.Error("expected SMTP_PORT to be a number", "email", email, "port", rawPort)
+			os.Exit(1)
+		}
+
+		return provider.NewSMTPProvider(
+			sender,
+			host,
+			port,
+			username,
+			password,
+		)
+	default:
+		slog.Warn("unknown email provider", "email", email)
 	}
 
 	return nil

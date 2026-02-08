@@ -14,14 +14,22 @@ func CreateAuthRequest(
 	app *model.Application,
 	user *model.User,
 	scopes []string,
-	callbackUri string,
+	callbackUri *string,
+	fingerprint *string,
 	nonce *string,
 ) (model.AuthRequest, error) {
 	if len(scopes) == 0 {
 		scopes = oidc.DefaultScopes
 	}
 
-	return state.Database.OAuthStore.CreateAuthRequest(app, user, scopes, callbackUri, nonce)
+	return state.Database.OAuthStore.CreateAuthRequest(
+		app,
+		user,
+		scopes,
+		callbackUri,
+		fingerprint,
+		nonce,
+	)
 }
 
 func MarkAuthRequestCompleted(code string) error {

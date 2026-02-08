@@ -53,8 +53,17 @@ func GetUserId(ctx *fiber.Ctx) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	return claims.Subject, nil
+}
+
+func GetSessionId(ctx *fiber.Ctx) (string, error) {
+	claims, err := GetUserClaims(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return claims.SessionID, nil
 }
 
 func HasPermission(ctx *fiber.Ctx, permission scopes.Scope) bool {

@@ -115,7 +115,7 @@ func StartAPIServer(server *state.Server) *fiber.App {
 	siteKey := ""
 
 	if captcha != nil {
-		siteKey = (*captcha).GetSiteKey()
+		siteKey = captcha.GetSiteKey()
 	}
 
 	environment, err := json.Marshal(FrontendEnvironment{

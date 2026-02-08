@@ -82,6 +82,10 @@ export const refreshAccessToken = async (): Promise<string | null> => {
 	const result = await star.refreshToken(value)
 	if ('error' in result) {
 		console.error(`Failed to refresh access token (${result.error}): ${result.error_description ?? 'No description provided'}`)
+
+		token.set(null)
+		refreshToken.set(null)
+
 		return null
 	}
 

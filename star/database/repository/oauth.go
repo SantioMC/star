@@ -8,7 +8,6 @@ import (
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database/model"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type OAuthStore struct {
@@ -19,7 +18,12 @@ type OAuthStore struct {
 func (store *OAuthStore) GetAuthRequestByCode(code string) (*model.AuthRequest, error) {
 	request := model.AuthRequest{}
 
-	if err := store.DB.Where("code = ?", code).Preload(clause.Associations).First(&request).Error; err != nil {
+	if err := store.DB.Where("code = ?", code).
+		Preload("Application").
+		Preload("User").
+		Preload("Application.OauthProvider").
+		First(&request).Error; err != nil {
+
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -34,10 +38,11 @@ func (store *OAuthStore) CreateAuthRequest(
 	app *model.Application,
 	user *model.User,
 	scopes []string,
-	callbackUri string,
+	callbackUri *string,
+	fingerprint *string,
 	state *string,
 ) (model.AuthRequest, error) {
-	request := model.NewAuthRequest(app, user, scopes, callbackUri, state)
+	request := model.NewAuthRequest(app, user, scopes, callbackUri, fingerprint, state)
 
 	if err := store.DB.Create(&request).Error; err != nil {
 		return request, err

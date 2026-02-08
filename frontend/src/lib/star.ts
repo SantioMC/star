@@ -146,6 +146,7 @@ export const getOAuthAuthCode = async (appId: string, scopes: string[] | null, r
 	return api.post(`oauth/login/code`, {
 		json: {
 			application_id: appId,
+			scopes: scopes ?? undefined,
 			redirect_uri: redirectUri ?? undefined,
 			state: state ?? undefined
 		}

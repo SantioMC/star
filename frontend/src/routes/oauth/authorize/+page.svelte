@@ -19,15 +19,7 @@
 		const clientId = page.url.searchParams.get('client_id');
 		if (!clientId) return;
 
-		if (!isLoggedIn()) {
-			// Redirect to the login page before authorizing
-			localStorage.setItem(
-				'star-auth-redirect',
-				page.url.searchParams.toString()
-			);
-
-			return goto('/login');
-		}
+		if (!isLoggedIn()) return requestLogin();
 
 		application = await star.getOAuthApplication(clientId);
 		if (application?.implicit) {
@@ -36,6 +28,16 @@
 
 		loading = false;
 	});
+
+	const requestLogin = async () => {
+		// Redirect to the login page before authorizing
+		localStorage.setItem(
+			'star-auth-redirect',
+			page.url.searchParams.toString()
+		);
+
+		return goto('/login');
+	};
 
 	const submit = async () => {
 		if (!!error || !application) {
@@ -54,6 +56,10 @@
 		);
 
 		if ('error' in authCode) {
+			if (authCode.message === 'Forbidden') {
+				return requestLogin();
+			}
+
 			error = authCode.message;
 			loading = false;
 			loggingIn = false;

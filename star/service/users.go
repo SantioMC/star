@@ -419,8 +419,13 @@ func RefreshSession(
 	session model.Session,
 	fingerprint *string,
 	userAgent string,
+	address string,
 	rotate bool,
 ) (*model.Session, string, time.Time, error) {
+	if fingerprint != nil && *fingerprint == "" {
+		fingerprint = nil
+	}
+
 	if session.InvalidatedAt != nil {
 		return nil, "", time.Time{}, ErrTokenInvalid
 	}
@@ -435,7 +440,8 @@ func RefreshSession(
 		return nil, "", time.Time{}, ErrTokenExpired
 	}
 
-	if session.Fingerprint != nil && *session.Fingerprint != *fingerprint {
+	// todo: flag suspicious activity if ip address has changed
+	if session.Fingerprint != nil && (fingerprint == nil || *session.Fingerprint != *fingerprint) {
 		// If the fingerprint has changed, we invalidate the session
 		if err := state.Database.SessionStore.InvalidateSession(session.ID); err != nil {
 			return nil, "", time.Time{}, err

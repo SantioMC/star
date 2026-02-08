@@ -4,6 +4,7 @@ type UserJWT struct {
 	Subject   string   `json:"sub"`
 	Email     string   `json:"email"`
 	Audience  string   `json:"aud"`
+	SessionID string   `json:"sid"`
 	Roles     []Role   `json:"roles"`
 	Scopes    []string `json:"scopes"`
 	IssuedAt  int64    `json:"iat"`

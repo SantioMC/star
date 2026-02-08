@@ -20,28 +20,6 @@ var KnownGrantTypes = []GrantType{
 	GrantAuthorizationCode, GrantRefreshToken,
 }
 
-type TokenRequest struct {
-	GrantType    GrantType `form:"grant_type"`
-	Fingerprint  *string   `form:"fp"`
-	ClientId     *string   `form:"client_id"`
-	ClientSecret *string   `form:"client_secret"`
-}
-
-// grant_type = "refresh_token"
-type RefreshTokenRequest struct {
-	TokenRequest
-	RefreshToken string  `form:"refresh_token"`
-	Scope        *string `form:"scope"`
-}
-
-// grant_type = "authorization_code"
-type ExchangeTokenRequest struct {
-	TokenRequest
-	Code        string  `form:"code"`
-	RedirectUri string  `form:"redirect_uri"`
-	ClientId    *string `form:"client_id"`
-}
-
 type TokenResponse struct {
 	AccessToken  string  `json:"access_token"`
 	TokenType    string  `json:"token_type"`

@@ -120,11 +120,13 @@ func RotateAppProvider(provider model.OAuthProvider) error {
 
 func CreateRedirrect(provider model.OAuthProvider, redirectUri string) error {
 	redirects := provider.RedirectURIs.Data()
-	if slices.Contains(redirects, redirectUri) {
+	sanitized := strings.TrimSpace(strings.ToLower(redirectUri))
+
+	if slices.Contains(redirects, sanitized) {
 		return fmt.Errorf("redirect uri already exists")
 	}
 
-	redirects = append(redirects, redirectUri)
+	redirects = append(redirects, sanitized)
 	provider.RedirectURIs = datatypes.NewJSONType(redirects)
 
 	return state.Database.AppStore.SaveProvider(&provider)
@@ -132,12 +134,14 @@ func CreateRedirrect(provider model.OAuthProvider, redirectUri string) error {
 
 func DeleteRedirect(provider model.OAuthProvider, redirectUri string) error {
 	redirects := provider.RedirectURIs.Data()
-	if !slices.Contains(redirects, redirectUri) {
+	sanitized := strings.TrimSpace(strings.ToLower(redirectUri))
+
+	if !slices.Contains(redirects, sanitized) {
 		return fmt.Errorf("redirect uri does not exist")
 	}
 
 	for i, uri := range redirects {
-		if uri == redirectUri {
+		if uri == sanitized {
 			redirects = append(redirects[:i], redirects[i+1:]...)
 			break
 		}

@@ -17,8 +17,9 @@ type AuthRequest struct {
 	User   *User  `json:"-"`
 
 	Code        string  `json:"code"`
-	CallbackURI string  `json:"callback_uri"`
+	RedirectURI *string `json:"callback_uri"`
 	State       *string `json:"state"`
+	Fingerprint *string `json:"fingerprint"`
 	Scopes      datatypes.JSONType[[]string]
 
 	ExpiresAt   int64  `json:"expires_at"`
@@ -33,7 +34,8 @@ func NewAuthRequest(
 	application *Application,
 	user *User,
 	scopes []string,
-	callbackUri string,
+	callbackUri *string,
+	fingerprint *string,
 	state *string,
 ) AuthRequest {
 	expiresAt := time.Now().Add(time.Minute * 10)
@@ -52,7 +54,7 @@ func NewAuthRequest(
 		Code:        crypto.CreateRandString(24),
 		State:       state,
 		Scopes:      datatypes.NewJSONType(scopes),
-		CallbackURI: callbackUri,
+		RedirectURI: callbackUri,
 
 		ExpiresAt: expiresAt.Unix(),
 	}

@@ -14,7 +14,7 @@ import (
 
 func WellKnownRouter(r fiber.Router) {
 	cache := cache.New(cache.Config{
-		Expiration: 24 * time.Hour,
+		Expiration:   24 * time.Hour,
 		CacheControl: true,
 	})
 
@@ -26,8 +26,8 @@ func WellKnownRouter(r fiber.Router) {
 
 func getWellKnownSecurity(ctx *fiber.Ctx) error {
 	expiresAt := star.StartedAt.Add(time.Hour * 24 * 365)
-	
-	email := state.StarState.Config.Email
+
+	email := state.StarState.Config.SecurityEmail
 	if email == "" {
 		// No contact email, 404 this page
 		return nil
@@ -35,8 +35,8 @@ func getWellKnownSecurity(ctx *fiber.Ctx) error {
 
 	return ctx.SendString(strings.TrimSpace(
 		"Contact: mailto:" + email + "\n" +
-		"Expires: " + expiresAt.UTC().Format(time.RFC3339Nano) + "\n" +
-		"Preferred-Languages: en",
+			"Expires: " + expiresAt.UTC().Format(time.RFC3339Nano) + "\n" +
+			"Preferred-Languages: en",
 	))
 }
 
@@ -68,7 +68,7 @@ func getChangePassword(ctx *fiber.Ctx) error {
 		hostname = state.StarState.Config.Url
 	}
 
-	return ctx.Redirect(hostname + "/#change-password", 303);
+	return ctx.Redirect(hostname+"/#change-password", 303)
 }
 
 // func getOpenidConfig(ctx *fiber.Ctx) error {
@@ -80,7 +80,7 @@ func getChangePassword(ctx *fiber.Ctx) error {
 
 // 	return ctx.JSON(oidc.OpenIDDiscovery{
 // 		Issuer: url,
-		
+
 // 		AuthEndpoint: url + "/oauth/authorize",
 // 		TokenEndpoint: url + "/oauth/token",
 

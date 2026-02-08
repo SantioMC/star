@@ -3,6 +3,7 @@ package route
 import (
 	"net/url"
 	"slices"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
@@ -76,6 +77,20 @@ func getOAuthAuthCode(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(404, "user not found")
 	}
 
+	sessionId, err := helper.GetSessionId(ctx)
+	if err != nil {
+		return err
+	}
+
+	session, err := service.GetSessionByID(sessionId)
+	if err != nil {
+		return err
+	}
+
+	if session == nil {
+		return helper.NewHttpError(404, "session not found")
+	}
+
 	var body CreateAuthRequest
 	if err := ctx.BodyParser(&body); err != nil {
 		return err
@@ -96,13 +111,16 @@ func getOAuthAuthCode(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "application has no redirect uris configured")
 	}
 
-	redirect := allowedRedirects[0]
+	var redirect *string = nil
 	if body.RedirectURI != nil && *body.RedirectURI != "" {
-		redirect = *body.RedirectURI
+		redirect = body.RedirectURI
 	}
 
-	if !slices.Contains(allowedRedirects, redirect) {
-		return helper.NewHttpError(400, "invalid redirect uri provided")
+	if redirect != nil {
+		sanitized := strings.ToLower(strings.TrimSpace(*body.RedirectURI))
+		if !slices.Contains(allowedRedirects, sanitized) {
+			return helper.NewHttpError(400, "invalid redirect uri provided")
+		}
 	}
 
 	scopes := oidc.DefaultScopes
@@ -126,6 +144,7 @@ func getOAuthAuthCode(ctx *fiber.Ctx) error {
 		user,
 		scopes,
 		redirect,
+		session.Fingerprint,
 		body.State,
 	)
 
@@ -133,10 +152,14 @@ func getOAuthAuthCode(ctx *fiber.Ctx) error {
 		return err
 	}
 
+	if redirect == nil {
+		redirect = &allowedRedirects[0]
+	}
+
 	return ctx.JSON(AuthorizationCodeResponse{
 		Code:     code.Code,
 		State:    body.State,
-		Redirect: redirect,
+		Redirect: *redirect,
 	})
 }
 
