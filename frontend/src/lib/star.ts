@@ -163,6 +163,18 @@ export const changePassword = async (currentPassword: string, newPassword: strin
 	}).json<{ success: boolean }>().catch(orError)
 }
 
+export const resendVerification = async (email: string) => {
+	return api.post(`api/user/me/resend`, {
+		json: { email }
+	}).json<{ success: boolean }>().catch(orError)
+}
+
+export const verifyEmail = async (email: string, code: string) => {
+	return api.post(`api/user/me/verify`, {
+		json: { email, code }
+	}).json<{ success: boolean }>().catch(orError)
+}
+
 export const updateUser = (changes: UserChanges) => {
 	return api.patch(`api/user/me`, {
 		json: changes
@@ -353,6 +365,7 @@ export interface RegisterResponse {
 	username: string
 	email: string
 	id: string
+	email_sent: boolean
 	access_token: string | undefined
 	refresh_token: string | undefined
 }

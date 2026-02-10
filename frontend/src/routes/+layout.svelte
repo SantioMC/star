@@ -11,6 +11,7 @@
 	const PUBLIC_ROUTES = [
 		'/login',
 		'/register',
+		'/verify',
 		'/callback',
 		'/oauth/authorize'
 	];

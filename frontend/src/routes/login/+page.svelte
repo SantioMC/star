@@ -6,6 +6,7 @@
 	import Button from '@/components/ui/button/button.svelte';
 	import * as Card from '@/components/ui/card';
 	import { Input } from '@/components/ui/input';
+	import * as Item from '@/components/ui/item';
 	import { Label } from '@/components/ui/label';
 	import { Separator } from '@/components/ui/separator';
 	import { Spinner } from '@/components/ui/spinner';
@@ -14,6 +15,7 @@
 	import { onMount } from 'svelte';
 
 	let logins = $state<star.AppLogins | null>(null);
+	let notice = $state<string | null>(null);
 
 	let loading = $state(false);
 	let promptCaptcha = $state(false);
@@ -61,11 +63,30 @@
 
 	onMount(async () => {
 		logins = await star.getLogins(star.APP_ID);
+		notice = localStorage.getItem('star-login-note');
+
+		if (notice) {
+			localStorage.removeItem('star-login-note');
+		}
 	});
 </script>
 
 <div class="h-full w-full flex items-center justify-center">
-	<form onsubmit={login} class="w-full sm:w-fit">
+	<form
+		onsubmit={login}
+		class="w-full sm:w-fit flex flex-col gap-4 items-center"
+	>
+		{#if notice}
+			<Item.Root class="mb-4 border border-blue-300">
+				<Item.Title class="text-blue-200">
+					<Icon icon="alert-circle" class="text-xl" />
+					<span>
+						{notice}
+					</span>
+				</Item.Title>
+			</Item.Root>
+		{/if}
+
 		<Card.Root class="-my-4 w-full sm:w-sm">
 			{#if promptCaptcha}
 				<Card.Header>
