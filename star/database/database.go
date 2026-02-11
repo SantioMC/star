@@ -1,6 +1,7 @@
 package database
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/tubblelive/star/star/config"
@@ -31,10 +32,15 @@ func Connect(dialector gorm.Dialector, config *config.Config) (*Database, bool, 
 			IgnoreRecordNotFoundError: true,
 			LogLevel:                  logger.Warn,
 		}),
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 
 	if err != nil {
 		return nil, false, err
+	}
+
+	if db == nil {
+		return nil, false, fmt.Errorf("failed to connect to database, database was nil")
 	}
 
 	db.Use(plugin.CreateEncryptionPlugin(config.AccessToken))

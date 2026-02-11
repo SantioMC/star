@@ -21,6 +21,11 @@ func StartServer(config *config.Config) {
 		return
 	}
 
+	if dialector == nil {
+		slog.Error("failed to create dialector", "uri", config.Database)
+		return
+	}
+
 	slog.Info("connecting to database", "protocol", protocol)
 
 	db, firstStart, err := database.Connect(*dialector, config)

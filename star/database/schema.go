@@ -23,7 +23,9 @@ func CreateDialector(value string) (*gorm.Dialector, string, error) {
 	}
 
 	protocol := value[:separator]
-	if protocol, ok := protocols[protocol]; !ok {
+	protocol, ok := protocols[protocol]
+
+	if !ok {
 		return nil, "", fmt.Errorf("unknown protocol %s", protocol)
 	}
 
@@ -35,6 +37,10 @@ func CreateDialector(value string) (*gorm.Dialector, string, error) {
 		dialector = sqlite.Open(dsn)
 	case "postgres":
 		dialector = postgres.Open(dsn)
+	}
+
+	if dialector == nil {
+		return nil, "", fmt.Errorf("failed to create dialector for %s", protocol)
 	}
 
 	return &dialector, protocol, nil

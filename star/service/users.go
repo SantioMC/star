@@ -506,6 +506,10 @@ func SetMetadata(userId string, metadata *string) error {
 func SendVerificationEmail(user *model.User) error {
 	state.Database.UserStore.SetEmailSentAt(user.ID, time.Now())
 
+	if state.StarState.Config.EmailProvider == nil {
+		return fmt.Errorf("no email provider configured")
+	}
+
 	// todo: dont hard code the site and support email
 	replacer := strings.NewReplacer(
 		"{{site}}", "Scram",
