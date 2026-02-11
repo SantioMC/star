@@ -1,8 +1,10 @@
 package route
 
 import (
+	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
@@ -19,8 +21,10 @@ func UserRouter(r fiber.Router) {
 	// Routes /api/user/me
 	r.Get("/me", getMe)
 	r.Patch("/me", patchMe)
-	r.Post("/me/password", updatePassword)
 	r.Delete("/me", deleteMe)
+	r.Post("/me/password", updatePassword)
+	r.Post("/me/resend", resendVerification)
+	r.Post("/me/verify", limiter.New(helper.HeavyLimiter), verifyUser)
 
 	// Routes /api/user/register
 	r.Post("/register", limiter.New(helper.HeavyLimiter), middleware.RequireCaptcha, registerAccount)
@@ -53,8 +57,7 @@ func registerAccount(ctx *fiber.Ctx) error {
 		return helper.NewHttpError(400, "Invalid username, "+err.Error())
 	}
 
-	err = verifier.VerifyPassword(body.Password)
-	if err != nil {
+	if err := verifier.VerifyPassword(body.Password); err != nil {
 		return helper.NewHttpError(400, "Invalid password, "+err.Error())
 	}
 
@@ -77,7 +80,7 @@ func registerAccount(ctx *fiber.Ctx) error {
 	}
 
 	user, _, err := service.CreateUser(
-		username, email, body.Password,
+		username, email, body.Password, false,
 	)
 
 	if err != nil {
@@ -85,41 +88,17 @@ func registerAccount(ctx *fiber.Ctx) error {
 	}
 
 	response := fiber.Map{
-		"username": body.Username,
-		"email":    email,
-		"id":       user.ID,
+		"username":   body.Username,
+		"email":      email,
+		"id":         user.ID,
+		"email_sent": true,
 	}
 
-	// important: we probably dont want this! we need them to first pass email verification!!!!!!!
-
-	// if body.Application != nil {
-	// 	app, err := service.GetAppByID(*body.Application)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	if app == nil {
-	// 		return helper.NewHttpError(404, "application not found, account was created but no login has been made.")
-	// 	}
-
-	// 	userAgent := ctx.Get(fiber.HeaderUserAgent)
-	// 	fingerprint := ""
-	// 	if body.Fingerprint != nil {
-	// 		fingerprint = *body.Fingerprint
-	// 	}
-
-	// 	session, jwt, _, err := service.CreateSession(
-	// 		user, 
-	// 		app, 
-	// 		&fingerprint,
-	// 		userAgent,
-	// 		ctx.IP(),
-	// 		loginClaims,
-	// 	)
-
-	// 	response["access_token"] = jwt
-	// 	response["refresh_token"] = session.Token
-	// }
+	// Send an email for them to verify their email address
+	if err := service.SendVerificationEmail(user); err != nil {
+		slog.Error("failed to send verification email", "error", err)
+		response["email_sent"] = false
+	}
 
 	return ctx.JSON(response)
 }
@@ -209,6 +188,61 @@ func deleteMe(ctx *fiber.Ctx) error {
 
 	//todo: send email confirmation
 	return nil
+}
+
+func resendVerification(ctx *fiber.Ctx) error {
+	var body ResendVerificationRequest
+	if err := ctx.BodyParser(&body); err != nil {
+		return err
+	}
+
+	user, err := service.GetUserByEmail(body.Email)
+	if err != nil {
+		return err
+	}
+
+	if user == nil {
+		return helper.NewHttpError(404, "user not found")
+	}
+
+	if user.EmailSentAt != nil {
+		canResendAt := *user.EmailSentAt + int64(time.Minute.Seconds())
+		if time.Now().Unix() < canResendAt {
+			return helper.NewHttpError(400, "please wait a minute before resending")
+		}
+	}
+
+	if err := service.SendVerificationEmail(user); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
+}
+
+func verifyUser(ctx *fiber.Ctx) error {
+	var body VerifyEmailRequest
+	if err := ctx.BodyParser(&body); err != nil {
+		return err
+	}
+
+	user, err := service.GetUserByEmail(body.Email)
+	if err != nil {
+		return err
+	}
+
+	if user == nil || user.EmailVerified {
+		return helper.NewHttpError(404, "user not found")
+	}
+
+	if err := service.VerifyEmail(user, body.Code); err != nil {
+		return helper.NewHttpError(400, err.Error())
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
 }
 
 func updatePassword(ctx *fiber.Ctx) error {
@@ -638,4 +672,13 @@ type AdminUpdateUserRequest struct {
 	Email         *string             `json:"email"`
 	Metadata      *model.UserMetadata `json:"metadata"`
 	Roles         *[]string           `json:"roles"`
+}
+
+type ResendVerificationRequest struct {
+	Email string `json:"email"`
+}
+
+type VerifyEmailRequest struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
 }

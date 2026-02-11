@@ -1,12 +1,16 @@
 package service
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/tubblelive/star/email/emails"
 	"github.com/tubblelive/star/oidc"
 	"github.com/tubblelive/star/star/crypto"
 	"github.com/tubblelive/star/star/database/model"
@@ -83,7 +87,7 @@ func UnsuspendUser(userId string) error {
 	return state.Database.UserStore.UnsuspendUser(userId)
 }
 
-func FindOrCreateUser(username string, email string) (model.User, error) {
+func FindOrCreateUser(username string, email string, verified bool) (model.User, error) {
 	user, err := GetUserByEmail(email)
 	if err != nil {
 		return model.User{}, err
@@ -91,6 +95,7 @@ func FindOrCreateUser(username string, email string) (model.User, error) {
 
 	if user == nil {
 		newUser := model.NewUser(username, email)
+		newUser.EmailVerified = verified
 
 		if err := state.Database.UserStore.SaveUser(newUser); err != nil {
 			return model.User{}, err
@@ -102,8 +107,8 @@ func FindOrCreateUser(username string, email string) (model.User, error) {
 	return *user, nil
 }
 
-func CreateUser(username string, email string, password string) (*model.User, *model.Account, error) {
-	user, err := FindOrCreateUser(username, email)
+func CreateUser(username string, email string, password string, verified bool) (*model.User, *model.Account, error) {
+	user, err := FindOrCreateUser(username, email, verified)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -158,7 +163,7 @@ func CreateUserFromSocial(provider *model.SocialProvider, token string) (*model.
 		return nil, nil, err
 	}
 
-	user, err := FindOrCreateUser(username, userInfo.Email)
+	user, err := FindOrCreateUser(username, userInfo.Email, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -357,6 +362,7 @@ func CreateSession(
 	session := model.NewSession(duration, claims)
 
 	session.UserID = user.ID
+
 	session.Application = app
 	session.ApplicationID = app.ID
 
@@ -417,12 +423,13 @@ func GetSessionByToken(refreshToken string) (*model.Session, error) {
 
 func RefreshSession(
 	session model.Session,
+	provider *model.OAuthProvider,
 	fingerprint *string,
 	userAgent string,
 	address string,
-	rotate bool,
 ) (*model.Session, string, time.Time, error) {
 	if fingerprint != nil && *fingerprint == "" {
+		slog.Warn("empty fingerprint provided", "user", session.UserID)
 		fingerprint = nil
 	}
 
@@ -440,24 +447,27 @@ func RefreshSession(
 		return nil, "", time.Time{}, ErrTokenExpired
 	}
 
-	// todo: flag suspicious activity if ip address has changed
-	if session.Fingerprint != nil && (fingerprint == nil || *session.Fingerprint != *fingerprint) {
-		// If the fingerprint has changed, we invalidate the session
-		if err := state.Database.SessionStore.InvalidateSession(session.ID); err != nil {
-			return nil, "", time.Time{}, err
-		}
+	// If this provider supports fingerprinting, we'll check the fingerprint
+	if provider.Fingerprinting {
+		if session.Fingerprint != nil && (fingerprint == nil || *session.Fingerprint != *fingerprint) {
+			// If the fingerprint has changed, we invalidate the session
+			if err := state.Database.SessionStore.InvalidateSession(session.ID); err != nil {
+				return nil, "", time.Time{}, err
+			}
 
-		return nil, "", time.Time{}, ErrSuspiciousActivity
-	} else if session.Fingerprint == nil && fingerprint != nil {
-		// If we did not have a fingerprint associated but we're provided one now, we'll update the session too
-		session.Fingerprint = fingerprint
+			slog.Error("suspicious activity detected", "ip", address, "fingerprint", fingerprint, "expected", *session.Fingerprint, "user", session.UserID)
+			return nil, "", time.Time{}, ErrSuspiciousActivity
+		} else if session.Fingerprint == nil && fingerprint != nil {
+			// If we did not have a fingerprint associated but we're provided one now, we'll update the session too
+			session.Fingerprint = fingerprint
 
-		if err := state.Database.SessionStore.UpdateSessionFingerprint(session.ID, fingerprint); err != nil {
-			return nil, "", time.Time{}, err
+			if err := state.Database.SessionStore.UpdateSessionFingerprint(session.ID, fingerprint); err != nil {
+				return nil, "", time.Time{}, err
+			}
 		}
 	}
 
-	if rotate {
+	if provider.RotateRefreshToken {
 		// Mark this session as rotated for detecting malicious activity, and create a new one
 		now := time.Now().Unix()
 		session.RotatedAt = &now
@@ -491,4 +501,49 @@ func SetMetadata(userId string, metadata *string) error {
 	}
 
 	return state.Database.UserStore.SetMetadata(userId, parsed)
+}
+
+func SendVerificationEmail(user *model.User) error {
+	state.Database.UserStore.SetEmailSentAt(user.ID, time.Now())
+
+	// todo: dont hard code the site and support email
+	replacer := strings.NewReplacer(
+		"{{site}}", "Scram",
+		"{{support}}", "support@scram.live",
+		"{{link}}", state.StarState.Config.Url+"/verify?email="+user.Email+"&token="+user.EmailCode,
+		"{{username}}", user.Username,
+		"{{code}}", user.EmailCode,
+	)
+
+	// Send an email for them to verify their email address
+	if err := state.StarState.Config.EmailProvider.Send(
+		user.Email,
+		"Scram - Register your account",
+		replacer.Replace(emails.Registration),
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func VerifyEmail(user *model.User, code string) error {
+	if user.EmailVerified {
+		return fmt.Errorf("email already verified")
+	}
+
+	if subtle.ConstantTimeCompare([]byte(user.EmailCode), []byte(code)) != 1 {
+		return fmt.Errorf("invalid code")
+	}
+
+	now := time.Now().Unix()
+	user.EmailVerified = true
+	user.EmailCode = ""
+	user.EmailSentAt = &now
+
+	if err := state.Database.UserStore.MarkEmailVerified(user.ID); err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -1,24 +1,24 @@
 <script lang="ts">
-	import { browser } from "$app/environment";
-	import { goto } from "$app/navigation";
+	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
 	import Icon from '$lib/components/icon.svelte';
-	import Session from "@/components/session.svelte";
-	import Sidebar from "@/components/sidebar.svelte";
-	import SocialAccount from "@/components/social-account.svelte";
-	import * as Avatar from "@/components/ui/avatar";
-	import { Button } from "@/components/ui/button";
-	import * as Card from "@/components/ui/card";
-	import { Input } from "@/components/ui/input";
-	import { Label } from "@/components/ui/label";
-	import { Spinner } from "@/components/ui/spinner";
-	import { getJWT, hasPermission } from "@/index";
-	import * as star from "@/star";
-	import { onMount } from "svelte";
-	import { toast } from "svelte-sonner";
+	import Session from '@/components/session.svelte';
+	import Sidebar from '@/components/sidebar.svelte';
+	import SocialAccount from '@/components/social-account.svelte';
+	import * as Avatar from '@/components/ui/avatar';
+	import { Button } from '@/components/ui/button';
+	import * as Card from '@/components/ui/card';
+	import { Input } from '@/components/ui/input';
+	import { Label } from '@/components/ui/label';
+	import { Spinner } from '@/components/ui/spinner';
+	import { getJWT, hasPermission } from '@/index';
+	import * as star from '@/star';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 
-	let data = $state<star.User|null>(null)
-	let logins = $state<star.AppLogins|null>(null)
-	let loading = $state<boolean>(false)
+	let data = $state<star.User | null>(null);
+	let logins = $state<star.AppLogins | null>(null);
+	let loading = $state<boolean>(false);
 
 	let username = $state<string>('');
 	let firstName = $state<string>('');
@@ -29,55 +29,55 @@
 	let confirmPassword = $state<string>('');
 
 	onMount(async () => {
-		if (!browser) return
+		if (!browser) return;
 
-		data = await star.getSelf()
-		if (data == null) return goto('/login')
+		data = await star.getSelf();
+		if (data == null) return goto('/login');
 
-		username = data!.username
-		firstName = data!.first_name
-		lastName = data!.last_name
+		username = data!.username;
+		firstName = data!.first_name;
+		lastName = data!.last_name;
 
-		logins = await star.getLogins(star.APP_ID)
-	})
+		logins = await star.getLogins(star.APP_ID);
+	});
 
 	const removeSession = (session: star.Session) => {
-		data!.sessions = data!.sessions.filter(s => s.id != session.id)
-	}
+		data!.sessions = data!.sessions.filter((s) => s.id != session.id);
+	};
 
 	const invalidateAllSessions = async () => {
 		loading = true;
-		const response = await star.invalidateAllSessions()
-		
+		const response = await star.invalidateAllSessions();
+
 		if ('error' in response) {
-			loading = false
-			return toast.error(response.message)
+			loading = false;
+			return toast.error(response.message);
 		}
 
-		goto('/logout')
-	}
+		goto('/logout');
+	};
 
 	const changePassword = async (e: Event) => {
 		e.preventDefault();
-		
+
 		if (!currentPassword || !newPassword || !confirmPassword) {
 			return;
 		}
 
 		if (newPassword !== confirmPassword) {
-			return toast.error('Your passwords do not match!')
+			return toast.error('Your passwords do not match!');
 		}
 
 		loading = true;
-		const response = await star.changePassword(currentPassword, newPassword)
+		const response = await star.changePassword(currentPassword, newPassword);
 
 		if ('error' in response) {
 			loading = false;
-			return toast.error(response.message)
+			return toast.error(response.message);
 		}
 
 		goto('/logout');
-	}
+	};
 
 	const updateDetails = async (e: Event) => {
 		e.preventDefault();
@@ -86,47 +86,61 @@
 		const response = await star.updateUser({
 			username,
 			first_name: firstName,
-			last_name: lastName,
-		})
+			last_name: lastName
+		});
 
 		loading = false;
 
 		if ('error' in response) {
-			return toast.error(response.message)
+			return toast.error(response.message);
 		} else {
-			toast.success('Successfully updated your details!')
+			toast.success('Successfully updated your details!');
 		}
-	}
+	};
 
 	const getAccount = (id: string) => {
-		return data!.accounts.find(acc => acc.id == id);
-	}
+		return data!.accounts.find((acc) => acc.id == id);
+	};
 </script>
 
-<Sidebar hidden={data == null || !hasPermission('star:server') && !hasPermission('star:admin')}>
+<Sidebar
+	hidden={data == null ||
+		(!hasPermission('star:server') && !hasPermission('star:admin'))}
+>
 	{#if data != null}
 		<div class="flex flex-col md:w-3xl mx-auto py-24 gap-8">
 			<div class="flex items-center">
 				<div>
 					<h1 class="leading-8 text-2xl font-semibold">Manage your account</h1>
-					<h2 class="leading-4 text-primary/70">Manage your account settings and preferences</h2>
+					<h2 class="leading-4 text-primary/70">
+						Manage your account settings and preferences
+					</h2>
 				</div>
 
 				{#if hasPermission('star:admin:read:users')}
-					<Button onclick={() => goto(`/admin/users/${data!.id}`)} variant='secondary' class='ml-auto'>View Admin Page</Button>
+					<Button
+						onclick={() => goto(`/admin/users/${data!.id}`)}
+						variant="secondary"
+						class="ml-auto"
+					>
+						View Admin Page
+					</Button>
 				{/if}
 			</div>
-			
-			<Card.Root class='min-w-1/3 w-full md:w-auto'>
+
+			<Card.Root class="min-w-1/3 w-full md:w-auto">
 				<Card.CardHeader>
-					<Card.Title><Icon icon='user' /> Profile Information</Card.Title>
+					<Card.Title><Icon icon="user" /> Profile Information</Card.Title>
 				</Card.CardHeader>
 
 				<form onsubmit={updateDetails}>
 					<Card.Content class="flex flex-col gap-8">
 						<div class="flex gap-2 items-center">
 							<Avatar.Root>
-								<Avatar.Image src={data.profile_picture} alt="{username}'s Profile Picture" />
+								<Avatar.Image
+									src={data.profile_picture}
+									alt="{username}'s Profile Picture"
+								/>
 							</Avatar.Root>
 							<div class="flex flex-col gap-1 items-baseline">
 								<span class="leading-4 text-lg">
@@ -137,7 +151,9 @@
 									{/if}
 								</span>
 								<span class="leading-4 text-sm text-primary/70">
-									Not you? <a class="text-blue-200/70" href="/logout">Log out</a>
+									Not you? <a class="text-blue-200/70" href="/logout">
+										Log out
+									</a>
 								</span>
 							</div>
 						</div>
@@ -145,7 +161,12 @@
 						<div class="flex flex-col gap-6">
 							<div class="grid gap-2">
 								<Label for="username">Username</Label>
-								<Input bind:value={username} id="username" type="text" required />
+								<Input
+									bind:value={username}
+									id="username"
+									type="text"
+									required
+								/>
 							</div>
 
 							<div class="grid gap-2">
@@ -166,71 +187,100 @@
 							</div>
 						</div>
 					</Card.Content>
-					<Card.Footer class='mt-6'>
-						<Button type='submit' class='ml-auto' onclick={updateDetails}>Update</Button>
+					<Card.Footer class="mt-6">
+						<Button type="submit" class="ml-auto" onclick={updateDetails}>
+							Update
+						</Button>
 					</Card.Footer>
 				</form>
 			</Card.Root>
 
-			<Card.Root class='min-w-1/3 w-full md:w-auto' id='change-password'>
+			<Card.Root class="min-w-1/3 w-full md:w-auto" id="change-password">
 				<Card.CardHeader>
-					<Card.Title><Icon icon='lock' /> Change Password</Card.Title>
+					<Card.Title><Icon icon="lock" /> Change Password</Card.Title>
 				</Card.CardHeader>
 				<form onsubmit={changePassword}>
 					<Card.Content class="flex flex-col gap-6">
-							<div class="grid gap-2">
-								<Label for="currentPassword">Current Password</Label>
-								<Input bind:value={currentPassword} id="currentPassword" type="password" required placeholder={"••••••••••••••••"} />
-							</div>
+						<div class="grid gap-2">
+							<Label for="currentPassword">Current Password</Label>
+							<Input
+								bind:value={currentPassword}
+								id="currentPassword"
+								type="password"
+								required
+								placeholder={'••••••••••••••••'}
+							/>
+						</div>
 
-							<div class="grid gap-2">
-								<Label for="password">New Password</Label>
-								<Input bind:value={newPassword} id="password" type="password" />
-							</div>
+						<div class="grid gap-2">
+							<Label for="password">New Password</Label>
+							<Input bind:value={newPassword} id="password" type="password" />
+						</div>
 
-							<div class="grid gap-2">
-								<Label for="confirmPassword">Confirm Password</Label>
-								<Input bind:value={confirmPassword} id="confirmPassword" type="password" />
-							</div>
+						<div class="grid gap-2">
+							<Label for="confirmPassword">Confirm Password</Label>
+							<Input
+								bind:value={confirmPassword}
+								id="confirmPassword"
+								type="password"
+							/>
+						</div>
 					</Card.Content>
-					<Card.Footer class='mt-6'>
-						<Button class='ml-auto' onclick={changePassword}>Change Password</Button>
+					<Card.Footer class="mt-6">
+						<Button class="ml-auto" onclick={changePassword}>
+							Change Password
+						</Button>
 					</Card.Footer>
 				</form>
 			</Card.Root>
 
 			{#if !!logins && logins.providers.length != 0}
-				<Card.Root class='min-w-1/3 w-full md:w-auto'>
+				<Card.Root class="min-w-1/3 w-full md:w-auto">
 					<Card.CardHeader>
-						<Card.Title><Icon icon='plug-connected' /> Connected Accounts</Card.Title>
-						<Card.Description class='max-w-xl'>Connect multiple providers to your account to allow yourself to login with them.</Card.Description>
+						<Card.Title>
+							<Icon icon="plug-connected" /> Connected Accounts
+						</Card.Title>
+						<Card.Description class="max-w-xl">
+							Connect multiple providers to your account to allow yourself to
+							login with them.
+						</Card.Description>
 					</Card.CardHeader>
 					<Card.Content class="flex flex-row gap-2 flex-wrap">
 						{#each logins?.providers as provider}
-							<SocialAccount modifiable {provider} account={getAccount(provider.id)} />
+							<SocialAccount
+								modifiable
+								{provider}
+								account={getAccount(provider.id)}
+							/>
 						{/each}
 					</Card.Content>
 				</Card.Root>
 			{/if}
 
-			<Card.Root class='min-w-1/3 w-full md:w-auto'>
+			<Card.Root class="min-w-1/3 w-full md:w-auto">
 				<Card.CardHeader>
-					<Card.Title><Icon icon='device-desktop' /> Sessions</Card.Title>
-					<Card.Description class='max-w-xl'>The different devices and sessions currently logged into your account, invalidating a session might take up to an hour to take effect.</Card.Description>
+					<Card.Title><Icon icon="device-desktop" /> Sessions</Card.Title>
+					<Card.Description class="max-w-xl">
+						The different devices and sessions currently logged into your
+						account, invalidating a session might take up to an hour to take
+						effect.
+					</Card.Description>
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-2">
-					{#each data.sessions.filter(i => !i.expired).sort((a, b) => b.created_at - a.created_at) as session}
-						<Session 
-							{session} 
-							oninvalidate={() => removeSession(session)} 
+					{#each data.sessions
+						.filter((i) => !i.expired)
+						.sort((a, b) => b.created_at - a.created_at) as session}
+						<Session
+							{session}
+							oninvalidate={() => removeSession(session)}
 							currentSession={session.id == getJWT()?.sid}
 						/>
 					{/each}
 				</Card.Content>
 				<Card.Footer>
-					<Button 
-						class='ml-auto' 
-						variant='destructive' 
+					<Button
+						class="ml-auto"
+						variant="destructive"
 						onclick={invalidateAllSessions}
 						disabled={loading}
 					>
@@ -243,7 +293,7 @@
 				</Card.Footer>
 			</Card.Root>
 
-			<Card.Root class='min-w-1/3 w-full md:w-auto' >
+			<!-- <Card.Root class='min-w-1/3 w-full md:w-auto' >
 				<Card.CardHeader>
 					<Card.Title class="text-red-300"><Icon icon='trash' /> Delete Account</Card.Title>
 				</Card.CardHeader>
@@ -255,7 +305,7 @@
 				<Card.Footer>
 					<Button class='ml-auto' variant='destructive'>Delete Account</Button>
 				</Card.Footer>
-			</Card.Root>
+			</Card.Root> -->
 		</div>
 	{/if}
 </Sidebar>

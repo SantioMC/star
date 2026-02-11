@@ -25,6 +25,7 @@ type OAuthProvider struct {
 	ApplicationID string       `json:"application_id"`
 
 	RotateRefreshToken bool    `json:"rotate_refresh_token"`
+	Fingerprinting     bool    `json:"fingerprinting"`
 	ApplicationType    AppType `json:"application_type"`
 
 	ClientID string `json:"client_id"`
@@ -46,6 +47,7 @@ func NewOAuthProvider(application *Application) OAuthProvider {
 		ApplicationID: application.ID,
 
 		RotateRefreshToken: true,
+		Fingerprinting:     false,
 		ApplicationType:    AppTypeConfidential,
 
 		ClientID: crypto.CreateRandString(24),

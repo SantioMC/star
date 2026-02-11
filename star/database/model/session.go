@@ -14,7 +14,8 @@ var parser = useragent.NewParser()
 type Session struct {
 	BaseModel
 
-	UserID        string
+	UserID string
+
 	ApplicationID string
 	Application   *Application
 

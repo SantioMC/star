@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/tubblelive/star/star/config"
 	"github.com/tubblelive/star/star/database/model"
@@ -33,7 +34,7 @@ func (store *UserStore) GetUserByID(id string) (*model.User, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-		
+
 		return nil, err
 	}
 
@@ -47,7 +48,7 @@ func (store *UserStore) GetUserByUsername(username string) (*model.User, error) 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-		
+
 		return nil, err
 	}
 
@@ -61,7 +62,7 @@ func (store *UserStore) GetUserByEmail(email string) (*model.User, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-		
+
 		return nil, err
 	}
 
@@ -120,16 +121,15 @@ func (store *UserStore) SaveUser(user model.User) error {
 		if err := store.DB.Unscoped().
 			Table("user_roles").
 			Where("user_id = ?", user.ID).
-			Delete(nil).Error; 
-			err != nil {
-				return err
-			}
+			Delete(nil).Error; err != nil {
+			return err
+		}
 
 		_, err := gorm.G[model.User](tx).
 			Where("id = ?", user.ID).
 			Select("*").
 			Updates(context.Background(), user)
-		
+
 		return err
 	})
 }
@@ -146,7 +146,7 @@ func (store *UserStore) SetLastLogin(userId string, time int64) error {
 
 func (store *UserStore) SaveAccount(account *model.Account) error {
 	return store.DB.Where("user_id = ? AND provider_id = ?", account.UserID, account.ProviderID).
-		Assign(model.Account{ PlatformAvatar: account.PlatformAvatar, Username: account.Username }).
+		Assign(model.Account{PlatformAvatar: account.PlatformAvatar, Username: account.Username}).
 		Attrs(account).
 		FirstOrCreate(&account).Error
 }
@@ -167,6 +167,16 @@ func (store *UserStore) GetCount() int64 {
 
 func (store *UserStore) SetMetadata(userId string, metadata *model.UserMetadata) error {
 	_, err := gorm.G[model.User](store.DB).Where("id = ?", userId).Update(context.Background(), "metadata", metadata)
+	return err
+}
+
+func (store *UserStore) SetEmailSentAt(userId string, time time.Time) error {
+	_, err := gorm.G[model.User](store.DB).Where("id = ?", userId).Update(context.Background(), "email_sent_at", time.Unix())
+	return err
+}
+
+func (store *UserStore) MarkEmailVerified(userId string) error {
+	_, err := gorm.G[model.User](store.DB).Where("id = ?", userId).Update(context.Background(), "email_verified", true)
 	return err
 }
 

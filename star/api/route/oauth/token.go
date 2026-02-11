@@ -216,15 +216,15 @@ func refreshAccessToken(ctx *fiber.Ctx) error {
 	}
 
 	// Time to refresh the token!
-	fingerprint := getProperty(ctx, "fingerprint")
+	fingerprint := getProperty(ctx, "fp")
 	userAgent := ctx.Get(fiber.HeaderUserAgent)
 
 	newSession, jwt, expiresAt, err := service.RefreshSession(
 		*session,
+		provider,
 		&fingerprint,
 		userAgent,
 		ctx.IP(),
-		provider.RotateRefreshToken,
 	)
 
 	if err != nil {

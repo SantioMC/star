@@ -59,6 +59,7 @@ func CreateStarApp(url string) (*model.Application, error) {
 	// Set up our oidc provider
 	provider := model.NewOAuthProvider(&app)
 	provider.ApplicationType = model.AppTypePublic
+	provider.Fingerprinting = true
 
 	app.OauthProvider = &provider
 	app.OauthProviderID = &provider.ID

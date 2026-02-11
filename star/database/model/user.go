@@ -17,11 +17,13 @@ type User struct {
 	FirstName      string `json:"first_name"`
 	LastName       string `json:"last_name"`
 	Email          string `json:"email"`
-	EmailVerified  bool   `json:"email_verified"`
 	ProfilePicture string `json:"-"`
-	EmailCode      string `json:"-"`
 	LastLoginAt    *int64 `json:"-"`
 	ServiceAccount bool   `json:"service_account"`
+
+	EmailCode     string `json:"-"`
+	EmailVerified bool   `json:"email_verified"`
+	EmailSentAt   *int64 `json:"email_sent_at"`
 
 	Metadata *datatypes.JSONType[UserMetadata] `json:"-"`
 
@@ -77,6 +79,7 @@ func (u *User) GetInternalAccount() *Account {
 	return nil
 }
 
+// We use a simple alphabet for email codes to avoid confusion
 var emailAlphabet = []byte("abcdefghjklnoprstvwxyz")
 
 func createEmailCode() string {

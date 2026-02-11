@@ -281,6 +281,12 @@ export const rotateProvider = async (app: string, provider: string) => {
 	return api.post(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/rotate`).json<{ secret: string }>().catch(orError)
 }
 
+export const modifyProvider = async (app: string, provider: string, changes: ProviderChanges) => {
+	return api.patch(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}`, {
+		json: changes
+	}).json<OAuthProvider>().catch(orError)
+}
+
 export const addRedirectUri = async (app: string, provider: string, redirectUri: string) => {
 	return api.post(`api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/redirect`, {
 		json: {
@@ -452,7 +458,13 @@ export interface AdminUserChanges extends UserChanges {
 	profile_picture?: string
 	metadata?: Metadata
 	email?: string
+	email_verified?: boolean
 	roles?: string[]
+}
+
+export interface ProviderChanges {
+	fingerprinting?: boolean
+	application_type?: 'public' | 'confidential'
 }
 
 export interface User {
@@ -546,6 +558,7 @@ export interface OAuthProvider {
 	client_id: string
 	client_secret: string
 	rotate_refresh_token: boolean
+	fingerprinting: boolean
 	redirect_uris: string[]
 	application_type: 'public' | 'confidential'
 	response_types: string[]

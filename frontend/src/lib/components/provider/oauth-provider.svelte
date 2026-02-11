@@ -28,6 +28,7 @@
 
 	let deleteModal = $state<Modal>();
 	let addRedirectUriModal = $state<Modal>();
+	let fingerprintModal = $state<Modal>();
 
 	let redirectUri = $state<string>('');
 
@@ -68,6 +69,25 @@
 
 		secret = result.secret;
 		toast.success('Successfully rotated provider secret');
+	};
+
+	const toggleFingerprinting = async () => {
+		const result = await star.modifyProvider(
+			provider.application_id,
+			provider.id,
+			{
+				fingerprinting: !provider!.fingerprinting
+			}
+		);
+
+		fingerprintModal?.close();
+		if ('error' in result) {
+			toast.error(result.message);
+			return;
+		}
+
+		provider!.fingerprinting = !provider!.fingerprinting;
+		toast.success('Successfully toggled fingerprinting');
 	};
 
 	const addRedirectUri = async (e: Event) => {
@@ -145,6 +165,11 @@
 								View Information
 							</DropdownMenu.Item>
 							{#if modifiable}
+								<DropdownMenu.Item onclick={() => fingerprintModal?.open()}>
+									<Icon icon="fingerprint" />
+									{provider.fingerprinting ? 'Disable' : 'Enable'}
+									Fingerprinting
+								</DropdownMenu.Item>
 								<DropdownMenu.Item onclick={() => rotateProvider()}>
 									<Icon icon="rotate" />
 									Rotate Secret
@@ -197,17 +222,21 @@
 					{provider.rotate_refresh_token ? 'Rotating Sessions' : 'Static'}
 				</Badge>
 			</Categorizied>
+			<Categorizied title="Fingerprinting">
+				{#if provider.fingerprinting}
+					<Badge variant="outline" class="border-green-400/60 text-green-300">
+						Enabled
+					</Badge>
+				{:else}
+					<Badge variant="outline" class="border-red-400/60 text-red-300">
+						Disabled
+					</Badge>
+				{/if}
+			</Categorizied>
 			<Categorizied title="Response Types">
 				<div class="flex flex-row items-center gap-1 flex-wrap">
 					{#each provider.response_types as responseType}
 						<Badge variant="outline">{responseType}</Badge>
-					{/each}
-				</div>
-			</Categorizied>
-			<Categorizied title="Grant Types">
-				<div class="flex flex-row items-center gap-1 flex-wrap">
-					{#each provider.grant_types as grantType}
-						<Badge variant="outline">{grantType}</Badge>
 					{/each}
 				</div>
 			</Categorizied>
@@ -316,6 +345,44 @@
 				{/if}
 
 				Add Redirect URI
+			</Button>
+		</div>
+	</form>
+</Modal>
+
+<Modal bind:this={fingerprintModal} button class="xl:w-xl!">
+	<h1 class="text-xl font-semibold">
+		{provider.fingerprinting ? 'Disable' : 'Enable'} Fingerprinting
+	</h1>
+	<h2 class="text-card-foreground/60 sm:max-w-10/12">
+		Fingerprinting is a star-specific feature that allows you to pass a
+		fingerprint of the user's client to star to identify them by their hardware
+		configuration. This is not used for allowing users to login, but rather an
+		additional layer of security to make session hijacking attacks more
+		difficult. To use this feature, pass <code>fp</code>
+		as a parameter to the
+		<code>/oauth/token</code>
+		endpoint.
+	</h2>
+
+	<form
+		class="flex flex-col items-center gap-6 justify-end mt-4"
+		onsubmit={toggleFingerprinting}
+	>
+		<div class="flex gap-2 mr-2 w-full">
+			<Button
+				class="ml-auto"
+				variant="secondary"
+				onclick={() => fingerprintModal?.close()}
+			>
+				Cancel
+			</Button>
+			<Button type="submit" disabled={loading}>
+				{#if loading}
+					<Spinner />
+				{/if}
+
+				{provider.fingerprinting ? 'Disable' : 'Enable'} Fingerprinting
 			</Button>
 		</div>
 	</form>

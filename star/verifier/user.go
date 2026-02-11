@@ -36,8 +36,8 @@ func VerifyEmail(email string) (string, error) {
 }
 
 func VerifyPassword(password string) error {
-	if len(strings.TrimSpace(password)) <= 2 {
-		return fmt.Errorf("password must be at least 3 characters")
+	if len(strings.TrimSpace(password)) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
 	}
 
 	if len(password) > 128 {

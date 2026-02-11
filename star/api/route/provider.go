@@ -109,6 +109,10 @@ func patchProvider(ctx *fiber.Ctx) error {
 		provider.ApplicationType = appType
 	}
 
+	if body.Fingerprinting != nil {
+		provider.Fingerprinting = *body.Fingerprinting
+	}
+
 	if err := service.SaveProvider(provider); err != nil {
 		return err
 	}
@@ -226,6 +230,7 @@ type CreateProviderRequest struct {
 
 type PatchProviderRequest struct {
 	ApplicationType *model.AppType `json:"application_type"`
+	Fingerprinting  *bool          `json:"fingerprinting"`
 }
 
 type CreateRedirectRequest struct {

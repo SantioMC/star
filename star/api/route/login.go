@@ -59,7 +59,7 @@ func loginCallback(ctx *fiber.Ctx) error {
 	if state.StarState.Config.Url != "" {
 		hostname = state.StarState.Config.Url
 	}
-	
+
 	token, err := provider.ExchangeCode(hostname, code)
 	if err != nil {
 		return err
@@ -75,14 +75,14 @@ func loginCallback(ctx *fiber.Ctx) error {
 	}
 
 	refreshToken, accessToken, _, err := service.CreateSession(
-		user, 
-		loginState.Application, 
-		nil, 
-		loginState.UserAgent, 
-		loginState.Address, 
+		user,
+		loginState.Application,
+		nil,
+		loginState.UserAgent,
+		loginState.Address,
 		loginClaims,
 	)
-	
+
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,15 @@ func login(ctx *fiber.Ctx) error {
 		userAgent = *body.UserAgent
 	}
 
-	session, accessToken, expiresAt, err := service.CreateSession(user, app, body.Fingerprint, userAgent, ctx.IP(), loginClaims)
+	session, accessToken, expiresAt, err := service.CreateSession(
+		user,
+		app,
+		body.Fingerprint,
+		userAgent,
+		ctx.IP(),
+		loginClaims,
+	)
+
 	if err != nil {
 		return err
 	}
@@ -198,7 +206,7 @@ func postLoginChecks(user *model.User) error {
 	if !user.EmailVerified {
 		return helper.NewHttpError(403, "Your account has not had it's email verified")
 	}
-	
+
 	return nil
 }
 
