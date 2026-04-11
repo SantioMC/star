@@ -1,0 +1,62 @@
+package initializer
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"time"
+
+	"github.com/lmittmann/tint"
+	"github.com/tubblelive/star/internal/cache"
+	"github.com/tubblelive/star/internal/config"
+	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/database/seed"
+	"github.com/tubblelive/star/internal/geolocation"
+	"github.com/tubblelive/star/internal/state"
+)
+
+func PrepareServer() *state.StarServer {
+	tintHandler := tint.NewHandler(os.Stdout, &tint.Options{
+		TimeFormat: time.TimeOnly,
+		Level:      slog.LevelInfo,
+	})
+
+	logger := slog.New(tintHandler)
+	slog.SetDefault(logger)
+
+	config, err := config.LoadConfig()
+	if err != nil {
+		slog.Error("failed to load config", "err", err)
+		return nil
+	}
+
+	db, err := database.Connect(context.Background(), config.DatabaseURL)
+	if err != nil {
+		slog.Error("failed to connect to database", "err", err)
+		return nil
+	}
+
+	if err := database.Migrate(db); err != nil {
+		slog.Error("failed to migrate database", "err", err)
+		return nil
+	}
+
+	star := state.StarServer{
+		Database:   db,
+		GeoService: geolocation.GetService(),
+		Captcha:    config.Captcha.CreateVerifier(),
+		Email:      config.Email.CreateSender(),
+		Config:     config,
+	}
+
+	if err := seed.Seed(context.Background(), &star); err != nil {
+		slog.Error("failed to seed database", "err", err)
+		return nil
+	}
+
+	// Refresh our local cache and start the ticker
+	cache.UpdateCache(&star)
+	go cache.StartTicker(&star)
+
+	return &star
+}
