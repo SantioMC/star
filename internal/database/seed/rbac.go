@@ -14,7 +14,7 @@ func seedRBAC(ctx context.Context, star *state.StarServer) error {
 	role := star.Database.GetRoleByName(ctx, "superadmin")
 	if role == nil {
 		role = &database.Role{
-			ID:          database.CreateID("rol"),
+			ID:          database.CreateID(database.RoleKey),
 			Name:        "superadmin",
 			Description: "The default super admin role",
 			CreatedAt:   time.Now(),
@@ -40,7 +40,7 @@ func seedRBAC(ctx context.Context, star *state.StarServer) error {
 			}
 
 			permission := &database.Permission{
-				ID:          database.CreateID("perm"),
+				ID:          database.CreateID(database.PermissionKey),
 				Name:        permission.Name,
 				Description: permission.Description,
 				CreatedAt:   time.Now(),
@@ -52,7 +52,7 @@ func seedRBAC(ctx context.Context, star *state.StarServer) error {
 			}
 
 			binding := &database.PermissionBinding{
-				ID:           database.CreateID("pb"),
+				ID:           database.CreateID(database.PermissionBindingKey),
 				PermissionID: permission.ID,
 				RoleID:       role.ID,
 				CreatedAt:    time.Now(),

@@ -135,7 +135,7 @@ func registerUser(ctx fiber.Ctx) error {
 
 	created := time.Now()
 	user := &database.User{
-		ID:        database.CreateID("usr"),
+		ID:        database.CreateID(database.UserKey),
 		Name:      username,
 		FirstName: request.FirstName,
 		LastName:  request.LastName,
@@ -147,7 +147,7 @@ func registerUser(ctx fiber.Ctx) error {
 	}
 
 	email := &database.UserEmail{
-		ID:        database.CreateID("eml"),
+		ID:        database.CreateID(database.EmailKey),
 		UserID:    user.ID,
 		Email:     request.Email,
 		Verified:  false,
@@ -161,7 +161,7 @@ func registerUser(ctx fiber.Ctx) error {
 	}
 
 	account := &database.Account{
-		ID:          database.CreateID("acc"),
+		ID:          database.CreateID(database.AccountKey),
 		Type:        "internal",
 		UserID:      user.ID,
 		Email:       &request.Email,
@@ -190,7 +190,9 @@ func registerUser(ctx fiber.Ctx) error {
 		slog.Warn("failed to send verification email", "err", err, "email", request.Email, "code", email.Code)
 	}
 
-	return ctx.JSON(fiber.Map{"success": true})
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
 }
 
 func changePassword(ctx fiber.Ctx) error {
@@ -242,7 +244,7 @@ func changePassword(ctx fiber.Ctx) error {
 	}
 
 	account = &database.Account{
-		ID:          database.CreateID("acc"),
+		ID:          database.CreateID(database.AccountKey),
 		Type:        "internal",
 		UserID:      user.ID,
 		Email:       &email.Email,
@@ -329,7 +331,7 @@ func addUserEmail(ctx fiber.Ctx) error {
 	}
 
 	email := &database.UserEmail{
-		ID:        database.CreateID("eml"),
+		ID:        database.CreateID(database.EmailKey),
 		UserID:    user.ID,
 		Email:     data.Email,
 		Verified:  false,

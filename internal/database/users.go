@@ -10,6 +10,8 @@ import (
 	"github.com/vinovest/sqlx"
 )
 
+const UserKey = "usr"
+
 type User struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
@@ -87,7 +89,7 @@ func (db *Database) CreateUser(ctx context.Context, user *User) error {
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
-		INSERT INTO users (id, name, first_name, last_name, profile_picture, created_at) 
+		INSERT INTO users (id, name, first_name, last_name, profile_picture, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		`,
 		user.ID,

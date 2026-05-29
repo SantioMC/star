@@ -13,15 +13,23 @@ import (
 var userKey = "request.user"
 
 func GetUser(ctx fiber.Ctx) (*database.User, error) {
-	data, ok := ctx.Locals(userKey).(*database.User)
-	if ok {
-		return data, nil
+	value := ctx.Locals(userKey)
+	if value != nil {
+		data, ok := value.(*database.User)
+		if ok {
+			return data, nil
+		}
 	}
 
 	star := common.GetState(ctx)
-	jwt := ctx.Locals(middleware.RequestAuthJWTKey).(*token.AccessTokenJWT)
-	if jwt == nil {
+	value = ctx.Locals(middleware.RequestAuthJWTKey)
+	if value == nil {
 		return nil, errors.New("missing jwt from request")
+	}
+
+	jwt := value.(*token.AccessTokenJWT)
+	if jwt == nil {
+		return nil, errors.New("value in request is not jwt")
 	}
 
 	user := star.Database.GetUserByID(ctx, jwt.Subject)

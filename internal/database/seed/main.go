@@ -23,6 +23,10 @@ func Seed(ctx context.Context, star *state.StarServer) error {
 		return err
 	}
 
+	if err := seedApplication(ctx, star); err != nil {
+		return err
+	}
+
 	if err := seedUser(ctx, star); err != nil {
 		return err
 	}

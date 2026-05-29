@@ -122,6 +122,7 @@ func StartServer(star *state.StarServer) error {
 		},
 	}))
 
+	api.Route("/user/session", sessionRouter)
 	api.Route("/user", userRouter)
 	api.Route("/app", appRouter)
 

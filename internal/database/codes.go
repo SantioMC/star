@@ -10,6 +10,8 @@ import (
 	"github.com/vinovest/sqlx"
 )
 
+const AuthCodeKey = "code"
+
 type AuthorizationCode struct {
 	ID string `json:"id"`
 
@@ -72,7 +74,7 @@ func (db *Database) CreateAuthorizationCode(ctx context.Context, code *Authoriza
 		ctx,
 		`
 		INSERT INTO authorization_codes (
-			id, user_id, application, code, redirect_uri, scopes, state, nonce, 
+			id, user_id, application, code, redirect_uri, scopes, state, nonce,
 			code_challenge, code_challenge_method, created_at, expires_at, redeemed_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`,

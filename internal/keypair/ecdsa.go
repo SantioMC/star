@@ -35,7 +35,7 @@ func NewECDSAKeypair(
 	}
 
 	return &database.SigningKey{
-		ID:         database.CreateID("key"),
+		ID:         database.CreateID(database.SigKey),
 		Status:     status,
 		PublicKey:  publicKey,
 		PrivateKey: privateKey,

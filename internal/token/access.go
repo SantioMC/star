@@ -9,7 +9,7 @@ import (
 	"github.com/tubblelive/star/internal/state"
 )
 
-var ErrDurationTooLong = errors.New("access token duration may not be over a day")
+var ErrDurationTooLong = errors.New("access token duration may not be over 3 days")
 var ErrNoActiveSigningKey = errors.New("there is no active signing key")
 
 func Create(
@@ -18,7 +18,7 @@ func Create(
 	session *database.Session,
 	options *Options,
 ) (JWT, error) {
-	if options.Duration > time.Hour*24 {
+	if options.Duration > time.Hour*24*3 {
 		return "", ErrDurationTooLong
 	}
 
@@ -27,12 +27,10 @@ func Create(
 		"sid": session.ID,
 	}
 
-	if options.Permissions != nil {
-		fields["permissions"] = options.Permissions
-	}
-
 	if options.SuperUser {
-		fields["permissions"] = append(fields["permissions"].([]string), "*")
+		fields["permissions"] = []string{"*"}
+	} else if options.Permissions != nil {
+		fields["permissions"] = options.Permissions
 	}
 
 	token, err := createJWT(server, JWTBody{

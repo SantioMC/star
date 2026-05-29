@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/config"
@@ -23,6 +24,11 @@ func PrepareServer() *state.StarServer {
 
 	logger := slog.New(tintHandler)
 	slog.SetDefault(logger)
+
+	if err := godotenv.Load(); err != nil {
+		slog.Error("failed to load .env file", "err", err)
+		return nil
+	}
 
 	config, err := config.LoadConfig()
 	if err != nil {

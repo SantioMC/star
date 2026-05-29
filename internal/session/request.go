@@ -24,11 +24,12 @@ func CreateSession(
 	address := ctx.IP()
 	userAgent := ctx.Get(fiber.HeaderUserAgent)
 
-	var location string
+	var location *string = nil
 	geolocation, err := server.GeoService.GetLocation(ctx, address)
 	if err != nil {
 		slog.Warn("failed to get geolocation data", "err", err, "ip", address)
-		location = geolocation.String()
+		value := geolocation.String()
+		location = &value
 	}
 
 	var accountId string
@@ -37,15 +38,21 @@ func CreateSession(
 	}
 
 	session := &database.Session{
-		ID:          database.CreateID("sess"),
-		UserID:      options.User.ID,
-		AccountID:   &accountId,
-		Address:     address,
-		UserAgent:   userAgent,
-		Geolocation: &location,
-		Token:       CreateSessionToken(),
-		CreatedAt:   time.Now(),
-		ExpiresAt:   time.Now().Add(options.Duration),
+		ID:            database.CreateID(database.SessionKey),
+		UserID:        options.User.ID,
+		AccountID:     &accountId,
+		Address:       address,
+		UserAgent:     userAgent,
+		Geolocation:   location,
+		Token:         CreateSessionToken(),
+		ApplicationID: server.DefaultApp.ID,
+		Status:        database.SessionStateActive,
+		CreatedAt:     time.Now(),
+		ExpiresAt:     time.Now().Add(options.Duration),
+	}
+
+	if err := server.Database.CreateSession(ctx, session); err != nil {
+		return nil, err
 	}
 
 	return session, nil

@@ -10,6 +10,8 @@ import (
 	"github.com/vinovest/sqlx"
 )
 
+const EmailKey = "email"
+
 type UserEmail struct {
 	ID        string    `json:"id"`
 	UserID    string    `json:"user_id" db:"user_id"`
@@ -29,10 +31,10 @@ func (db *Database) GetEmailsByUserID(ctx context.Context, userID string) []User
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return []UserEmail{}
 	} else if err != nil {
 		slog.Error("failed to get emails by user id", "err", err)
-		return nil
+		return []UserEmail{}
 	}
 
 	return emails
@@ -78,7 +80,7 @@ func (db *Database) CreateEmail(ctx context.Context, email *UserEmail) error {
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
-		INSERT INTO user_emails (id, user_id, email, created_at, code, verified, preferred) 
+		INSERT INTO user_emails (id, user_id, email, created_at, code, verified, preferred)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`,
 		email.ID,

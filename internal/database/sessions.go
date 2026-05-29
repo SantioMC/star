@@ -10,6 +10,8 @@ import (
 	"github.com/vinovest/sqlx"
 )
 
+const SessionKey = "sess"
+
 type SessionState string
 
 const (
@@ -49,6 +51,24 @@ func (db *Database) GetSessionByID(ctx context.Context, id string) *Session {
 	return &session
 }
 
+func (db *Database) GetUserSessions(ctx context.Context, userId string) []Session {
+	session, err := sqlx.ListContext[Session](
+		ctx,
+		db.DB(),
+		`SELECT * FROM sessions WHERE user_id = $1`,
+		userId,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []Session{}
+	} else if err != nil {
+		slog.Error("failed to get user sessions", "err", err)
+		return []Session{}
+	}
+
+	return session
+}
+
 func (db *Database) GetSessionByToken(ctx context.Context, token string) *Session {
 	session, err := sqlx.OneContext[Session](
 		ctx,
@@ -77,13 +97,23 @@ func (db *Database) DeleteSessionByID(ctx context.Context, id string) error {
 	return err
 }
 
+func (db *Database) DeleteUserSessions(ctx context.Context, userId string) error {
+	_, err := db.DB().ExecContext(
+		ctx,
+		`DELETE FROM sessions WHERE user_id = $1`,
+		userId,
+	)
+
+	return err
+}
+
 func (db *Database) CreateSession(ctx context.Context, session *Session) error {
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
 		INSERT INTO sessions (
-			id, user_id, account_id, application_id, 
-			ip_address, user_agent, geolocation, token, 
+			id, user_id, account_id, application_id,
+			ip_address, user_agent, geolocation, token,
 			status, created_at, expires_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		`,

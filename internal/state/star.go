@@ -18,5 +18,6 @@ type StarServer struct {
 
 	// Cached data
 	Settings    *database.Settings
+	DefaultApp  *database.Application
 	SigningKeys *[]database.SigningKey
 }

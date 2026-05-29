@@ -15,6 +15,8 @@ import (
 	"github.com/vinovest/sqlx"
 )
 
+const SigKey = "sig"
+
 type SigningKeyStatus string
 type KeyAlgorithm jose.SignatureAlgorithm
 
@@ -104,10 +106,10 @@ func (db *Database) GetAllSigningKeys(ctx context.Context) []SigningKey {
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return []SigningKey{}
 	} else if err != nil {
 		slog.Error("failed to get signing keys", "err", err)
-		return nil
+		return []SigningKey{}
 	}
 
 	return signingKeys
@@ -147,7 +149,7 @@ func (db *Database) CreateSigningKey(ctx context.Context, signingKey *SigningKey
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
-		INSERT INTO signing_keys (id, status, public_key, private_key, algorithm, created_at, expires_at) 
+		INSERT INTO signing_keys (id, status, public_key, private_key, algorithm, created_at, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`,
 		signingKey.ID,

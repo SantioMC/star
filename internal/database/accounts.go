@@ -11,6 +11,8 @@ import (
 	"github.com/vinovest/sqlx"
 )
 
+const AccountKey = "acc"
+
 type Account struct {
 	ID   string `json:"id"`
 	Type string `json:"type"`
@@ -35,10 +37,10 @@ func (db *Database) GetAccountsByUserID(ctx context.Context, userID string) []Ac
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return []Account{}
 	} else if err != nil {
 		slog.Error("failed to get accounts by user id", "err", err)
-		return nil
+		return []Account{}
 	}
 
 	return accounts
@@ -67,7 +69,7 @@ func (db *Database) CreateAccount(ctx context.Context, account *Account) error {
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
-		INSERT INTO accounts (id, user_id, type, password, password_alg, external_id, account_name, account_email, account_avatar, created_at) 
+		INSERT INTO accounts (id, user_id, type, password, password_alg, external_id, account_name, account_email, account_avatar, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		`,
 		account.ID,

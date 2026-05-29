@@ -9,6 +9,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/database/models"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -57,15 +58,15 @@ func createApplication(ctx fiber.Ctx) error {
 	}
 
 	application := &database.Application{
-		ID:              database.CreateID("app"),
+		ID:              database.CreateID(database.ApplicationKey),
 		Name:            request.Name,
 		ApplicationURL:  request.ApplicationURL,
 		Kind:            kind,
 		ClientID:        clientId,
 		ClientSecret:    clientSecret,
 		Internal:        false,
-		TokenDuration:   time.Hour,
-		SessionDuration: time.Hour * 24 * 7,
+		TokenDuration:   models.Seconds(time.Hour),
+		SessionDuration: models.Seconds(time.Hour * 24 * 7),
 		RedirectURIs:    pq.StringArray{},
 		DevelopmentMode: false,
 		CreatedAt:       time.Now(),
@@ -142,11 +143,11 @@ func updateApplication(ctx fiber.Ctx) error {
 	}
 
 	if request.TokenDuration != nil {
-		application.TokenDuration = *request.TokenDuration
+		application.TokenDuration = models.Seconds(*request.TokenDuration)
 	}
 
 	if request.SessionDuration != nil {
-		application.SessionDuration = *request.SessionDuration
+		application.SessionDuration = models.Seconds(*request.SessionDuration)
 	}
 
 	if application.SessionDuration <= application.TokenDuration {
@@ -195,7 +196,7 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 	validScopes, modified := oauth.ValidateScopes(scopes)
 
 	authCode := database.AuthorizationCode{
-		ID:                  database.CreateID("auth"),
+		ID:                  database.CreateID(database.AuthCodeKey),
 		UserID:              user.ID,
 		Application:         request.ApplicationID,
 		Code:                cryptography.CreateSecureString(64),

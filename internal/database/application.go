@@ -8,11 +8,16 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/tubblelive/star/internal/cryptography"
+	"github.com/tubblelive/star/internal/database/models"
 	"github.com/vinovest/sqlx"
 )
 
 type ApplicationKind string
 
+const ApplicationKey = "app"
+
+// todo: this is likely incredibly wrong, we should validate and fix this
 const (
 	ApplicationKindPublic       ApplicationKind = "public"
 	ApplicationKindPKCE         ApplicationKind = "pkce"
@@ -31,11 +36,15 @@ type Application struct {
 	ClientID        string          `json:"client_id" db:"client_id"`
 	ClientSecret    *string         `json:"client_secret" db:"client_secret"`
 	Internal        bool            `json:"internal"`
-	TokenDuration   time.Duration   `json:"token_duration" db:"token_duration"`
-	SessionDuration time.Duration   `json:"session_duration" db:"session_duration"`
+	TokenDuration   models.Seconds  `json:"token_duration" db:"token_duration"`
+	SessionDuration models.Seconds  `json:"session_duration" db:"session_duration"`
 	RedirectURIs    pq.StringArray  `json:"redirect_uris" db:"redirect_uris"`
 	DevelopmentMode bool            `json:"development_mode" db:"development_mode"`
 	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
+}
+
+func CreateApplicationSecret() string {
+	return cryptography.CreateSecureString(48)
 }
 
 func (db *Database) GetApplicationByID(ctx context.Context, id string) *Application {
@@ -97,9 +106,9 @@ func (db *Database) CreateApplication(ctx context.Context, application *Applicat
 		ctx,
 		`
 		INSERT INTO applications (
-			id, kind, name, application_url, client_id, 
-			client_secret, internal, token_duration, 
-			session_duration, redirect_uris, development_mode, 
+			id, kind, name, application_url, client_id,
+			client_secret, internal, token_duration,
+			session_duration, redirect_uris, development_mode,
 			created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		`,
@@ -125,8 +134,8 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		ctx,
 		`
 		UPDATE applications
-		SET name = $2, application_url = $3, client_id = $4, 
-		client_secret = $5, internal = $6, token_duration = $7, 
+		SET name = $2, application_url = $3, client_id = $4,
+		client_secret = $5, internal = $6, token_duration = $7,
 		session_duration = $8, redirect_uris = $9, development_mode = $10
 		WHERE id = $1
 		`,

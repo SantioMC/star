@@ -209,7 +209,7 @@
 								id="currentPassword"
 								type="password"
 								required
-								placeholder={'•••���••••••••••••'}
+								placeholder={'••••••••••••'}
 							/>
 						</div>
 

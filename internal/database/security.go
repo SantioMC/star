@@ -13,6 +13,8 @@ import (
 type SecurityAlertKind string
 type SecurityAlertSeverity string
 
+const SecurityAlertKey = "sec"
+
 const (
 	SecurityAlertAuthorizationCodeUsed SecurityAlertKind = "authorization.code.already_used"
 

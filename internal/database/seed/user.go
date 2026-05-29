@@ -8,6 +8,7 @@ import (
 
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/state"
 )
 
@@ -23,7 +24,7 @@ func seedUser(ctx context.Context, star *state.StarServer) error {
 	}
 
 	user := &database.User{
-		ID:        database.CreateID("usr"),
+		ID:        database.CreateID(database.UserKey),
 		Name:      "admin",
 		CreatedAt: time.Now(),
 	}
@@ -34,10 +35,12 @@ func seedUser(ctx context.Context, star *state.StarServer) error {
 
 	password := cryptography.CreateSecureString(24)
 	hashed, algorithm := cryptography.HashString(password)
+	adminEmail := "admin@star.internal"
 	account := &database.Account{
-		ID:          database.CreateID("acc"),
+		ID:          database.CreateID(database.AccountKey),
 		UserID:      user.ID,
 		Type:        "internal",
+		Email:       &adminEmail,
 		Password:    &hashed,
 		PasswordAlg: algorithm,
 		CreatedAt:   time.Now(),
@@ -47,13 +50,27 @@ func seedUser(ctx context.Context, star *state.StarServer) error {
 		return err
 	}
 
+	userEmail := &database.UserEmail{
+		ID:        database.CreateID(database.EmailKey),
+		UserID:    user.ID,
+		Email:     "admin@star.internal",
+		Verified:  true,
+		Primary:   true,
+		Code:      email.CreateCode(6),
+		CreatedAt: time.Now(),
+	}
+
+	if err := star.Database.CreateEmail(ctx, userEmail); err != nil {
+		return err
+	}
+
 	role := star.Database.GetRoleByName(ctx, "superadmin")
 	if role == nil {
 		return errors.New("superadmin role not found")
 	}
 
 	binding := &database.RoleBinding{
-		ID:        database.CreateID("rb"),
+		ID:        database.CreateID(database.RoleBindingKey),
 		RoleID:    role.ID,
 		UserID:    user.ID,
 		CreatedAt: time.Now(),

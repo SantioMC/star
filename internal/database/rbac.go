@@ -10,6 +10,11 @@ import (
 	"github.com/vinovest/sqlx"
 )
 
+const RoleKey = "rol"
+const PermissionKey = "perm"
+const RoleBindingKey = "rb"
+const PermissionBindingKey = "pb"
+
 type Role struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
