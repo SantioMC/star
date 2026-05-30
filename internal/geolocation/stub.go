@@ -1,16 +1,18 @@
 package geolocation
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
-type stubGeolocationService struct{}
+var stubLocalLocation = "Localhost"
 
-func (s *stubGeolocationService) GetLocation(ctx context.Context, ip string) (*Geolocation, error) {
-	return &Geolocation{
-		Latitude:  0.000,
-		Longitude: 0.000,
-		Country:   "US",
-		City:      "",
-		Region:    "",
-		ISP:       "",
-	}, nil
+type StubGeolocationService struct{}
+
+func (s *StubGeolocationService) GetLocation(ctx context.Context, ip string) (*string, error) {
+	if isLocal(ip) {
+		return &stubLocalLocation, nil
+	}
+
+	return nil, errors.New("stub geolocation service, no available location for ip")
 }

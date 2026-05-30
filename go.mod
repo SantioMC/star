@@ -18,6 +18,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
+	github.com/boyter/go-string v1.0.5 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -32,6 +33,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/medama-io/go-useragent v1.2.3 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/muir/sqltoken v0.1.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect

@@ -26,6 +26,7 @@ type Session struct {
 	ApplicationID string       `json:"application_id" db:"application_id"`
 	Address       string       `json:"ip_address" db:"ip_address"`
 	UserAgent     string       `json:"user_agent" db:"user_agent"`
+	Device        string       `json:"device"`
 	Geolocation   *string      `json:"geolocation"`
 	Token         string       `json:"token"`
 	Status        SessionState `json:"status"`
@@ -113,9 +114,9 @@ func (db *Database) CreateSession(ctx context.Context, session *Session) error {
 		`
 		INSERT INTO sessions (
 			id, user_id, account_id, application_id,
-			ip_address, user_agent, geolocation, token,
-			status, created_at, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			ip_address, user_agent, geolocation, device,
+			token, status, created_at, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		`,
 		session.ID,
 		session.UserID,
@@ -124,6 +125,7 @@ func (db *Database) CreateSession(ctx context.Context, session *Session) error {
 		session.Address,
 		session.UserAgent,
 		session.Geolocation,
+		session.Device,
 		session.Token,
 		session.Status,
 		session.CreatedAt,

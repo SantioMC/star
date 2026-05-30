@@ -24,18 +24,17 @@ func CreateSession(
 	address := ctx.IP()
 	userAgent := ctx.Get(fiber.HeaderUserAgent)
 
-	var location *string = nil
-	geolocation, err := server.GeoService.GetLocation(ctx, address)
+	location, err := server.GeoService.GetLocation(ctx, address)
 	if err != nil {
 		slog.Warn("failed to get geolocation data", "err", err, "ip", address)
-		value := geolocation.String()
-		location = &value
 	}
 
 	var accountId string
 	if options.Account != nil {
 		accountId = options.Account.ID
 	}
+
+	device := parseUserAgent(userAgent)
 
 	session := &database.Session{
 		ID:            database.CreateID(database.SessionKey),
@@ -44,6 +43,7 @@ func CreateSession(
 		Address:       address,
 		UserAgent:     userAgent,
 		Geolocation:   location,
+		Device:        string(device),
 		Token:         CreateSessionToken(),
 		ApplicationID: server.DefaultApp.ID,
 		Status:        database.SessionStateActive,

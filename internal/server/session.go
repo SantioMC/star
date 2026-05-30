@@ -51,7 +51,7 @@ func getUserSession(ctx fiber.Ctx) error {
 		return err
 	}
 
-	session := star.Database.GetSessionByID(ctx, ctx.Get("session"))
+	session := star.Database.GetSessionByID(ctx, ctx.Params("session"))
 	if session == nil || session.UserID != user.ID {
 		return fiber.NewError(404, "session not found")
 	}
@@ -66,7 +66,7 @@ func invalidateUserSession(ctx fiber.Ctx) error {
 		return err
 	}
 
-	session := star.Database.GetSessionByID(ctx, ctx.Get("session"))
+	session := star.Database.GetSessionByID(ctx, ctx.Params("session"))
 	if session == nil || session.UserID != user.ID {
 		return fiber.NewError(404, "session not found")
 	}

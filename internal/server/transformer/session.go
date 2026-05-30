@@ -12,6 +12,7 @@ type UserSession struct {
 	UserAgent   string                `json:"user_agent" db:"user_agent"`
 	Geolocation *string               `json:"geolocation"`
 	Status      database.SessionState `json:"status"`
+	Device      string                `json:"device"`
 	CreatedAt   time.Time             `json:"created_at" db:"created_at"`
 	ExpiresAt   time.Time             `json:"expires_at" db:"expires_at"`
 }
@@ -23,6 +24,7 @@ func TransformSession(session database.Session) UserSession {
 		UserAgent:   session.UserAgent,
 		Geolocation: session.Geolocation,
 		Status:      session.Status,
+		Device:      session.Device,
 		CreatedAt:   session.CreatedAt,
 		ExpiresAt:   session.ExpiresAt,
 	}

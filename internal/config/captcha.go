@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/tubblelive/star/internal/captcha"
 	"github.com/tubblelive/star/internal/captcha/turnstile"
@@ -23,7 +24,7 @@ func (c *CaptchaConfig) IsEnabled() bool {
 }
 
 func (c *CaptchaConfig) CreateVerifier() captcha.Verifier {
-	switch c.Type {
+	switch strings.ToLower(c.Type) {
 	case "turnstile":
 		if c.Turnstile.Token == nil || c.Turnstile.SiteKey == nil {
 			slog.Error("turnstile captcha was specified, required TURNSTILE_TOKEN and TURNSTILE_SITE_KEY environment variables not set")

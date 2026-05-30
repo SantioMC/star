@@ -7,6 +7,7 @@ CREATE TABLE sessions (
     user_agent VARCHAR(255) NOT NULL,
     geolocation VARCHAR(255),
     token VARCHAR(255) NOT NULL,
+    device VARCHAR(64) NOT NULL,
     status VARCHAR(100) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL

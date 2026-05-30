@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/tubblelive/star/internal/email"
 )
@@ -35,7 +36,7 @@ func (c *EmailConfig) CreateSender() email.EmailProvider {
 		os.Exit(1)
 	}
 
-	switch c.Type {
+	switch strings.ToLower(c.Type) {
 	case "resend":
 		if c.Resend.APIKey == nil {
 			slog.Error("resend email was specified, required RESEND_API_KEY environment variable not set")

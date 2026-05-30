@@ -9,6 +9,7 @@ type Config struct {
 	ProxyHeader string   `env:"PROXY_HEADER,X-Forwarded-For"`
 	Captcha     CaptchaConfig
 	Email       EmailConfig
+	Geolocation GeoserviceConfig
 }
 
 func LoadConfig() (*Config, error) {

@@ -12,7 +12,6 @@ import (
 	"github.com/tubblelive/star/internal/config"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/seed"
-	"github.com/tubblelive/star/internal/geolocation"
 	"github.com/tubblelive/star/internal/state"
 )
 
@@ -49,7 +48,7 @@ func PrepareServer() *state.StarServer {
 
 	star := state.StarServer{
 		Database:   db,
-		GeoService: geolocation.GetService(),
+		GeoService: config.Geolocation.CreateService(),
 		Captcha:    config.Captcha.CreateVerifier(),
 		Email:      config.Email.CreateSender(),
 		Config:     config,
