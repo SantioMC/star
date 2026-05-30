@@ -158,9 +158,7 @@ func StartServer(star *state.StarServer) error {
 	}))
 
 	app.Get("/*", func(ctx fiber.Ctx) error {
-		return ctx.SendFile("index.html", fiber.SendFile{
-			FS: build,
-		})
+		return request.ShowFrontend(ctx)
 	})
 
 	port := fmt.Sprintf(":%d", star.Config.Port)
