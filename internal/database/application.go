@@ -62,6 +62,13 @@ func (db *Database) GetApplicationByID(ctx context.Context, id string) *Applicat
 		return nil
 	}
 
+	if application.ClientSecret != nil {
+		if *application.ClientSecret, err = cryptography.DecryptAES(*application.ClientSecret, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt application client secret", "err", err)
+			return nil
+		}
+	}
+
 	return &application
 }
 
@@ -78,6 +85,13 @@ func (db *Database) GetApplicationByClientID(ctx context.Context, clientID strin
 	} else if err != nil {
 		slog.Error("failed to get application by client id", "err", err)
 		return nil
+	}
+
+	if application.ClientSecret != nil {
+		if *application.ClientSecret, err = cryptography.DecryptAES(*application.ClientSecret, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt application client secret", "err", err)
+			return nil
+		}
 	}
 
 	return &application
@@ -98,10 +112,27 @@ func (db *Database) GetApplicationByName(ctx context.Context, name string) *Appl
 		return nil
 	}
 
+	if application.ClientSecret != nil {
+		if *application.ClientSecret, err = cryptography.DecryptAES(*application.ClientSecret, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt application client secret", "err", err)
+			return nil
+		}
+	}
+
 	return &application
 }
 
 func (db *Database) CreateApplication(ctx context.Context, application *Application) error {
+	var clientSecret *string = nil
+	if application.ClientSecret != nil {
+		secret, err := cryptography.EncryptAES(*application.ClientSecret, db.config.AppToken)
+		if err != nil {
+			return err
+		}
+
+		clientSecret = &secret
+	}
+
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
@@ -117,7 +148,7 @@ func (db *Database) CreateApplication(ctx context.Context, application *Applicat
 		application.Name,
 		application.ApplicationURL,
 		application.ClientID,
-		application.ClientSecret,
+		clientSecret,
 		application.Internal,
 		application.TokenDuration,
 		application.SessionDuration,
@@ -130,6 +161,16 @@ func (db *Database) CreateApplication(ctx context.Context, application *Applicat
 }
 
 func (db *Database) UpdateApplication(ctx context.Context, application *Application) error {
+	var clientSecret *string = nil
+	if application.ClientSecret != nil {
+		secret, err := cryptography.EncryptAES(*application.ClientSecret, db.config.AppToken)
+		if err != nil {
+			return err
+		}
+
+		clientSecret = &secret
+	}
+
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
@@ -143,7 +184,7 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		application.Name,
 		application.ApplicationURL,
 		application.ClientID,
-		application.ClientSecret,
+		clientSecret,
 		application.Internal,
 		application.TokenDuration,
 		application.SessionDuration,
@@ -176,6 +217,20 @@ func (db *Database) GetApplications(ctx context.Context) []Application {
 	} else if err != nil {
 		slog.Error("failed to get applications", "err", err)
 		return []Application{}
+	}
+
+	for idx, application := range applications {
+		if application.ClientSecret == nil {
+			continue
+		}
+
+		clientSecret, err := cryptography.DecryptAES(*application.ClientSecret, db.config.AppToken)
+		if err != nil {
+			slog.Error("failed to decrypt application secret", "err", err)
+			return []Application{}
+		}
+
+		applications[idx].ClientSecret = &clientSecret
 	}
 
 	return applications

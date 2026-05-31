@@ -12,10 +12,6 @@
       id: 'account',
     },
     {
-      name: 'Security',
-      id: 'security',
-    },
-    {
       name: 'Server',
       id: 'server',
       permission: 'star:server',
@@ -45,18 +41,6 @@
       icon: 'user',
       href: '/',
       category: 'account'
-    },
-    {
-      name: 'Sessions',
-      icon: 'device-desktop',
-      href: '/#sessions',
-      category: 'security'
-    },
-    {
-      name: 'Password',
-      icon: 'lock',
-      href: '/#change-password',
-      category: 'security'
     },
     {
       name: 'Overview',

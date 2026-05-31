@@ -32,3 +32,15 @@ var PermissionUpdatePrimaryEmail = PermissionDefinition{
 	Name:        "user:email:primary",
 	Description: "Allows updating the primary email for the user",
 }
+
+var PermissionEnrollMFA = PermissionDefinition{
+	Name:        "user:mfa:enroll",
+	Description: "Create and enroll MFA methods for the user",
+	Private:     true,
+}
+
+var PermissionDeleteMFA = PermissionDefinition{
+	Name:        "user:mfa:delete",
+	Description: "Remove existing MFA methods for the user",
+	Private:     true,
+}

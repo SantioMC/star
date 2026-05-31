@@ -35,7 +35,7 @@ func PrepareServer() *state.StarServer {
 		return nil
 	}
 
-	db, err := database.Connect(context.Background(), config.DatabaseURL)
+	db, err := database.Connect(context.Background(), config)
 	if err != nil {
 		slog.Error("failed to connect to database", "err", err)
 		return nil

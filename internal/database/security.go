@@ -24,14 +24,14 @@ const (
 )
 
 type SecurityAlert struct {
-	ID          string                 `json:"id"`
-	Kind        SecurityAlertKind      `json:"kind"`
-	Severity    SecurityAlertSeverity  `json:"severity"`
-	Message     string                 `json:"message"`
-	Data        map[string]interface{} `json:"data"`
-	UserID      *string                `json:"user_id"`
-	Application *string                `json:"application"`
-	CreatedAt   time.Time              `json:"created_at" db:"created_at"`
+	ID          string                `json:"id"`
+	Kind        SecurityAlertKind     `json:"kind"`
+	Severity    SecurityAlertSeverity `json:"severity"`
+	Message     string                `json:"message"`
+	Data        map[string]any        `json:"data"`
+	UserID      *string               `json:"user_id"`
+	Application *string               `json:"application"`
+	CreatedAt   time.Time             `json:"created_at" db:"created_at"`
 }
 
 func (db *Database) GetSecurityAlertByID(ctx context.Context, id string) *SecurityAlert {

@@ -21,3 +21,8 @@ type ChangePasswordRequest struct {
 type AddUserEmailRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }
+
+type VerifyEmailRequest struct {
+	Email string `json:"email" validate:"required,email"`
+	Code  string `json:"code" validate:"required,min=1"`
+}

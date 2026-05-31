@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/vinovest/sqlx"
 )
 
@@ -49,11 +50,16 @@ func (db *Database) GetSessionByID(ctx context.Context, id string) *Session {
 		return nil
 	}
 
+	if session.Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt session token", "err", err)
+		return nil
+	}
+
 	return &session
 }
 
 func (db *Database) GetUserSessions(ctx context.Context, userId string) []Session {
-	session, err := sqlx.ListContext[Session](
+	sessions, err := sqlx.ListContext[Session](
 		ctx,
 		db.DB(),
 		`SELECT * FROM sessions WHERE user_id = $1`,
@@ -67,15 +73,28 @@ func (db *Database) GetUserSessions(ctx context.Context, userId string) []Sessio
 		return []Session{}
 	}
 
-	return session
+	for idx, session := range sessions {
+		if sessions[idx].Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt session token", "err", err)
+			return []Session{}
+		}
+	}
+
+	return sessions
 }
 
 func (db *Database) GetSessionByToken(ctx context.Context, token string) *Session {
+	encrypted, err := cryptography.EncryptAES(token, db.config.AppToken)
+	if err != nil {
+		slog.Error("failed to encrypt query", "err", err)
+		return nil
+	}
+
 	session, err := sqlx.OneContext[Session](
 		ctx,
 		db.DB(),
 		`SELECT * FROM sessions WHERE token = $1 LIMIT 1`,
-		token,
+		encrypted,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -109,7 +128,12 @@ func (db *Database) DeleteUserSessions(ctx context.Context, userId string) error
 }
 
 func (db *Database) CreateSession(ctx context.Context, session *Session) error {
-	_, err := db.DB().ExecContext(
+	encrypted, err := cryptography.EncryptAES(session.Token, db.config.AppToken)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.DB().ExecContext(
 		ctx,
 		`
 		INSERT INTO sessions (
@@ -126,7 +150,7 @@ func (db *Database) CreateSession(ctx context.Context, session *Session) error {
 		session.UserAgent,
 		session.Geolocation,
 		session.Device,
-		session.Token,
+		encrypted,
 		session.Status,
 		session.CreatedAt,
 		session.ExpiresAt,

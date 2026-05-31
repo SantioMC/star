@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/vinovest/sqlx"
 )
 
@@ -95,6 +96,16 @@ func (db *Database) GetSigningKeyByID(ctx context.Context, id string) *SigningKe
 		return nil
 	}
 
+	if signingKey.PublicKey, err = cryptography.DecryptAES(signingKey.PublicKey, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt public key", "err", err)
+		return nil
+	}
+
+	if signingKey.PrivateKey, err = cryptography.DecryptAES(signingKey.PrivateKey, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt private key", "err", err)
+		return nil
+	}
+
 	return &signingKey
 }
 
@@ -110,6 +121,18 @@ func (db *Database) GetAllSigningKeys(ctx context.Context) []SigningKey {
 	} else if err != nil {
 		slog.Error("failed to get signing keys", "err", err)
 		return []SigningKey{}
+	}
+
+	for idx, signingKey := range signingKeys {
+		if signingKeys[idx].PublicKey, err = cryptography.DecryptAES(signingKey.PublicKey, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt public key", "err", err)
+			return []SigningKey{}
+		}
+
+		if signingKeys[idx].PrivateKey, err = cryptography.DecryptAES(signingKey.PrivateKey, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt private key", "err", err)
+			return []SigningKey{}
+		}
 	}
 
 	return signingKeys
@@ -131,6 +154,16 @@ func (db *Database) GetActiveSigningKey(ctx context.Context) *SigningKey {
 		return nil
 	}
 
+	if signingKey.PublicKey, err = cryptography.DecryptAES(signingKey.PublicKey, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt public key", "err", err)
+		return nil
+	}
+
+	if signingKey.PrivateKey, err = cryptography.DecryptAES(signingKey.PrivateKey, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt private key", "err", err)
+		return nil
+	}
+
 	return &signingKey
 }
 
@@ -146,7 +179,17 @@ func (db *Database) DeletedRetiredSigningKeys(ctx context.Context) error {
 }
 
 func (db *Database) CreateSigningKey(ctx context.Context, signingKey *SigningKey) error {
-	_, err := db.DB().ExecContext(
+	encryptedPublicKey, err := cryptography.EncryptAES(signingKey.PublicKey, db.config.AppToken)
+	if err != nil {
+		return err
+	}
+
+	encryptedPrivateKey, err := cryptography.EncryptAES(signingKey.PrivateKey, db.config.AppToken)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.DB().ExecContext(
 		ctx,
 		`
 		INSERT INTO signing_keys (id, status, public_key, private_key, algorithm, created_at, expires_at)
@@ -154,8 +197,8 @@ func (db *Database) CreateSigningKey(ctx context.Context, signingKey *SigningKey
 		`,
 		signingKey.ID,
 		signingKey.Status,
-		signingKey.PublicKey,
-		signingKey.PrivateKey,
+		encryptedPublicKey,
+		encryptedPrivateKey,
 		signingKey.Algorithm,
 		signingKey.CreatedAt,
 		signingKey.ExpiresAt,

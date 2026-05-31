@@ -44,6 +44,7 @@ func TransformOAuthUser(
 
 func TransformEmail(email *database.UserEmail) Email {
 	return Email{
+		ID:        email.ID,
 		Email:     email.Email,
 		Verified:  email.Verified,
 		Primary:   email.Primary,
@@ -60,6 +61,7 @@ func TransformEmails(emails []database.UserEmail) []Email {
 }
 
 type Email struct {
+	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	Verified  bool      `json:"verified"`
 	Primary   bool      `json:"primary"`

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/vinovest/sqlx"
 )
 
@@ -34,7 +35,7 @@ type AuthorizationCode struct {
 }
 
 func (db *Database) GetAuthorizationCodeByID(ctx context.Context, id string) *AuthorizationCode {
-	code, err := sqlx.OneContext[AuthorizationCode](
+	authCode, err := sqlx.OneContext[AuthorizationCode](
 		ctx,
 		db.DB(),
 		`SELECT * FROM authorization_codes WHERE id = $1 LIMIT 1`,
@@ -48,7 +49,12 @@ func (db *Database) GetAuthorizationCodeByID(ctx context.Context, id string) *Au
 		return nil
 	}
 
-	return &code
+	if authCode.Code, err = cryptography.DecryptAES(authCode.Code, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt auth code", "err", err)
+		return nil
+	}
+
+	return &authCode
 }
 
 func (db *Database) GetAuthorizationCodeByCode(ctx context.Context, code string) *AuthorizationCode {
@@ -66,11 +72,21 @@ func (db *Database) GetAuthorizationCodeByCode(ctx context.Context, code string)
 		return nil
 	}
 
+	if authCode.Code, err = cryptography.DecryptAES(authCode.Code, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt auth code", "err", err)
+		return nil
+	}
+
 	return &authCode
 }
 
 func (db *Database) CreateAuthorizationCode(ctx context.Context, code *AuthorizationCode) error {
-	_, err := db.DB().ExecContext(
+	encryptedCode, err := cryptography.EncryptAES(code.Code, db.config.AppToken)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.DB().ExecContext(
 		ctx,
 		`
 		INSERT INTO authorization_codes (
@@ -81,7 +97,7 @@ func (db *Database) CreateAuthorizationCode(ctx context.Context, code *Authoriza
 		code.ID,
 		code.UserID,
 		code.Application,
-		code.Code,
+		encryptedCode,
 		code.RedirectURI,
 		code.Scopes,
 		code.State,

@@ -14,5 +14,5 @@ func RefreshSession(session *database.Session) (*database.Session, error) {
 		return nil, ErrSessionExpired
 	}
 
-	return session, nil
+	panic("Not implemented")
 }

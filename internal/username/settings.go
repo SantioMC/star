@@ -6,6 +6,7 @@ type Settings struct {
 	AllowDash       bool `json:"allow_dash"`
 	AllowDots       bool `json:"allow_dots"`
 	AllowUnderscore bool `json:"allow_underscore"`
+	AllowSpaces     bool `json:"allow_spaces"`
 }
 
 var DefaultSettings = Settings{
@@ -14,4 +15,5 @@ var DefaultSettings = Settings{
 	AllowDash:       false,
 	AllowDots:       true,
 	AllowUnderscore: true,
+	AllowSpaces:     false,
 }

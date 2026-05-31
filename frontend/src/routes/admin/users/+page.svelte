@@ -10,7 +10,7 @@
 	import { Spinner } from "@/components/ui/spinner";
 	import * as Table from '@/components/ui/table';
 	import { hasPermission } from "@/index";
-	import { debounced, relativeTime } from "@/utils";
+	import { debounced, isExpired, relativeTime } from "@/utils";
 	import { onMount } from "svelte";
 
 	let users = $state<star.AdminUser[]>([])
@@ -21,7 +21,7 @@
 
 	const getStatus = (user: star.AdminUser): Status => {
 		if (user.suspension != null) return 'suspended'
-		if (user.sessions.find(s => !s.expired) == null) return 'inactive'
+		if (user.sessions.find(s => !isExpired(s)) == null) return 'inactive'
 		return 'active'
 	}
 

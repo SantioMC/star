@@ -1,7 +1,6 @@
-package session
+package useragent
 
 import (
-	"github.com/medama-io/go-useragent"
 	"github.com/medama-io/go-useragent/agents"
 )
 
@@ -16,9 +15,7 @@ const (
 	DeviceUnknown DeviceType = "unknown"
 )
 
-var parser = useragent.NewParser()
-
-func parseUserAgent(ua string) DeviceType {
+func GetDevice(ua string) DeviceType {
 	agent := parser.Parse(ua)
 
 	switch agent.Device() {

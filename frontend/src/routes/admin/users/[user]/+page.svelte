@@ -55,7 +55,7 @@
 		!user ? '' : JSON.stringify(user!.metadata, null, 4).trim()
 	);
 	let sessions = $derived(
-		user?.sessions?.toSorted((a, b) => b.created_at - a.created_at) ??
+		user?.sessions?.toSorted((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)) ??
 			([] as star.Session[])
 	);
 
@@ -203,8 +203,7 @@
 			toast.error(result.message);
 		} else {
 			user!.sessions = user!.sessions.map((session) => {
-				session.expired = true;
-				session.expires_at = Date.now(); // not perfect, but this is perfectly fine for UI
+				session.expires_at = new Date(0).toISOString(); // not perfect, but this is perfectly fine for UI
 				return session;
 			});
 

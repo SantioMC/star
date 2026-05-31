@@ -50,12 +50,15 @@ export function titleCase(text: string): string {
 	return text.charAt(0).toUpperCase() + text.substring(1).toLowerCase();
 }
 
-export function relativeTime(time: number, long: boolean = true): string {
-	const diff = Math.abs(Date.now() - (time * 1000))
+export function relativeTime(time: number | string, long: boolean = true): string {
+	const epoch = typeof time === 'string' ? Date.parse(time) : time * 1000
+	const diff = Math.abs(Date.now() - epoch)
 	if (diff < 1e3) return "a few moments"
 
 	return ms(diff, { long });
 }
+
+export const isExpired = (session: Session): boolean => Date.parse(session.expires_at) < Date.now()
 
 export const debounced = <T extends EventTarget>(func: ChangeEventHandler<T>, delay: number = 250) => (event: Event & { currentTarget: Element & T }) => {
 	if (debounceTask != null) clearTimeout(debounceTask);

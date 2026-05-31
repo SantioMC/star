@@ -15,14 +15,14 @@
 		if (!browser) return;
 
 		const email = page.url.searchParams.get('email');
-		const token = page.url.searchParams.get('token');
+		const code = page.url.searchParams.get('code');
 
-		if (!email || !token) {
+		if (!email || !code) {
 			error = 'Invalid verification link provided';
 			return;
 		}
 
-		const data = await star.verifyEmail(email, token);
+		const data = await star.verifyEmail(email, code);
 		if ('error' in data) {
 			error = data.message;
 			return;

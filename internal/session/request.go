@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/state"
+	"github.com/tubblelive/star/internal/useragent"
 )
 
 var ErrUserNotFound = errors.New("user must be specified in session options")
@@ -34,8 +35,6 @@ func CreateSession(
 		accountId = options.Account.ID
 	}
 
-	device := parseUserAgent(userAgent)
-
 	session := &database.Session{
 		ID:            database.CreateID(database.SessionKey),
 		UserID:        options.User.ID,
@@ -43,7 +42,7 @@ func CreateSession(
 		Address:       address,
 		UserAgent:     userAgent,
 		Geolocation:   location,
-		Device:        string(device),
+		Device:        string(useragent.GetDevice(userAgent)),
 		Token:         CreateSessionToken(),
 		ApplicationID: server.DefaultApp.ID,
 		Status:        database.SessionStateActive,

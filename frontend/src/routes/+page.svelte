@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
+	import Email from '$lib/components/email.svelte';
 	import Icon from '$lib/components/icon.svelte';
 	import Session from '@/components/session.svelte';
 	import Sidebar from '@/components/sidebar.svelte';
@@ -12,20 +13,32 @@
 	import { Spinner } from '@/components/ui/spinner';
 	import { getJWT, hasPermission } from '@/index';
 	import * as star from '@/star';
+	import { isExpired } from '@/utils';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	let data = $state<star.User | null>(null);
 	let sessions = $state<star.Session[]>([]);
+	let emails = $state<star.Email[]>([]);
 	let loading = $state<boolean>(false);
 
 	let username = $state<string>('');
 	let firstName = $state<string>('');
 	let lastName = $state<string>('');
 
+	let newEmail = $state<string>('');
+	let addingEmail = $state<boolean>(false);
+
 	let currentPassword = $state<string>('');
 	let newPassword = $state<string>('');
 	let confirmPassword = $state<string>('');
+
+	const sortedEmails = $derived(
+		[...emails].sort((a, b) => {
+			if (a.primary !== b.primary) return a.primary ? -1 : 1;
+			return Date.parse(a.created_at) - Date.parse(b.created_at);
+		})
+	);
 
 	onMount(async () => {
 		if (!browser) return;
@@ -38,10 +51,40 @@
 		lastName = data.last_name;
 
 		sessions = await star.getSessions();
+		emails = await star.getEmails();
 	});
 
 	const removeSession = (session: star.Session) => {
 		sessions = sessions.filter((s) => s.id != session.id);
+	};
+
+	const addEmail = async (e: Event) => {
+		e.preventDefault();
+
+		const email = newEmail.trim();
+		if (!email) return;
+
+		addingEmail = true;
+		const response = await star.addEmail(email);
+		addingEmail = false;
+
+		if ('error' in response) {
+			return toast.error(response.message);
+		}
+
+		emails = [...emails, response];
+		newEmail = '';
+		toast.success(`A verification email has been sent to ${response.email}`);
+	};
+
+	const onPrimaryEmail = (email: star.Email) => {
+		emails = emails.map((e) => ({ ...e, primary: e.id == email.id }));
+		toast.success(`${email.email} is now your primary email`);
+	};
+
+	const onDeleteEmail = (email: star.Email) => {
+		emails = emails.filter((e) => e.id != email.id);
+		toast.success(`Removed ${email.email} from your account`);
 	};
 
 	const invalidateAllSessions = async () => {
@@ -167,14 +210,6 @@
 								/>
 							</div>
 
-							<div class="grid gap-2">
-								<Label for="email">Email</Label>
-								<Input id="email" type="email" value={data.email} disabled />
-								{#if !data.email_verified}
-									<span class="text-xs text-amber-400">Your email is not yet verified</span>
-								{/if}
-							</div>
-
 							<div class="flex gap-2 sm:gap-6">
 								<div class="flex-1/2 gap-2 grid">
 									<Label for="givenName">Given Name</Label>
@@ -194,6 +229,53 @@
 						</Button>
 					</Card.Footer>
 				</form>
+			</Card.Root>
+
+			<Card.Root class="min-w-1/3 w-full md:w-auto">
+				<Card.CardHeader>
+					<Card.Title><Icon icon="mail" /> Email Addresses</Card.Title>
+					<Card.Description class="max-w-xl">
+						The email addresses associated with your account. Your primary email
+						is used for account notifications and signing in.
+					</Card.Description>
+				</Card.CardHeader>
+				<Card.Content class="flex flex-col gap-2">
+					{#each sortedEmails as email (email.id)}
+						<Email
+							{email}
+							canDelete={!email.primary && emails.length > 1}
+							onprimary={() => onPrimaryEmail(email)}
+							ondelete={() => onDeleteEmail(email)}
+						/>
+					{/each}
+
+					{#if emails.length === 0}
+						<p class="text-sm text-primary/50 text-center py-4">No email addresses found</p>
+					{/if}
+				</Card.Content>
+				<Card.Footer>
+					<form class="flex w-full items-end gap-2" onsubmit={addEmail}>
+						<div class="grid gap-2 flex-1">
+							<Label for="newEmail">Add a new email</Label>
+							<Input
+								bind:value={newEmail}
+								id="newEmail"
+								type="email"
+								placeholder="you@example.com"
+								required
+							/>
+						</div>
+						<Button type="submit" disabled={addingEmail || !newEmail.trim()}>
+							{#if addingEmail}
+								<Spinner />
+							{:else}
+								<Icon icon="plus" />
+							{/if}
+
+							Add Email
+						</Button>
+					</form>
+				</Card.Footer>
 			</Card.Root>
 
 			<Card.Root class="min-w-1/3 w-full md:w-auto" id="change-password">
@@ -246,8 +328,8 @@
 				</Card.CardHeader>
 				<Card.Content class="flex flex-col gap-2">
 					{#each sessions
-						.filter((i) => !i.expired)
-						.sort((a, b) => b.created_at - a.created_at) as session}
+						.filter((i) => !isExpired(i))
+						.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)) as session (session.id)}
 						<Session
 							{session}
 							oninvalidate={() => removeSession(session)}
@@ -255,13 +337,13 @@
 						/>
 					{/each}
 
-					{#if sessions.filter((i) => !i.expired).length === 0}
+					{#if sessions.filter((i) => !isExpired(i)).length === 0}
 						<p class="text-sm text-primary/50 text-center py-4">No active sessions found</p>
 					{/if}
 				</Card.Content>
 				<Card.Footer>
 					<Button
-						class="ml-auto"
+					class="ml-auto"
 						variant="destructive"
 						onclick={invalidateAllSessions}
 						disabled={loading}

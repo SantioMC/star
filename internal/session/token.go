@@ -1,7 +1,11 @@
 package session
 
-import "github.com/tubblelive/star/internal/cryptography"
+import (
+	"fmt"
+
+	"github.com/tubblelive/star/internal/cryptography"
+)
 
 func CreateSessionToken() string {
-	return cryptography.CreateSecureString(32)
+	return fmt.Sprintf("star_%s", cryptography.CreateSecureString(32))
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/tubblelive/star/internal/config"
 	"github.com/tubblelive/star/migrations"
 	"github.com/vinovest/sqlx"
 )
@@ -18,8 +19,9 @@ import (
 var alphabet = []rune("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 
 type Database struct {
-	pool *pgxpool.Pool
-	db   *sqlx.DB
+	config *config.Config
+	pool   *pgxpool.Pool
+	db     *sqlx.DB
 }
 
 func (db *Database) DB() *sqlx.DB {
@@ -31,10 +33,10 @@ func (db *Database) Close() {
 	db.pool.Close()
 }
 
-func Connect(ctx context.Context, dsn string) (*Database, error) {
+func Connect(ctx context.Context, config *config.Config) (*Database, error) {
 	var err error
 
-	cfg, err := pgxpool.ParseConfig(dsn)
+	cfg, err := pgxpool.ParseConfig(config.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database url: %w", err)
 	}
@@ -59,8 +61,9 @@ func Connect(ctx context.Context, dsn string) (*Database, error) {
 	sqlx := sqlx.NewDb(nativeDb, "pgx")
 
 	return &Database{
-		pool: pool,
-		db:   sqlx,
+		config: config,
+		pool:   pool,
+		db:     sqlx,
 	}, nil
 }
 

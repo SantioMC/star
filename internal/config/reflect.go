@@ -37,7 +37,7 @@ func loadConfig(config any) error {
 		}
 
 		envTag := fieldType.Tag.Get("env")
-		if envTag == "" {
+		if envTag == "" || envTag == "-" {
 			continue
 		}
 

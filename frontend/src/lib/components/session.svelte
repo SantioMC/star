@@ -5,7 +5,7 @@
 	import { Button } from '@/components/ui/button';
 	import * as Item from '@/components/ui/item';
 	import { Spinner } from '@/components/ui/spinner';
-	import { getIcon, relativeTime } from '@/utils';
+	import { getIcon, isExpired, relativeTime, titleCase } from '@/utils';
 	import { toast } from 'svelte-sonner';
 
 	let loading = $state<boolean>(false);
@@ -19,6 +19,9 @@
 		currentSession?: boolean
 		oninvalidate?: () => void
 	} = $props()
+
+	const expired = $derived(isExpired(session));
+	const label = $derived(session.geolocation ?? session.ip_address);
 
 	const invalidate = async () => {
 		loading = true;
@@ -36,32 +39,30 @@
 <Item.Root variant='outline'>
 	<Item.Content class='flex flex-row items-center gap-4'>
 		<Icon class='text-3xl' icon={getIcon(session)} />
-		<div>
-			<p class="text-lg flex items-center gap-2">
-				{#if !session.device && !session.operating_system}
-					Unknown
-				{:else}
-					{session.device} {session.operating_system}
-				{/if}
+		<div class='min-w-0'>
+			<p class="text-lg flex items-center gap-2" title={session.user_agent}>
+				{label}
 
-				{#if session.expired}
+				{#if expired}
 					<Badge variant='outline' class='border-red-400/60 text-red-400'>Expired</Badge>
 				{/if}
 
-			{#if currentSession}
+				{#if currentSession}
 					<Badge variant='outline' class='border-emerald-600/60 text-emerald-500'>Current Session</Badge>
 				{/if}
 			</p>
 
-			<Item.Description class='text-xs'>IP Address: {session.ip_address} • Created {relativeTime(session.created_at)} ago</Item.Description>
+			<Item.Description class='text-xs'>
+				{#if session.browser != "Unknown"}{session.browser}{:else}{session.user_agent}{/if} • {session.ip_address} • Created {relativeTime(session.created_at)} ago
+			</Item.Description>
 		</div>
 		<div class='ml-auto'>
-			{#if !session.expired}
+			{#if !expired}
 				<Button variant='destructive' disabled={loading} onclick={invalidate}>
 					{#if loading}
 						<Spinner />
 					{/if}
-					
+
 					Log out
 				</Button>
 			{/if}
