@@ -3,13 +3,11 @@ package permission
 var PermissionChangePassword = PermissionDefinition{
 	Name:        "user:password:write",
 	Description: "Allows changing or removing the user's password",
-	Private:     true,
 }
 
 var PermissionCreateAuthorization = PermissionDefinition{
 	Name:        "user:application:authorize",
 	Description: "Allows the user to authorize an application",
-	Private:     true,
 }
 
 var PermissionReadEmails = PermissionDefinition{
@@ -20,7 +18,6 @@ var PermissionReadEmails = PermissionDefinition{
 var PermissionAddEmails = PermissionDefinition{
 	Name:        "user:email:create",
 	Description: "Allows adding new emails to the user",
-	Private:     true,
 }
 
 var PermissionDeleteEmails = PermissionDefinition{
@@ -36,11 +33,9 @@ var PermissionUpdatePrimaryEmail = PermissionDefinition{
 var PermissionEnrollMFA = PermissionDefinition{
 	Name:        "user:mfa:enroll",
 	Description: "Create and enroll MFA methods for the user",
-	Private:     true,
 }
 
 var PermissionDeleteMFA = PermissionDefinition{
 	Name:        "user:mfa:delete",
 	Description: "Remove existing MFA methods for the user",
-	Private:     true,
 }

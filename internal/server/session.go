@@ -10,32 +10,32 @@ import (
 )
 
 func sessionRouter(router fiber.Router) {
-	router.Get("/", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAddEmails), getUserSessions)
-	router.Delete("/", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionDeleteEmails), invalidateUserSessions)
+	router.Get("/", getUserSessions)
+	router.Delete("/", middleware.RequirePermission(permission.PermissionDeleteSessions), invalidateUserSessions)
 
-	router.Get("/:session", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionReadSessions), getUserSession)
-	router.Delete("/:session", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionDeleteSessions), invalidateUserSession)
+	router.Get("/:session", getUserSession)
+	router.Delete("/:session", middleware.RequirePermission(permission.PermissionDeleteSessions), invalidateUserSession)
 }
 
 func getUserSessions(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
 
-	sessions := star.Database.GetUserSessions(ctx, user.ID)
+	sessions := star.Database.GetUserSessions(ctx, userId)
 	return ctx.JSON(transformer.TransformSessions(sessions))
 }
 
 func invalidateUserSessions(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
 
-	if err := star.Database.DeleteUserSessions(ctx, user.ID); err != nil {
+	if err := star.Database.DeleteUserSessions(ctx, userId); err != nil {
 		return err
 	}
 
@@ -46,13 +46,13 @@ func invalidateUserSessions(ctx fiber.Ctx) error {
 
 func getUserSession(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
 
 	session := star.Database.GetSessionByID(ctx, ctx.Params("session"))
-	if session == nil || session.UserID != user.ID {
+	if session == nil || session.UserID != userId {
 		return fiber.NewError(404, "session not found")
 	}
 
@@ -61,13 +61,13 @@ func getUserSession(ctx fiber.Ctx) error {
 
 func invalidateUserSession(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
 
 	session := star.Database.GetSessionByID(ctx, ctx.Params("session"))
-	if session == nil || session.UserID != user.ID {
+	if session == nil || session.UserID != userId {
 		return fiber.NewError(404, "session not found")
 	}
 

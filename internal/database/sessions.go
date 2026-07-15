@@ -32,6 +32,7 @@ type Session struct {
 	Token         string       `json:"token"`
 	Status        SessionState `json:"status"`
 	CreatedAt     time.Time    `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at" db:"updated_at"`
 	ExpiresAt     time.Time    `json:"expires_at" db:"expires_at"`
 }
 
@@ -52,6 +53,11 @@ func (db *Database) GetSessionByID(ctx context.Context, id string) *Session {
 
 	if session.Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
 		slog.Error("failed to decrypt session token", "err", err)
+		return nil
+	}
+
+	if session.Address, err = cryptography.DecryptAES(session.Address, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt session ip address", "err", err)
 		return nil
 	}
 
@@ -76,6 +82,11 @@ func (db *Database) GetUserSessions(ctx context.Context, userId string) []Sessio
 	for idx, session := range sessions {
 		if sessions[idx].Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
 			slog.Error("failed to decrypt session token", "err", err)
+			return []Session{}
+		}
+
+		if sessions[idx].Address, err = cryptography.DecryptAES(session.Address, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt session ip address", "err", err)
 			return []Session{}
 		}
 	}
@@ -104,6 +115,16 @@ func (db *Database) GetSessionByToken(ctx context.Context, token string) *Sessio
 		return nil
 	}
 
+	if session.Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt session token", "err", err)
+		return nil
+	}
+
+	if session.Address, err = cryptography.DecryptAES(session.Address, db.config.AppToken); err != nil {
+		slog.Error("failed to decrypt session ip address", "err", err)
+		return nil
+	}
+
 	return &session
 }
 
@@ -127,8 +148,28 @@ func (db *Database) DeleteUserSessions(ctx context.Context, userId string) error
 	return err
 }
 
+func (db *Database) DeleteDeadSessions(ctx context.Context) (int64, error) {
+	result, err := db.DB().ExecContext(
+		ctx,
+		`DELETE FROM sessions WHERE expires_at < $1 OR (status != $2 AND updated_at < $1)`,
+		time.Now().Add(-time.Hour*6),
+		SessionStateActive,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 func (db *Database) CreateSession(ctx context.Context, session *Session) error {
-	encrypted, err := cryptography.EncryptAES(session.Token, db.config.AppToken)
+	encryptedToken, err := cryptography.EncryptAES(session.Token, db.config.AppToken)
+	if err != nil {
+		return err
+	}
+
+	encryptedAddress, err := cryptography.EncryptAES(session.Address, db.config.AppToken)
 	if err != nil {
 		return err
 	}
@@ -139,21 +180,38 @@ func (db *Database) CreateSession(ctx context.Context, session *Session) error {
 		INSERT INTO sessions (
 			id, user_id, account_id, application_id,
 			ip_address, user_agent, geolocation, device,
-			token, status, created_at, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			token, status, created_at, updated_at, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`,
 		session.ID,
 		session.UserID,
 		session.AccountID,
 		session.ApplicationID,
-		session.Address,
+		encryptedAddress,
 		session.UserAgent,
 		session.Geolocation,
 		session.Device,
-		encrypted,
+		encryptedToken,
 		session.Status,
 		session.CreatedAt,
+		time.Now(),
 		session.ExpiresAt,
+	)
+
+	return err
+}
+
+func (db *Database) UpdateSession(ctx context.Context, session *Session) error {
+	_, err := db.DB().ExecContext(
+		ctx,
+		`
+		UPDATE sessions
+		SET status = $2, updated_at = $3
+		WHERE id = $1
+		`,
+		session.ID,
+		session.Status,
+		time.Now(),
 	)
 
 	return err

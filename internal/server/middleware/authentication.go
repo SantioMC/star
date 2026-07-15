@@ -58,10 +58,14 @@ func RequireAuth(ctx fiber.Ctx) error {
 		return err
 	}
 
-	jwt, err := token.VerifyJWT(value, publicKey)
+	jwt, err := token.VerifyJWT(star, value, publicKey)
 	if err != nil || jwt == nil {
 		slog.Warn("failed to verify user jwt", "error", err)
 		return fiber.NewError(401, "Unauthorized")
+	}
+
+	if jwt.Audience != star.DefaultApp.ID {
+		return fiber.NewError(401, "token is not permitted to access this application")
 	}
 
 	ctx.Locals(RequestAuthJWTKey, jwt)

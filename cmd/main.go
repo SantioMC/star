@@ -30,7 +30,7 @@ func main() {
 	}()
 
 	elapsed := time.Since(started)
-	slog.Info("star authorization server started", "startup", elapsed)
+	slog.Info("star authorization server started", "startup", elapsed, "port", star.Config.Port)
 
 	<-shutdown
 }

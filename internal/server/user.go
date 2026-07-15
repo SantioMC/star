@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -16,79 +17,23 @@ import (
 	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/request"
 	"github.com/tubblelive/star/internal/server/types"
-	"github.com/tubblelive/star/internal/session"
-	"github.com/tubblelive/star/internal/token"
 	"github.com/tubblelive/star/internal/username"
 )
 
 func userRouter(router fiber.Router) {
-	router.Post("/login", middleware.RequireCaptcha, loginUser)
+	router.Get(
+		"/",
+		middleware.RequireAuth,
+		middleware.RequirePermission(permission.PermissionAdminReadUsers),
+		getAllUsers,
+	)
+
 	router.Post("/register", middleware.RequireCaptcha, registerUser)
 
 	router.Post("/password/change", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionChangePassword), changePassword)
 	router.Delete("/password", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionChangePassword), deletePassword)
-}
 
-func loginUser(ctx fiber.Ctx) error {
-	star := common.GetState(ctx)
-
-	var request types.LoginRequest
-	if err := ctx.Bind().Body(&request); err != nil {
-		return err
-	}
-
-	user := star.Database.GetUserByName(ctx, request.Username)
-	if user == nil {
-		slog.Warn("login attempt failed", "reason", "invalid username")
-		return fiber.NewError(401, "Invalid username or password")
-	}
-
-	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
-	if account == nil || account.Password == nil {
-		slog.Warn("login attempt failed", "reason", "no internal account")
-		return fiber.NewError(401, "Invalid username or password")
-	}
-
-	success := cryptography.VerifyHash(request.Password, *account.Password)
-	if !success {
-		slog.Warn("login attempt failed", "reason", "invalid password")
-		return fiber.NewError(401, "Invalid username or password")
-	}
-
-	permissions := []string{}
-	for _, permission := range star.Database.GetUserPermissions(ctx, user.ID) {
-		permissions = append(permissions, permission.Name)
-	}
-
-	session, err := session.CreateSession(
-		ctx,
-		star,
-		&session.Options{
-			User:     user,
-			Account:  account,
-			Duration: time.Hour * 24 * 7,
-		},
-	)
-
-	if err != nil {
-		return err
-	}
-
-	accessToken, err := token.Create(ctx, star, session, &token.Options{
-		Duration:    time.Hour,
-		Permissions: permissions,
-		SuperUser:   true,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return ctx.JSON(fiber.Map{
-		"next":          "complete",
-		"access_token":  accessToken,
-		"refresh_token": session.Token,
-	})
+	router.Route("/login", loginRouter)
 }
 
 func registerUser(ctx fiber.Ctx) error {
@@ -123,12 +68,12 @@ func registerUser(ctx fiber.Ctx) error {
 	hashed, alg := cryptography.HashString(password)
 
 	if star.Database.EmailExists(ctx, request.Email) {
-		return fiber.NewError(400, "email already taken")
+		return fiber.NewError(400, "username or email already taken")
 	}
 
 	existing := star.Database.GetUserByName(ctx, username)
 	if existing != nil {
-		return fiber.NewError(400, "username already taken")
+		return fiber.NewError(400, "username or email already taken")
 	}
 
 	created := time.Now()
@@ -264,12 +209,12 @@ func changePassword(ctx fiber.Ctx) error {
 func deletePassword(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
 
-	accounts := star.Database.GetAccountsByUserID(ctx, user.ID)
+	accounts := star.Database.GetAccountsByUserID(ctx, userId)
 	var internalAccount *database.Account = nil
 	for _, account := range accounts {
 		if account.Type == "internal" {
@@ -293,4 +238,29 @@ func deletePassword(ctx fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{
 		"success": true,
 	})
+}
+
+func getAllUsers(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	page, err := strconv.Atoi(ctx.Query("page", "1"))
+	if err != nil {
+		return err
+	}
+
+	limit, err := strconv.Atoi(ctx.Query("limit", "25"))
+	if err != nil {
+		return err
+	}
+
+	if page < 1 {
+		return fiber.NewError(400, "page must be at least 1")
+	}
+
+	if limit < 1 || limit > 100 {
+		return fiber.NewError(400, "limit must be between 1 and 100")
+	}
+
+	users := star.Database.GetUsers(ctx, page, limit)
+	return ctx.JSON(users)
 }

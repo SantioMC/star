@@ -94,7 +94,7 @@ func createJWT(
 	return JWT(sanitized), nil
 }
 
-func VerifyJWT(jwt string, publicKey *ecdsa.PublicKey) (*AccessTokenJWT, error) {
+func VerifyJWT(state *state.StarServer, jwt string, publicKey *ecdsa.PublicKey) (*AccessTokenJWT, error) {
 	signature, err := jose.ParseSigned(jwt, []jose.SignatureAlgorithm{jose.ES512})
 	if err != nil {
 		return nil, err
@@ -118,6 +118,10 @@ func VerifyJWT(jwt string, publicKey *ecdsa.PublicKey) (*AccessTokenJWT, error) 
 		return nil, fmt.Errorf("token is not yet valid")
 	}
 
+	if claims.Issuer != state.Config.ServerURL {
+		return nil, fmt.Errorf("token is not issued by the correct server")
+	}
+
 	return &claims, nil
 }
 
@@ -127,5 +131,7 @@ type AccessTokenJWT struct {
 	NotBefore   int64    `json:"nbf"`
 	IssuedAt    int64    `json:"iat"`
 	Subject     string   `json:"sub"`
+	Audience    string   `json:"aud"`
+	Issuer      string   `json:"iss"`
 	Permissions []string `json:"permissions"`
 }

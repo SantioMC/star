@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
 	"github.com/tubblelive/star/internal/cache"
+	"github.com/tubblelive/star/internal/cleanup"
 	"github.com/tubblelive/star/internal/config"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/seed"
@@ -59,9 +60,9 @@ func PrepareServer() *state.StarServer {
 		return nil
 	}
 
-	// Refresh our local cache and start the ticker
-	cache.UpdateCache(&star)
-	go cache.StartTicker(&star)
+	// Get our cache up to date, and cleanup dead and old records
+	cache.StartTicker(&star)
+	cleanup.StartTicker(&star)
 
 	return &star
 }

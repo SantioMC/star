@@ -31,12 +31,12 @@ func emailRouter(router fiber.Router) {
 func getUserEmails(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
 
-	emails := star.Database.GetEmailsByUserID(ctx, user.ID)
+	emails := star.Database.GetEmailsByUserID(ctx, userId)
 	return ctx.JSON(transformer.TransformEmails(emails))
 }
 
@@ -97,7 +97,7 @@ func deleteUserEmail(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	emailID := ctx.Params("email")
 
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
@@ -107,11 +107,11 @@ func deleteUserEmail(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "email not found")
 	}
 
-	if email.UserID != user.ID {
+	if email.UserID != userId {
 		return fiber.NewError(401, "you are not permitted to delete this email")
 	}
 
-	emails := star.Database.GetEmailsByUserID(ctx, user.ID)
+	emails := star.Database.GetEmailsByUserID(ctx, userId)
 	if len(emails) == 1 {
 		return fiber.NewError(400, "you may not remove the only email on your account")
 	}
@@ -129,7 +129,7 @@ func updatePrimaryEmail(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	emailID := ctx.Params("email")
 
-	user, err := request.GetUser(ctx)
+	userId, err := request.GetUserId(ctx)
 	if err != nil {
 		return err
 	}
@@ -139,11 +139,11 @@ func updatePrimaryEmail(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "email not found")
 	}
 
-	if email.UserID != user.ID {
+	if email.UserID != userId {
 		return fiber.NewError(401, "the provided email is not associated with your account")
 	}
 
-	if err := star.Database.SetPrimaryEmail(ctx, user.ID, emailID); err != nil {
+	if err := star.Database.SetPrimaryEmail(ctx, userId, emailID); err != nil {
 		return err
 	}
 

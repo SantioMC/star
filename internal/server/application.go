@@ -19,13 +19,13 @@ import (
 )
 
 func appRouter(router fiber.Router) {
-	router.Get("/", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionReadApplications), getApplications)
-	router.Post("/", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionCreateApplications), createApplication)
+	router.Get("/", middleware.RequirePermission(permission.PermissionReadApplications), getApplications)
+	router.Post("/", middleware.RequirePermission(permission.PermissionCreateApplications), createApplication)
 
-	router.Patch("/:application", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionWriteApplications), updateApplication)
-	router.Delete("/:application", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionDeleteApplications), deleteApplication)
+	router.Patch("/:application", middleware.RequirePermission(permission.PermissionWriteApplications), updateApplication)
+	router.Delete("/:application", middleware.RequirePermission(permission.PermissionDeleteApplications), deleteApplication)
 
-	router.Post("/authorization", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionCreateAuthorization), createAppAuthorization)
+	router.Post("/authorization", middleware.RequirePermission(permission.PermissionCreateAuthorization), createAppAuthorization)
 }
 
 func getApplications(ctx fiber.Ctx) error {

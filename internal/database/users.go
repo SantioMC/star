@@ -39,6 +39,24 @@ func (db *Database) GetUserByID(ctx context.Context, id string) *User {
 	return &user
 }
 
+func (db *Database) GetUsers(ctx context.Context, page int, limit int) []User {
+	users, err := sqlx.ListContext[User](
+		ctx,
+		db.DB(),
+		`SELECT * FROM users LIMIT $1 OFFSET $2`,
+		limit, (page-1)*limit,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []User{}
+	} else if err != nil {
+		slog.Error("failed to get users", "err", err)
+		return []User{}
+	}
+
+	return users
+}
+
 func (db *Database) GetUserByName(ctx context.Context, name string) *User {
 	user, err := sqlx.OneContext[User](
 		ctx,

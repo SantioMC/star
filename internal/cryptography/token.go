@@ -11,7 +11,7 @@ func CreateSecureString(length int) string {
 	ret := make([]byte, length)
 
 	for i := 0; i < length; i++ {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))-1))
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
 		if err != nil {
 			panic(err)
 		}

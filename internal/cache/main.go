@@ -8,12 +8,15 @@ import (
 )
 
 func StartTicker(state *state.StarServer) {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(time.Second * 15)
+	UpdateCache(state)
 
-	for {
-		<-ticker.C
-		UpdateCache(state)
-	}
+	go func() {
+		for {
+			<-ticker.C
+			UpdateCache(state)
+		}
+	}()
 }
 
 func UpdateCache(state *state.StarServer) {

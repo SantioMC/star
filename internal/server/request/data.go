@@ -12,6 +12,32 @@ import (
 
 var userKey = "request.user"
 
+// This method does not validate if the user exists on db, do not use for authentication endpoints
+func GetJWT(ctx fiber.Ctx) (*token.AccessTokenJWT, error) {
+	value := ctx.Locals(middleware.RequestAuthJWTKey)
+	if value == nil {
+		return nil, errors.New("missing jwt from request")
+	}
+
+	jwt := value.(*token.AccessTokenJWT)
+	if jwt == nil {
+		return nil, errors.New("value in request is not jwt")
+	}
+
+	return jwt, nil
+}
+
+// This method does not validate if the user exists on db, do not use for authentication endpoints
+func GetUserId(ctx fiber.Ctx) (string, error) {
+	// we can add api key support here down the road
+	jwt, err := GetJWT(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return jwt.Subject, nil
+}
+
 func GetUser(ctx fiber.Ctx) (*database.User, error) {
 	value := ctx.Locals(userKey)
 	if value != nil {
@@ -22,17 +48,12 @@ func GetUser(ctx fiber.Ctx) (*database.User, error) {
 	}
 
 	star := common.GetState(ctx)
-	value = ctx.Locals(middleware.RequestAuthJWTKey)
-	if value == nil {
-		return nil, errors.New("missing jwt from request")
+	userId, err := GetUserId(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	jwt := value.(*token.AccessTokenJWT)
-	if jwt == nil {
-		return nil, errors.New("value in request is not jwt")
-	}
-
-	user := star.Database.GetUserByID(ctx, jwt.Subject)
+	user := star.Database.GetUserByID(ctx, userId)
 	if user == nil {
 		return nil, errors.New("user not found in database")
 	}

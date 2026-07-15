@@ -18,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/tubblelive/star/frontend"
 	"github.com/tubblelive/star/internal/server/common"
+	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/request"
 	"github.com/tubblelive/star/internal/state"
 )
@@ -30,11 +31,24 @@ func StartServer(star *state.StarServer) error {
 		ProxyHeader:     star.Config.ProxyHeader,
 		TrustProxy:      star.Config.TrustProxy,
 		StructValidator: request.NewStructValidator(),
+		ReadTimeout:     time.Second * 10,
+		WriteTimeout:    time.Second * 10,
+		IdleTimeout:     time.Second * 15,
+	})
+
+	app.Hooks().OnPreStartupMessage(func(data *fiber.PreStartupMessageData) error {
+		data.PreventDefault = true
+		return nil
 	})
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     star.Config.Origins,
-		AllowHeaders:     []string{"*"},
+		AllowOrigins: star.Config.Origins,
+		AllowHeaders: []string{
+			fiber.HeaderAuthorization,
+			fiber.HeaderContentType,
+			fiber.HeaderAccept,
+			fiber.HeaderOrigin,
+		},
 		AllowCredentials: true,
 		AllowMethods: []string{
 			fiber.MethodGet,
@@ -122,10 +136,16 @@ func StartServer(star *state.StarServer) error {
 		},
 	}))
 
-	api.Route("/user/session", sessionRouter)
-	api.Route("/user/email", emailRouter)
+	api.Route("/email", emailRouter)
 	api.Route("/user", userRouter)
-	api.Route("/app", appRouter)
+	api.Use(middleware.RequireAuth).Route("/app", appRouter)
+	api.Use(middleware.RequireAuth).Route("/session", sessionRouter)
+	api.Use(middleware.RequireAuth).Route("/mfa", mfaRouter)
+
+	api.All("*", func(ctx fiber.Ctx) error {
+		// We don't want API routes to fallback to the frontend and send a 200
+		return fiber.ErrNotFound
+	})
 
 	// Frontend
 	siteKey := ""
@@ -162,7 +182,7 @@ func StartServer(star *state.StarServer) error {
 		return request.ShowFrontend(ctx)
 	})
 
-	port := fmt.Sprintf(":%d", star.Config.Port)
+	port := fmt.Sprintf("[::]:%d", star.Config.Port)
 	if err := app.Listen(port); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}

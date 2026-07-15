@@ -242,7 +242,7 @@ export const resendVerification = async (email: string) => {
 
 export const verifyEmail = async (email: string, code: string) => {
   return api
-    .post(`api/user/email/verify`, {
+    .post(`api/email/verify`, {
       json: { email, code },
     })
     .json<{ success: boolean }>()
@@ -260,56 +260,53 @@ export const updateUser = (changes: UserChanges) => {
 
 export const getSessions = async () => {
   return api
-    .get("api/user/session")
+    .get("api/session")
     .json<Session[]>()
     .catch((_) => [] as Session[]);
 };
 
 export const getSession = async (id: string) => {
   return api
-    .get(`api/user/session/${encodeURIComponent(id)}`)
+    .get(`api/session/${encodeURIComponent(id)}`)
     .json<Session>()
     .catch((_) => null);
 };
 
 export const invalidateSession = async (id: string) => {
   return api
-    .delete(`api/user/session/${encodeURIComponent(id)}`)
+    .delete(`api/session/${encodeURIComponent(id)}`)
     .json<{ success: boolean }>()
     .catch(orError);
 };
 
 export const invalidateAllSessions = async () => {
-  return api
-    .delete(`api/user/session`)
-    .json<{ success: boolean }>()
-    .catch(orError);
+  return api.delete(`api/session`).json<{ success: boolean }>().catch(orError);
 };
 
 export const getEmails = async () => {
   return api
-    .get("api/user/email")
+    .get("api/email")
     .json<Email[]>()
     .catch((_) => [] as Email[]);
 };
 
 export const addEmail = async (email: string) => {
   return api
-    .post("api/user/email", { json: { email } })
+    .post("api/email", { json: { email } })
     .json<Email>()
     .catch(orError);
 };
 
 export const deleteEmail = async (id: string) => {
   return api
-    .delete(`api/user/email/${encodeURIComponent(id)}`)
+    .delete(`api/email/${encodeURIComponent(id)}`)
     .json<{ success: boolean }>()
     .catch(orError);
 };
 
 export const setPrimaryEmail = async (id: string) => {
   return api
-    .post(`api/user/email/${encodeURIComponent(id)}/primary`)
+    .post(`api/email/${encodeURIComponent(id)}/primary`)
     .json<{ success: boolean }>()
     .catch(orError);
 };

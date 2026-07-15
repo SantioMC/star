@@ -25,6 +25,7 @@ func Create(
 	fields := map[string]any{
 		"sub": session.UserID,
 		"sid": session.ID,
+		"aud": session.ApplicationID,
 	}
 
 	if options.SuperUser {

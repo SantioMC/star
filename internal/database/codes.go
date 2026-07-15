@@ -122,6 +122,20 @@ func (db *Database) DeleteAuthorizationCodeByID(ctx context.Context, id string) 
 	return err
 }
 
+func (db *Database) DeleteDeadAuthCodes(ctx context.Context) (int64, error) {
+	result, err := db.DB().ExecContext(
+		ctx,
+		`DELETE FROM authorization_codes WHERE expires_at < $1 OR redeemed_at < $1`,
+		time.Now().Add(-time.Hour),
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 func (db *Database) MarkAuthorizationCodeAsRedeemed(ctx context.Context, id string) error {
 	_, err := db.DB().ExecContext(
 		ctx,
