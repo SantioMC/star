@@ -62,7 +62,7 @@ func (db *Database) GetEmailByName(ctx context.Context, email string) *UserEmail
 	userEmail, err := sqlx.OneContext[UserEmail](
 		ctx,
 		db.DB(),
-		`SELECT * FROM user_emails WHERE email = $1 LIMIT 1`,
+		`SELECT * FROM user_emails WHERE LOWER(email) = LOWER($1) LIMIT 1`,
 		email,
 	)
 
@@ -173,7 +173,7 @@ func (db *Database) EmailExists(ctx context.Context, email string) bool {
 	exists, err := sqlx.OneContext[bool](
 		ctx,
 		db.DB(),
-		`SELECT EXISTS(SELECT 1 FROM user_emails WHERE email = $1)`,
+		`SELECT EXISTS(SELECT 1 FROM user_emails WHERE LOWER(email) = LOWER($1))`,
 		email,
 	)
 

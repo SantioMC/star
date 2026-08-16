@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/vinovest/sqlx"
 )
@@ -21,19 +22,21 @@ const (
 )
 
 type Session struct {
-	ID            string       `json:"id"`
-	UserID        string       `json:"user_id" db:"user_id"`
-	AccountID     *string      `json:"account_id" db:"account_id"`
-	ApplicationID string       `json:"application_id" db:"application_id"`
-	Address       string       `json:"ip_address" db:"ip_address"`
-	UserAgent     string       `json:"user_agent" db:"user_agent"`
-	Device        string       `json:"device"`
-	Geolocation   *string      `json:"geolocation"`
-	Token         string       `json:"token"`
-	Status        SessionState `json:"status"`
-	CreatedAt     time.Time    `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at" db:"updated_at"`
-	ExpiresAt     time.Time    `json:"expires_at" db:"expires_at"`
+	ID              string         `json:"id"`
+	UserID          string         `json:"user_id" db:"user_id"`
+	AccountID       *string        `json:"account_id" db:"account_id"`
+	ApplicationID   string         `json:"application_id" db:"application_id"`
+	Address         string         `json:"ip_address" db:"ip_address"`
+	UserAgent       string         `json:"user_agent" db:"user_agent"`
+	Device          string         `json:"device"`
+	Geolocation     *string        `json:"geolocation"`
+	Token           string         `json:"token"`
+	Scopes          pq.StringArray `json:"scopes"`
+	Status          SessionState   `json:"status"`
+	AuthenticatedAt time.Time      `json:"authenticated_at" db:"authenticated_at"`
+	CreatedAt       time.Time      `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at" db:"updated_at"`
+	ExpiresAt       time.Time      `json:"expires_at" db:"expires_at"`
 }
 
 func (db *Database) GetSessionByID(ctx context.Context, id string) *Session {
@@ -48,11 +51,6 @@ func (db *Database) GetSessionByID(ctx context.Context, id string) *Session {
 		return nil
 	} else if err != nil {
 		slog.Error("failed to get session by id", "err", err)
-		return nil
-	}
-
-	if session.Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
-		slog.Error("failed to decrypt session token", "err", err)
 		return nil
 	}
 
@@ -80,11 +78,6 @@ func (db *Database) GetUserSessions(ctx context.Context, userId string) []Sessio
 	}
 
 	for idx, session := range sessions {
-		if sessions[idx].Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
-			slog.Error("failed to decrypt session token", "err", err)
-			return []Session{}
-		}
-
 		if sessions[idx].Address, err = cryptography.DecryptAES(session.Address, db.config.AppToken); err != nil {
 			slog.Error("failed to decrypt session ip address", "err", err)
 			return []Session{}
@@ -95,28 +88,19 @@ func (db *Database) GetUserSessions(ctx context.Context, userId string) []Sessio
 }
 
 func (db *Database) GetSessionByToken(ctx context.Context, token string) *Session {
-	encrypted, err := cryptography.EncryptAES(token, db.config.AppToken)
-	if err != nil {
-		slog.Error("failed to encrypt query", "err", err)
-		return nil
-	}
+	hashed := cryptography.HMAC(token, db.config.AppToken)
 
 	session, err := sqlx.OneContext[Session](
 		ctx,
 		db.DB(),
 		`SELECT * FROM sessions WHERE token = $1 LIMIT 1`,
-		encrypted,
+		hashed,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	} else if err != nil {
 		slog.Error("failed to get session by token", "err", err)
-		return nil
-	}
-
-	if session.Token, err = cryptography.DecryptAES(session.Token, db.config.AppToken); err != nil {
-		slog.Error("failed to decrypt session token", "err", err)
 		return nil
 	}
 
@@ -164,10 +148,7 @@ func (db *Database) DeleteDeadSessions(ctx context.Context) (int64, error) {
 }
 
 func (db *Database) CreateSession(ctx context.Context, session *Session) error {
-	encryptedToken, err := cryptography.EncryptAES(session.Token, db.config.AppToken)
-	if err != nil {
-		return err
-	}
+	hashedToken := cryptography.HMAC(session.Token, db.config.AppToken)
 
 	encryptedAddress, err := cryptography.EncryptAES(session.Address, db.config.AppToken)
 	if err != nil {
@@ -180,8 +161,8 @@ func (db *Database) CreateSession(ctx context.Context, session *Session) error {
 		INSERT INTO sessions (
 			id, user_id, account_id, application_id,
 			ip_address, user_agent, geolocation, device,
-			token, status, created_at, updated_at, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			token, scopes, status, authenticated_at, created_at, updated_at, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		`,
 		session.ID,
 		session.UserID,
@@ -191,8 +172,10 @@ func (db *Database) CreateSession(ctx context.Context, session *Session) error {
 		session.UserAgent,
 		session.Geolocation,
 		session.Device,
-		encryptedToken,
+		hashedToken,
+		session.Scopes,
 		session.Status,
+		session.AuthenticatedAt,
 		session.CreatedAt,
 		time.Now(),
 		session.ExpiresAt,

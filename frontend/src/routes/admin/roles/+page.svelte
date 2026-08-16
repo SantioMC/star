@@ -26,7 +26,7 @@
 
 	onMount(async () => {
 		if (!browser) return
-		if (!hasPermission('star:admin:read:roles')) return location.href = '/'
+		if (!hasPermission('admin:role:read')) return location.href = '/'
 		roles = await star.getAllRoles()
 	})
 
@@ -59,7 +59,7 @@
 
 	<div class='mt-24'>
 		<div class="flex flex-row items-center gap-2 my-2">
-			{#if hasPermission('star:admin:create:roles')}
+			{#if hasPermission('admin:role:create')}
 				<Button class='ml-auto' onclick={() => createRoleModal?.open()}>Create Role</Button>
 			{/if}
 		</div>
@@ -82,8 +82,8 @@
 						<div class="flex flex-col items-start">
 							<div class='flex items-center gap-2'>
 								<span>{titleCase(role.name)}</span>
-								{#if role.global}
-									<Badge variant='secondary'>Default role</Badge>
+								{#if role.internal}
+									<Badge variant='secondary'>Built-in role</Badge>
 								{/if}
 							</div>
 							<span class='text-primary/70'>{role.description}</span>

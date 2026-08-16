@@ -9,31 +9,31 @@ export const API_URL = env.PUBLIC_API_URL ?? "/";
 
 // Permissions in the star management console, purely for typescript typings
 export type StarPermission =
-  | "star:*"
-  | "star:user:*"
-  | "star:user:email"
-  | "star:user:read:sessions"
-  | "star:user:delete:sessions"
-  | "star:user:delete"
-  | "star:server:metrics"
-  | "star:admin:*"
-  | "star:admin:read:users"
-  | "star:admin:update:users"
-  | "star:admin:delete:users"
-  | "star:admin:read:roles"
-  | "star:admin:create:roles"
-  | "star:admin:update:roles"
-  | "star:admin:delete:roles"
-  | "star:admin:read:applications"
-  | "star:admin:update:applications"
-  | "star:admin:create:applications"
-  | "star:admin:delete:applications"
-  | "star:admin:read:providers"
-  | "star:admin:create:providers"
-  | "star:admin:delete:providers"
-  | "star:admin:read:keys"
-  | "star:admin:create:keys"
-  | "star:admin:delete:keys";
+  | "*"
+  | "user:password:write"
+  | "user:application:authorize"
+  | "user:email:read"
+  | "user:email:create"
+  | "user:email:delete"
+  | "user:email:primary"
+  | "user:mfa:enroll"
+  | "user:mfa:delete"
+  | "user:session:delete"
+  | "application:create"
+  | "application:read"
+  | "application:write"
+  | "application:delete"
+  | "admin:user:read"
+  | "admin:user:write"
+  | "admin:user:delete"
+  | "admin:role:read"
+  | "admin:role:create"
+  | "admin:role:write"
+  | "admin:role:delete"
+  | "admin:provider:read"
+  | "admin:provider:create"
+  | "admin:provider:write"
+  | "admin:provider:delete";
 
 export const api = ky.extend({
   prefixUrl: API_URL,
@@ -90,7 +90,7 @@ export const getLoginUrl = (provider: string) => {
   return `${API_URL}/api/login/${encodeURIComponent(provider)}`;
 };
 
-// Stubbed — login methods discovery not yet implemented in the new API
+// Stubbed - login methods discovery not yet implemented in the new API
 export interface SocialProvider {
   id: string;
   name: string;
@@ -123,6 +123,15 @@ export const login = async (data: LoginRequest) => {
     .catch(orError);
 };
 
+export const loginTotp = async (flow: string, code: string) => {
+  return api
+    .post(`api/user/login/totp`, {
+      json: { flow, code },
+    })
+    .json<LoginSuccessResponse>()
+    .catch(orError);
+};
+
 export const register = async (data: RegisterRequest) => {
   return api
     .post(`api/user/register`, {
@@ -147,6 +156,7 @@ export const refreshToken = async (refreshToken: string) => {
   const searchParams = new URLSearchParams();
   searchParams.set("grant_type", `refresh_token`);
   searchParams.set("refresh_token", refreshToken);
+  searchParams.set("client_id", "star");
 
   return ky
     .post(`${API_URL}/oauth/token`, {
@@ -188,7 +198,7 @@ export const getOAuthAuthCode = async (
     .catch(orError);
 };
 
-// Stubbed — endpoint not yet implemented in the new API
+// Stubbed - endpoint not yet implemented in the new API
 export const getUserinfo = async (): Promise<UserinfoResponse | null> => {
   return api
     .get("oidc/userinfo")
@@ -196,7 +206,7 @@ export const getUserinfo = async (): Promise<UserinfoResponse | null> => {
     .catch((_) => null);
 };
 
-// Stubbed — endpoint not yet implemented in the new API
+// Stubbed - endpoint not yet implemented in the new API
 export const getSelf = async (): Promise<User | null> => {
   // Use the OIDC userinfo endpoint as a base, then fill in stubs for missing fields
   const info = await getUserinfo();
@@ -224,8 +234,8 @@ export const changePassword = async (
   newPassword: string,
 ) => {
   return api
-    .post(`api/user/me/password`, {
-      json: { current_password: currentPassword, new_password: newPassword },
+    .post(`api/user/password/change`, {
+      json: { old_password: currentPassword, new_password: newPassword },
     })
     .json<{ success: boolean }>()
     .catch(orError);
@@ -311,9 +321,31 @@ export const setPrimaryEmail = async (id: string) => {
     .catch(orError);
 };
 
+export const getMfaFactors = async () => {
+  return api
+    .get("api/mfa")
+    .json<MfaFactorsResponse>()
+    .catch((_) => null);
+};
+
+export const enrollTotp = async () => {
+  return api.post("api/mfa/totp/enroll").json<TotpEnrollment>().catch(orError);
+};
+
+export const verifyTotp = async (code: string) => {
+  return api
+    .post("api/mfa/totp/verify", { json: { code } })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
+export const deleteTotp = async () => {
+  return api.delete("api/mfa/totp").json<{ success: boolean }>().catch(orError);
+};
+
 export const invalidateUserSessions = async (userId: string) => {
   return api
-    .post(`api/user/${encodeURIComponent(userId)}/invalidate`)
+    .delete(`api/user/${encodeURIComponent(userId)}/sessions`)
     .json<{ success: boolean }>()
     .catch(orError);
 };
@@ -325,18 +357,16 @@ export const getMetrics = async () => {
     .catch((_) => null);
 };
 
-export const getAllUsers = async (page: number = 1) => {
-  return api
-    .get(`api/user?page=${encodeURIComponent(page)}`)
-    .json<AdminUser[]>()
-    .catch((_) => [] as AdminUser[]);
-};
+export const getAllUsers = async (page: number = 1, query: string = "") => {
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", page.toString());
 
-export const searchUsers = async (query: string, page: number = 1) => {
+  if (query) {
+    searchParams.set("query", query);
+  }
+
   return api
-    .get(
-      `api/user/search?query=${encodeURIComponent(query)}&page=${encodeURIComponent(page)}`,
-    )
+    .get(`api/user?${searchParams.toString()}`)
     .json<AdminUser[]>()
     .catch((_) => [] as AdminUser[]);
 };
@@ -355,38 +385,10 @@ export const deleteUser = async (id: string) => {
     .catch(orError);
 };
 
-export const suspendUser = async (
-  id: string,
-  reason: string,
-  duration: number | null = null,
-) => {
-  return api
-    .post(`api/user/${encodeURIComponent(id)}/suspend`, {
-      json: {
-        reason,
-        duration,
-      },
-    })
-    .json<{ success: boolean }>()
-    .catch(orError);
-};
-
-export const unsuspendUser = async (id: string) => {
-  return api
-    .post(`api/user/${encodeURIComponent(id)}/unsuspend`)
-    .json<{ success: boolean }>()
-    .catch(orError);
-};
-
-export const forceChangePassword = async (
-  user: string,
-  newPassword: string,
-) => {
+export const adminSetPassword = async (user: string, password: string) => {
   return api
     .post(`api/user/${encodeURIComponent(user)}/password`, {
-      json: {
-        password: newPassword,
-      },
+      json: { password },
     })
     .json<{ success: boolean }>()
     .catch(orError);
@@ -397,7 +399,7 @@ export const modifyUser = (user: string, changes: AdminUserChanges) => {
     .patch(`api/user/${encodeURIComponent(user)}`, {
       json: changes,
     })
-    .json<User>()
+    .json<AdminUser>()
     .catch(orError);
 };
 
@@ -405,7 +407,7 @@ export const getAllApps = async () => {
   return api
     .get(`api/app`)
     .json<AdminApplication[]>()
-    .catch((_) => [] as any[]);
+    .catch((_) => [] as AdminApplication[]);
 };
 
 export const getApplication = async (id: string) => {
@@ -418,7 +420,7 @@ export const getApplication = async (id: string) => {
 export const createApplication = async (data: CreateAppRequest) => {
   return api
     .post(`api/app`, { json: data })
-    .json<AdminApplication>()
+    .json<{ success: boolean }>()
     .catch(orError);
 };
 
@@ -432,109 +434,14 @@ export const deleteApplication = async (app: string) => {
 export const updateApplication = async (app: string, changes: AppChanges) => {
   return api
     .patch(`api/app/${encodeURIComponent(app)}`, { json: changes })
-    .json<AdminApplication>()
-    .catch(orError);
-};
-
-export const createProvider = async (app: string, kind: string) => {
-  return api
-    .post(`api/app/${encodeURIComponent(app)}/provider`, { json: { kind } })
-    .json<OAuthProvider>()
-    .catch(orError);
-};
-
-export const deleteProvider = async (app: string, provider: string) => {
-  return api
-    .delete(
-      `api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}`,
-    )
     .json<{ success: boolean }>()
     .catch(orError);
 };
 
-export const rotateProvider = async (app: string, provider: string) => {
+export const rotateApplicationSecret = async (app: string) => {
   return api
-    .post(
-      `api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/rotate`,
-    )
-    .json<{ secret: string }>()
-    .catch(orError);
-};
-
-export const modifyProvider = async (
-  app: string,
-  provider: string,
-  changes: ProviderChanges,
-) => {
-  return api
-    .patch(
-      `api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}`,
-      {
-        json: changes,
-      },
-    )
-    .json<OAuthProvider>()
-    .catch(orError);
-};
-
-export const addRedirectUri = async (
-  app: string,
-  provider: string,
-  redirectUri: string,
-) => {
-  return api
-    .post(
-      `api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/redirect`,
-      {
-        json: {
-          redirect_uri: redirectUri,
-        },
-      },
-    )
-    .json<OAuthProvider>()
-    .catch(orError);
-};
-
-export const removeRedirectUri = async (
-  app: string,
-  provider: string,
-  index: number,
-) => {
-  return api
-    .delete(
-      `api/app/${encodeURIComponent(app)}/provider/${encodeURIComponent(provider)}/redirect/${encodeURIComponent(index)}`,
-    )
-    .json<OAuthProvider>()
-    .catch(orError);
-};
-
-export const getPermissions = async (app: string | null = null) => {
-  if (app)
-    return api
-      .get(`api/app/${encodeURIComponent(app)}/permission`)
-      .json<Permission[]>()
-      .catch(() => [] as Permission[]);
-  return [] as Permission[];
-};
-
-export const createPermission = async (data: CreatePermissionRequest) => {
-  return api
-    .post(`api/app/${encodeURIComponent(data.app)}/permission`, {
-      json: {
-        name: data.permission,
-        description: data.description,
-      },
-    })
-    .json<Permission>()
-    .catch(orError);
-};
-
-export const deletePermission = async (app: string, permission: string) => {
-  return api
-    .delete(
-      `api/app/${encodeURIComponent(app)}/permission/${encodeURIComponent(permission)}`,
-    )
-    .json<{ success: boolean }>()
+    .post(`api/app/${encodeURIComponent(app)}/rotate`)
+    .json<{ client_secret: string }>()
     .catch(orError);
 };
 
@@ -543,6 +450,13 @@ export const getAllRoles = async () => {
     .get("api/role")
     .json<Role[]>()
     .catch(() => [] as Role[]);
+};
+
+export const getAvailablePermissions = async () => {
+  return api
+    .get("api/role/permissions")
+    .json<AvailablePermission[]>()
+    .catch(() => [] as AvailablePermission[]);
 };
 
 export const getRole = async (id: string) => {
@@ -680,10 +594,28 @@ export interface AuthorizationCodeResponse {
   scoped_modified: boolean;
 }
 
-export interface LoginResponse {
-  next: string;
+export type MFAMethod = "totp";
+
+export interface LoginSuccessResponse {
+  next: "complete";
   access_token: string;
   refresh_token: string;
+}
+
+export interface LoginMfaResponse {
+  next: "mfa_required";
+  flow: string;
+  factors: MFAMethod[];
+}
+
+export type LoginResponse = LoginSuccessResponse | LoginMfaResponse;
+
+export interface MfaFactorsResponse {
+  factors: MFAMethod[];
+}
+
+export interface TotpEnrollment {
+  secret: string;
 }
 
 export interface UserinfoResponse {
@@ -700,37 +632,37 @@ export interface UserinfoResponse {
 
 export interface CreateAppRequest {
   name: string;
-  slug?: string;
+  kind: "public" | "confidential";
   url: string;
-}
-
-export interface CreatePermissionRequest {
-  app: string;
-  permission: string;
-  description?: string;
+  client_id?: string;
 }
 
 export interface CreateRoleRequest {
   name: string;
   description?: string;
-  scopes?: string[];
+  permissions?: string[];
 }
 
 export interface UpdateRoleRequest {
   name?: string;
   description?: string;
-  scopes?: string[];
+  permissions?: string[];
 }
 
 export interface Role {
   id: string;
-  created_at: number;
-  updated_at: number;
   name: string;
   description: string;
-  super: boolean;
-  global: boolean;
+  internal: boolean;
   permissions: string[];
+  created_at: string;
+}
+
+export interface AvailablePermission {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
 }
 
 export interface Metadata {
@@ -744,9 +676,13 @@ export interface Metadata {
 
 export interface AppChanges {
   name?: string;
-  slug?: string;
+  kind?: "public" | "confidential";
   url?: string;
-  callback_url?: string;
+  client_id?: string;
+  token_duration?: number;
+  session_duration?: number;
+  redirect_uris?: string[];
+  development_mode?: boolean;
 }
 
 export interface UserChanges {
@@ -756,16 +692,7 @@ export interface UserChanges {
 }
 
 export interface AdminUserChanges extends UserChanges {
-  profile_picture?: string;
-  metadata?: Metadata;
-  email?: string;
-  email_verified?: boolean;
   roles?: string[];
-}
-
-export interface ProviderChanges {
-  fingerprinting?: boolean;
-  application_type?: "public" | "confidential";
 }
 
 export interface User {
@@ -784,19 +711,16 @@ export interface User {
   sessions: Session[];
 }
 
-export interface AdminUser extends User {
-  last_login_at: number | null;
-  suspension: Suspension | null;
-}
-
-export interface Suspension {
+export interface AdminUser {
   id: string;
-  created_at: number;
-  updated_at: number;
-  user_id: string;
-  issued_by: string;
-  reason: string;
-  expires_at: number | null;
+  username: string;
+  first_name: string | null;
+  last_name: string | null;
+  profile_picture: string;
+  email: string | null;
+  email_verified: boolean;
+  roles: Role[];
+  created_at: string;
 }
 
 export interface Account {
@@ -840,39 +764,17 @@ export interface Email {
 
 export interface AdminApplication {
   id: string;
-  created_at: number;
-  updated_at: number;
+  kind: "public" | "confidential";
   name: string;
-  slug: string;
-  url: string;
-  callback: string;
-  internal: boolean;
-  oauth_provider: OAuthProvider | null;
-}
-
-export interface OAuthProvider {
-  id: string;
-  created_at: number;
-  updated_at: number;
-  application_id: string;
+  application_url: string;
   client_id: string;
-  client_secret: string;
-  rotate_refresh_token: boolean;
-  fingerprinting: boolean;
+  client_secret: string | null;
+  internal: boolean;
+  token_duration: number;
+  session_duration: number;
   redirect_uris: string[];
-  application_type: "public" | "confidential";
-  response_types: string[];
-  grant_types: string[];
-  access_token_type: string;
-}
-
-export interface Permission {
-  id: string;
-  created_at: number;
-  updated_at: number;
-  application_id: string;
-  scope: string;
-  description: string;
+  development_mode: boolean;
+  created_at: string;
 }
 
 export interface OAuthTokenResponse {
@@ -880,6 +782,8 @@ export interface OAuthTokenResponse {
   token_type: string;
   expires_in: number;
   refresh_token?: string;
+  scope?: string;
+  id_token?: string;
 }
 
 export interface OAuthTokenError {
@@ -890,39 +794,51 @@ export interface OAuthTokenError {
 
 export interface SocialProviderConfig {
   id: string;
-  created_at: number;
-  updated_at: number;
   name: string;
+  icon: string;
   order: number;
   client_id: string;
   client_secret: string;
   scopes: string[];
-  icon: string;
   oidc_url: string | null;
-  auth_url: string;
-  token_url: string;
-  userinfo_url: string;
+  authorization_url: string | null;
+  token_url: string | null;
+  userinfo_url: string | null;
+  created_at: string;
 }
 
 export interface SocialProviderPreset {
   name: string;
   icon: string;
+  scopes?: string[];
+  oidc_url?: string;
+  authorization_url?: string;
+  token_url?: string;
+  userinfo_url?: string;
 }
 
 export interface CreateSocialProviderRequest {
   name: string;
+  icon?: string;
+  order?: number;
   client_id: string;
   client_secret: string;
-  discovery_uri?: string;
-  order?: number;
+  scopes?: string[];
+  oidc_url?: string;
+  authorization_url?: string;
+  token_url?: string;
+  userinfo_url?: string;
 }
 
 export interface UpdateSocialProviderRequest {
-  client_id?: string;
-  client_secret?: string;
+  name?: string;
   icon?: string;
   order?: number;
-  auth_url?: string;
+  client_id?: string;
+  client_secret?: string;
+  scopes?: string[];
+  oidc_url?: string;
+  authorization_url?: string;
   token_url?: string;
   userinfo_url?: string;
 }

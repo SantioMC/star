@@ -43,7 +43,7 @@ func (db *Database) GetUsers(ctx context.Context, page int, limit int) []User {
 	users, err := sqlx.ListContext[User](
 		ctx,
 		db.DB(),
-		`SELECT * FROM users LIMIT $1 OFFSET $2`,
+		`SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
 		limit, (page-1)*limit,
 	)
 
@@ -51,6 +51,29 @@ func (db *Database) GetUsers(ctx context.Context, page int, limit int) []User {
 		return []User{}
 	} else if err != nil {
 		slog.Error("failed to get users", "err", err)
+		return []User{}
+	}
+
+	return users
+}
+
+func (db *Database) SearchUsers(ctx context.Context, query string, page int, limit int) []User {
+	users, err := sqlx.ListContext[User](
+		ctx,
+		db.DB(),
+		`
+		SELECT * FROM users
+		WHERE name ILIKE '%' || $1 || '%'
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+		`,
+		query, limit, (page-1)*limit,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []User{}
+	} else if err != nil {
+		slog.Error("failed to search users", "err", err)
 		return []User{}
 	}
 
@@ -73,6 +96,46 @@ func (db *Database) GetUserByName(ctx context.Context, name string) *User {
 	}
 
 	return &user
+}
+
+func (db *Database) GetUsersByName(ctx context.Context, name string) []User {
+	users, err := sqlx.ListContext[User](
+		ctx,
+		db.DB(),
+		`SELECT * FROM users WHERE LOWER(name) = LOWER($1)`,
+		name,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []User{}
+	} else if err != nil {
+		slog.Error("failed to get users by name", "err", err)
+		return []User{}
+	}
+
+	return users
+}
+
+func (db *Database) GetUsersByVerifiedEmail(ctx context.Context, email string) []User {
+	users, err := sqlx.ListContext[User](
+		ctx,
+		db.DB(),
+		`
+		SELECT DISTINCT users.* FROM users
+		JOIN user_emails ON user_emails.user_id = users.id
+		WHERE LOWER(user_emails.email) = LOWER($1) AND user_emails.verified = true
+		`,
+		email,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []User{}
+	} else if err != nil {
+		slog.Error("failed to get users by email", "err", err)
+		return []User{}
+	}
+
+	return users
 }
 
 func (db *Database) DeleteUser(ctx context.Context, id string) error {

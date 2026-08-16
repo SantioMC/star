@@ -24,19 +24,19 @@
 	}
 
 	const isChecked = (role: star.Role) => {
-		return role.global || roles.some(r => r.id == role.id)
+		return roles.some(r => r.id == role.id)
 	}
 </script>
 
 <div class="flex flex-col gap-1">
 	{#each allRoles as role (role.id)}
-		<Label for={role.id} class='p-3 border rounded-lg {role.global ? '' : ''}'>
-			<Checkbox disabled={role.global} id={role.id} checked={isChecked(role)} onCheckedChange={(val) => handleClick(val, role)} />
+		<Label for={role.id} class='p-3 border rounded-lg'>
+			<Checkbox id={role.id} checked={isChecked(role)} onCheckedChange={(val) => handleClick(val, role)} />
 			<div class='flex flex-col items-start gap-1'>
 				<div class='flex items-center gap-1'>
 					<span>{titleCase(role.name)}</span>
-					{#if role.global}
-						<Badge class='ml-1' variant='secondary'>Default role</Badge>
+					{#if role.internal}
+						<Badge class='ml-1' variant='secondary'>Built-in role</Badge>
 					{/if}
 				</div>
 				<span class='text-primary/60 leading-5'>{role.description}</span>

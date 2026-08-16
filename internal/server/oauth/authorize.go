@@ -1,33 +1,51 @@
 package oauth
 
 import (
+	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/request"
 )
 
 var SupportedResponseTypes = []string{
 	"code",
-	"token",
-	"code token",
-	"code token id_token",
-	"code id_token",
-	"token id_token",
-	"id_token",
 }
 
 var SupportedResponseModes = []string{
 	"query",
-	"form_post",
+}
+
+var SupportedGrantTypes = []string{
+	"authorization_code",
+	"refresh_token",
 }
 
 func authorizationError(ctx fiber.Ctx, err string) error {
 	return ctx.Redirect().To("/oauth/authorize?error=" + url.QueryEscape(err))
+}
+
+func redirectError(ctx fiber.Ctx, redirectUri string, kind Oauth2Error, description string, state string) error {
+	target, err := url.Parse(redirectUri)
+	if err != nil {
+		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectUri)
+		return authorizationError(ctx, "The redirect_uri specified is not a valid URI")
+	}
+
+	query := target.Query()
+	query.Set("error", string(kind))
+	query.Set("error_description", description)
+
+	if state != "" {
+		query.Set("state", state)
+	}
+
+	target.RawQuery = query.Encode()
+	return ctx.Redirect().To(target.String())
 }
 
 func Authorize(ctx fiber.Ctx) error {
@@ -37,44 +55,63 @@ func Authorize(ctx fiber.Ctx) error {
 		return request.ShowFrontend(ctx)
 	}
 
-	// Get and validate params
-	state := ctx.Query("state")
-	responseType := ctx.Query("response_type")
+	query, err := url.ParseQuery(string(ctx.Request().URI().QueryString()))
+	if err != nil {
+		return authorizationError(ctx, "Malformed query parameters")
+	}
 
-	if !slices.Contains(SupportedResponseTypes, responseType) {
-		return ctx.JSON(NewError(Oauth2ErrorUnsupportedResponseType, "Missing, unsupported or unknown response type", state))
+	for key, values := range query {
+		if len(values) > 1 {
+			return authorizationError(ctx, "Request parameters must not be included more than once: "+key)
+		}
 	}
 
 	clientId := ctx.Query("client_id")
-	redirectUri := ctx.Query("redirect_uri")
-	scopes := strings.Split(ctx.Query("scope"), " ")
-
 	if clientId == "" {
-		return ctx.JSON(NewError(Oauth2ErrorInvalidRequest, "Missing client_id", state))
+		return authorizationError(ctx, "Missing client_id")
 	}
 
-	if redirectUri == "" {
-		return ctx.JSON(NewError(Oauth2ErrorInvalidRequest, "Missing redirect_uri, the authorization server requires one", state))
-	}
-
-	if len(scopes) == 0 || (len(scopes) == 1 && scopes[0] == "") {
-		scopes = []string{"openid"}
-	}
-
-	// Get the application the user is trying to authorize with
 	application := star.Database.GetApplicationByClientID(ctx, clientId)
 	if application == nil {
 		return authorizationError(ctx, "Invalid or unknown application, a client_id was specified but no matching application was found")
 	}
 
-	// Check if the application is configured to allow this redirect_uri
+	redirectUri := ctx.Query("redirect_uri")
+	if redirectUri == "" {
+		return authorizationError(ctx, "Missing redirect_uri, the authorization server requires one")
+	}
+
 	if !slices.Contains(application.RedirectURIs, redirectUri) {
+		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectUri)
 		return authorizationError(ctx, "The redirect_uri specified is not allowed for this application")
 	}
 
-	// PKCE flow
-	if application.Kind == database.ApplicationKindPKCE && ctx.Query("code_challenge") == "" {
-		return authorizationError(ctx, "PKCE flow requires a code_challenge parameter")
+	state := ctx.Query("state")
+	responseType := ctx.Query("response_type")
+
+	if responseType == "" {
+		return redirectError(ctx, redirectUri, Oauth2ErrorInvalidRequest, "Missing response_type", state)
+	}
+
+	if !slices.Contains(SupportedResponseTypes, responseType) {
+		return redirectError(ctx, redirectUri, Oauth2ErrorUnsupportedResponseType, "Unsupported or unknown response type, only 'code' is supported", state)
+	}
+
+	scopes := strings.Fields(ctx.Query("scope"))
+	if len(scopes) == 0 {
+		scopes = []string{openid.ScopeOpenID}
+	}
+
+	validScopes, _ := openid.ValidateScopes(scopes)
+	if len(validScopes) == 0 {
+		return redirectError(ctx, redirectUri, Oauth2ErrorInvalidScope, "None of the requested scopes are supported", state)
+	}
+
+	challenge := ctx.Query("code_challenge")
+	method := ctx.Query("code_challenge_method")
+
+	if kind, description, ok := ValidateCodeChallenge(application, challenge, method); !ok {
+		return redirectError(ctx, redirectUri, kind, description, state)
 	}
 
 	return request.ShowFrontend(ctx)

@@ -5,6 +5,6 @@ type VerifyTotpRequest struct {
 }
 
 type LoginFlowTotpRequest struct {
-	Code   string `json:"code" validate:"required,min=6,max=32"`
-	FlowID string `json:"flow" validate:"required,max=32"`
+	Code string `json:"code" validate:"required,min=6,max=32"`
+	Flow string `json:"flow" validate:"required,max=64"`
 }

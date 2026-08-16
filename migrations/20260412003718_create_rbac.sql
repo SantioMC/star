@@ -3,28 +3,29 @@ CREATE TABLE roles (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL
+    internal BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE role_bindings (
     id VARCHAR(64) PRIMARY KEY,
     role_id VARCHAR(64) NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE permissions (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE permission_bindings (
     id VARCHAR(64) PRIMARY KEY,
     permission_id VARCHAR(64) NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
     role_id VARCHAR(64) NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 -- +goose Down

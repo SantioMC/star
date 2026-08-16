@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/lib/pq"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/state"
 	"github.com/tubblelive/star/internal/useragent"
@@ -22,6 +23,49 @@ func CreateSession(
 		return nil, ErrUserNotFound
 	}
 
+	var accountId *string
+	if options.Account != nil {
+		accountId = &options.Account.ID
+	}
+
+	applicationId := server.DefaultApp.ID
+	if options.Application != nil {
+		applicationId = options.Application.ID
+	}
+
+	authenticatedAt := options.AuthenticatedAt
+	if authenticatedAt.IsZero() {
+		authenticatedAt = time.Now()
+	}
+
+	session := buildSession(
+		ctx,
+		server,
+		options.User.ID,
+		accountId,
+		applicationId,
+		pq.StringArray(options.Scopes),
+		options.Duration,
+		authenticatedAt,
+	)
+
+	if err := server.Database.CreateSession(ctx, session); err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
+func buildSession(
+	ctx fiber.Ctx,
+	server *state.StarServer,
+	userId string,
+	accountId *string,
+	applicationId string,
+	scopes pq.StringArray,
+	duration time.Duration,
+	authenticatedAt time.Time,
+) *database.Session {
 	address := ctx.IP()
 	userAgent := ctx.Get(fiber.HeaderUserAgent)
 
@@ -30,29 +74,20 @@ func CreateSession(
 		slog.Warn("failed to get geolocation data", "err", err, "ip", address)
 	}
 
-	var accountId string
-	if options.Account != nil {
-		accountId = options.Account.ID
+	return &database.Session{
+		ID:              database.CreateID(database.SessionKey),
+		UserID:          userId,
+		AccountID:       accountId,
+		Address:         address,
+		UserAgent:       userAgent,
+		Geolocation:     location,
+		Device:          string(useragent.GetDevice(userAgent)),
+		Token:           CreateSessionToken(),
+		Scopes:          scopes,
+		ApplicationID:   applicationId,
+		Status:          database.SessionStateActive,
+		AuthenticatedAt: authenticatedAt,
+		CreatedAt:       time.Now(),
+		ExpiresAt:       time.Now().Add(duration),
 	}
-
-	session := &database.Session{
-		ID:            database.CreateID(database.SessionKey),
-		UserID:        options.User.ID,
-		AccountID:     &accountId,
-		Address:       address,
-		UserAgent:     userAgent,
-		Geolocation:   location,
-		Device:        string(useragent.GetDevice(userAgent)),
-		Token:         CreateSessionToken(),
-		ApplicationID: server.DefaultApp.ID,
-		Status:        database.SessionStateActive,
-		CreatedAt:     time.Now(),
-		ExpiresAt:     time.Now().Add(options.Duration),
-	}
-
-	if err := server.Database.CreateSession(ctx, session); err != nil {
-		return nil, err
-	}
-
-	return session, nil
 }

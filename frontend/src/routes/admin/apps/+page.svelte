@@ -5,6 +5,7 @@
 	import Icon from "@/components/icon.svelte";
 	import Modal from "@/components/modal.svelte";
 	import Sidebar from "@/components/sidebar.svelte";
+	import { Badge } from "@/components/ui/badge";
 	import { Button } from "@/components/ui/button";
 	import { Input } from "@/components/ui/input";
 	import { Label } from "@/components/ui/label";
@@ -19,19 +20,15 @@
 	let loading = $state<boolean>(false)
 
 	let name = $state<string>('')
-	let slug = $state<string>('')
+	let kind = $state<'public' | 'confidential'>('public')
 	let url = $state<string>('')
 
 	let createAppModal = $state<Modal>()
-	
+
 	onMount(async () => {
 		if (!browser) return
-		if (!hasPermission('star:admin:read:applications')) return location.href = '/'
+		if (!hasPermission('application:read')) return location.href = '/'
 		apps = await star.getAllApps()
-	})
-
-	$effect(() => {
-		slug = name.toLowerCase().replaceAll(/\s+/g, ' ').replaceAll(' ', '-')
 	})
 
 	const createApp = async (e: Event) => {
@@ -39,7 +36,7 @@
 		loading = true
 
 		const result = await star.createApplication({
-			name, slug, url
+			name, kind, url
 		})
 
 		if ('error' in result) {
@@ -57,10 +54,12 @@
 <Sidebar class='md:p-8 max-w-6xl mx-auto'>
 	<h1 class='text-2xl font-semibold'>Applications</h1>
 	<h2 class='text-lg text-primary/60'>View and manage different applications</h2>
-	
+
 	<div class='mt-24'>
 		<div class="flex flex-row items-center gap-2 my-2">
-			<Button class='ml-auto' onclick={() => createAppModal?.open()}>Create Application</Button>
+			{#if hasPermission('application:create')}
+				<Button class='ml-auto' onclick={() => createAppModal?.open()}>Create Application</Button>
+			{/if}
 		</div>
 
 		<Table.Root>
@@ -68,6 +67,7 @@
 			<Table.Header>
 				<Table.Row>
 				<Table.Head>Application</Table.Head>
+				<Table.Head>Type</Table.Head>
 				<Table.Head>URL</Table.Head>
 				<Table.Head>Created</Table.Head>
 				<Table.Head class='text-end'>Actions</Table.Head>
@@ -79,13 +79,21 @@
 					<Table.Cell class='flex flex-row gap-2 items-center'>
 						<Icon class='text-3xl' icon='package' />
 						<div class="flex flex-col items-start">
-							<span>{app.name}</span>
+							<div class='flex items-center gap-2'>
+								<span>{app.name}</span>
+								{#if app.internal}
+									<Badge variant='secondary'>Built-in</Badge>
+								{/if}
+							</div>
 							<span class='text-primary/70'>{app.id}</span>
 						</div>
 					</Table.Cell>
 					<Table.Cell>
-						<a href={app.url} class='text-blue-300' target="_blank">
-							{app.url}
+						<Badge variant='outline'>{app.kind}</Badge>
+					</Table.Cell>
+					<Table.Cell>
+						<a href={app.application_url} class='text-blue-300' target="_blank">
+							{app.application_url}
 							<Icon icon='external-link' />
 						</a>
 					</Table.Cell>
@@ -109,8 +117,11 @@
 				<Input id="name" type="text" placeholder='' bind:value={name} required />
 			</div>
 			<div class="grid gap-2">
-				<Label for="slug">Slug</Label>
-				<Input id="slug" type="text" placeholder='' bind:value={slug} required />
+				<Label for="kind">Client Type</Label>
+				<select id="kind" bind:value={kind} class='border rounded-md bg-transparent px-3 py-2 text-sm'>
+					<option value='public'>Public (browser or native app, uses PKCE)</option>
+					<option value='confidential'>Confidential (server-side, uses a client secret)</option>
+				</select>
 			</div>
 			<div class="grid gap-2">
 				<Label for="url">URL</Label>
@@ -120,7 +131,7 @@
 
 		<div class='flex items-center gap-2 justify-end mt-6'>
 			<Button variant='secondary' onclick={() => createAppModal?.close()}>Cancel</Button>
-			<Button disabled={loading} onclick={createApp} type='submit'>
+			<Button disabled={loading} type='submit'>
 				{#if loading}
 					<Spinner />
 				{/if}

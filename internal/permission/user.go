@@ -39,3 +39,8 @@ var PermissionDeleteMFA = PermissionDefinition{
 	Name:        "user:mfa:delete",
 	Description: "Remove existing MFA methods for the user",
 }
+
+var PermissionBypassNoLogin = PermissionDefinition{
+	Name:        "user:login:bypass",
+	Description: "Allows still logging in when logins are disabled",
+}

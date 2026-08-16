@@ -7,7 +7,10 @@ import (
 )
 
 type Options struct {
-	User     *database.User
-	Account  *database.Account
-	Duration time.Duration
+	User            *database.User
+	Account         *database.Account
+	Application     *database.Application
+	Scopes          []string
+	Duration        time.Duration
+	AuthenticatedAt time.Time
 }

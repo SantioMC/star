@@ -35,7 +35,7 @@
 
 	onMount(async () => {
 		if (!browser) return
-		if (!hasPermission('star:admin:read:providers')) return location.href = '/'
+		if (!hasPermission('admin:provider:read')) return location.href = '/'
 		providers = await star.getSocialProviders()
 		presets = await star.getSocialProviderPresets()
 	})
@@ -57,13 +57,19 @@
 		e.preventDefault()
 		loading = true
 
+		const preset = presets.find(p => p.name === selectedPreset)
 		const name = isCustom ? customName : selectedPreset!
 
 		const result = await star.createSocialProvider({
 			name,
+			icon: preset?.icon,
 			client_id: clientId,
 			client_secret: clientSecret,
-			discovery_uri: isCustom && discoveryUri ? discoveryUri : undefined,
+			scopes: preset?.scopes,
+			oidc_url: isCustom ? discoveryUri : preset?.oidc_url ?? undefined,
+			authorization_url: preset?.authorization_url ?? undefined,
+			token_url: preset?.token_url ?? undefined,
+			userinfo_url: preset?.userinfo_url ?? undefined,
 			order: providers.length
 		})
 
@@ -89,7 +95,7 @@
 
 	<div class='mt-24'>
 		<div class="flex flex-row items-center gap-2 my-2">
-			{#if hasPermission('star:admin:create:providers')}
+			{#if hasPermission('admin:provider:create')}
 				<Button class='ml-auto' onclick={openCreate}>Add Provider</Button>
 			{/if}
 		</div>

@@ -141,6 +141,8 @@ func StartServer(star *state.StarServer) error {
 	api.Use(middleware.RequireAuth).Route("/app", appRouter)
 	api.Use(middleware.RequireAuth).Route("/session", sessionRouter)
 	api.Use(middleware.RequireAuth).Route("/mfa", mfaRouter)
+	api.Use(middleware.RequireAuth).Route("/role", roleRouter)
+	api.Use(middleware.RequireAuth).Route("/provider", providerRouter)
 
 	api.All("*", func(ctx fiber.Ctx) error {
 		// We don't want API routes to fallback to the frontend and send a 200
@@ -164,6 +166,8 @@ func StartServer(star *state.StarServer) error {
 	}
 
 	app.Get("/_app/env.js", func(ctx fiber.Ctx) error {
+		// Cloudflare cached this and made my life miserable so cache is now 5mins
+		ctx.Set(fiber.HeaderCacheControl, "public, max-age=300")
 		ctx.Set(fiber.HeaderContentType, "application/javascript")
 		return ctx.SendString("export const env=" + string(environment))
 	})

@@ -125,7 +125,6 @@ func VerifyJWT(state *state.StarServer, jwt string, publicKey *ecdsa.PublicKey) 
 	return &claims, nil
 }
 
-// todo: include all jwt claims
 type AccessTokenJWT struct {
 	ExpiresAt   int64    `json:"exp"`
 	NotBefore   int64    `json:"nbf"`
@@ -133,5 +132,7 @@ type AccessTokenJWT struct {
 	Subject     string   `json:"sub"`
 	Audience    string   `json:"aud"`
 	Issuer      string   `json:"iss"`
+	SessionID   string   `json:"sid"`
+	Scope       string   `json:"scope"`
 	Permissions []string `json:"permissions"`
 }

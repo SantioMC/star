@@ -32,11 +32,11 @@
 	let deleteModal = $state<Modal>();
 	let credentialsModal = $state<Modal>();
 
-	let canModify = $derived(hasPermission('star:admin:create:providers'));
+	let canModify = $derived(hasPermission('admin:provider:write'));
 
 	onMount(async () => {
 		if (!browser) return;
-		if (!hasPermission('star:admin:read:providers')) return goto('/');
+		if (!hasPermission('admin:provider:read')) return goto('/');
 
 		provider = await star.getSocialProvider(page.params.provider!);
 		if (provider == null) return goto('/admin/providers');
@@ -132,7 +132,7 @@
 						</span>
 						<span>
 							<Icon icon="calendar-event" />
-							Created {formatTime(provider.created_at)}
+							Created {formatTime(new Date(provider.created_at))}
 						</span>
 						<span>
 							<Icon icon="sort-ascending" />
@@ -155,7 +155,7 @@
 									Update Credentials
 								</DropdownMenu.Item>
 							</DropdownMenu.Group>
-							{#if hasPermission('star:admin:delete:providers')}
+							{#if hasPermission('admin:provider:delete')}
 								<DropdownMenu.Separator />
 								<DropdownMenu.Group>
 									<DropdownMenu.Item
@@ -197,13 +197,7 @@
 						<Categorizied title='Created At'>
 							<p class="text-md">
 								<Icon icon="clock" />
-								{formatTime(provider.created_at)}
-							</p>
-						</Categorizied>
-						<Categorizied title='Updated At'>
-							<p class="text-md">
-								<Icon icon="clock" />
-								{formatTime(provider.updated_at)}
+								{formatTime(new Date(provider.created_at))}
 							</p>
 						</Categorizied>
 						{#if provider.scopes && provider.scopes.length > 0}
@@ -235,24 +229,30 @@
 							</code>
 						</Categorizied>
 					{/if}
-					<Categorizied title='Authorization URL'>
-						<code class="text-md mt-1 flex items-center gap-1">
-							{provider.auth_url}
-							<Copy content={provider.auth_url} />
-						</code>
-					</Categorizied>
-					<Categorizied title='Token URL'>
-						<code class="text-md mt-1 flex items-center gap-1">
-							{provider.token_url}
-							<Copy content={provider.token_url} />
-						</code>
-					</Categorizied>
-					<Categorizied title='User Info URL'>
-						<code class="text-md mt-1 flex items-center gap-1">
-							{provider.userinfo_url}
-							<Copy content={provider.userinfo_url} />
-						</code>
-					</Categorizied>
+					{#if provider.authorization_url}
+						<Categorizied title='Authorization URL'>
+							<code class="text-md mt-1 flex items-center gap-1">
+								{provider.authorization_url}
+								<Copy content={provider.authorization_url} />
+							</code>
+						</Categorizied>
+					{/if}
+					{#if provider.token_url}
+						<Categorizied title='Token URL'>
+							<code class="text-md mt-1 flex items-center gap-1">
+								{provider.token_url}
+								<Copy content={provider.token_url} />
+							</code>
+						</Categorizied>
+					{/if}
+					{#if provider.userinfo_url}
+						<Categorizied title='User Info URL'>
+							<code class="text-md mt-1 flex items-center gap-1">
+								{provider.userinfo_url}
+								<Copy content={provider.userinfo_url} />
+							</code>
+						</Categorizied>
+					{/if}
 				</Card.Content>
 			</Card.Root>
 

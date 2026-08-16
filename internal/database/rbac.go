@@ -19,6 +19,7 @@ type Role struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	Internal    bool      `json:"internal"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
 
@@ -31,15 +32,15 @@ type Permission struct {
 
 type RoleBinding struct {
 	ID        string    `json:"id"`
-	RoleID    string    `json:"role_id"`
-	UserID    string    `json:"user_id"`
+	RoleID    string    `json:"role_id" db:"role_id"`
+	UserID    string    `json:"user_id" db:"user_id"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
 type PermissionBinding struct {
 	ID           string    `json:"id"`
-	PermissionID string    `json:"permission_id"`
-	RoleID       string    `json:"role_id"`
+	PermissionID string    `json:"permission_id" db:"permission_id"`
+	RoleID       string    `json:"role_id" db:"role_id"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 }
 
@@ -120,13 +121,30 @@ func (db *Database) CreateRole(ctx context.Context, role *Role) error {
 		ctx,
 		`
 		INSERT INTO roles (
-			id, name, description, created_at
-		) VALUES ($1, $2, $3, $4)
+			id, name, description, internal, created_at
+		) VALUES ($1, $2, $3, $4, $5)
 		`,
 		role.ID,
 		role.Name,
 		role.Description,
+		role.Internal,
 		role.CreatedAt,
+	)
+
+	return err
+}
+
+func (db *Database) UpdateRole(ctx context.Context, role *Role) error {
+	_, err := db.DB().ExecContext(
+		ctx,
+		`
+		UPDATE roles
+		SET name = $2, description = $3
+		WHERE id = $1
+		`,
+		role.ID,
+		role.Name,
+		role.Description,
 	)
 
 	return err
@@ -223,7 +241,7 @@ func (db *Database) DeletePermissionBindingByID(ctx context.Context, id string) 
 	return err
 }
 
-func (db *Database) GetUserPermissions(ctx context.Context, userID string) []Permission {
+func (db *Database) GetUserPermissions(ctx context.Context, userId string) []Permission {
 	permissions, err := sqlx.ListContext[Permission](
 		ctx,
 		db.DB(),
@@ -233,7 +251,7 @@ func (db *Database) GetUserPermissions(ctx context.Context, userID string) []Per
 		INNER JOIN role_bindings ON permission_bindings.role_id = role_bindings.role_id
 		WHERE role_bindings.user_id = $1
 		`,
-		userID,
+		userId,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -244,6 +262,31 @@ func (db *Database) GetUserPermissions(ctx context.Context, userID string) []Per
 	}
 
 	return permissions
+}
+
+func (db *Database) UserHasPermission(ctx context.Context, userId string, permission string) bool {
+	exists, err := sqlx.OneContext[bool](
+		ctx,
+		db.DB(),
+		`
+		SELECT EXISTS (
+			SELECT 1 FROM permissions
+			INNER JOIN permission_bindings ON permissions.id = permission_bindings.permission_id
+			INNER JOIN role_bindings ON permission_bindings.role_id = role_bindings.role_id
+			WHERE role_bindings.user_id = $1 AND permissions.name = $2
+		)
+		`,
+		userId,
+		permission,
+	)
+
+	if err != nil {
+		// Fail closed
+		slog.Error("failed to check user permission", "err", err, "user", userId, "permission", permission)
+		return false
+	}
+
+	return exists
 }
 
 func (db *Database) GetUserRoles(ctx context.Context, userId string) []Role {
@@ -306,7 +349,12 @@ func (db *Database) GetRolePermissions(ctx context.Context, roleID string) []Per
 	permissions, err := sqlx.ListContext[Permission](
 		ctx,
 		db.DB(),
-		`SELECT * FROM permission_bindings WHERE role_id = $1 ORDER BY created_at DESC`,
+		`
+		SELECT permissions.* FROM permissions
+		INNER JOIN permission_bindings ON permissions.id = permission_bindings.permission_id
+		WHERE permission_bindings.role_id = $1
+		ORDER BY permissions.name
+		`,
 		roleID,
 	)
 
@@ -318,6 +366,49 @@ func (db *Database) GetRolePermissions(ctx context.Context, roleID string) []Per
 	}
 
 	return permissions
+}
+
+func (db *Database) DeletePermissionBindingsByRoleID(ctx context.Context, roleID string) error {
+	_, err := db.DB().ExecContext(
+		ctx,
+		`DELETE FROM permission_bindings WHERE role_id = $1`,
+		roleID,
+	)
+
+	return err
+}
+
+func (db *Database) GetUserRoleBindings(ctx context.Context, userID string) []RoleBinding {
+	bindings, err := sqlx.ListContext[RoleBinding](
+		ctx,
+		db.DB(),
+		`SELECT * FROM role_bindings WHERE user_id = $1`,
+		userID,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []RoleBinding{}
+	} else if err != nil {
+		slog.Error("failed to get user role bindings", "err", err)
+		return []RoleBinding{}
+	}
+
+	return bindings
+}
+
+func (db *Database) CountRoleBindingsByRoleID(ctx context.Context, roleID string) (int, error) {
+	count, err := sqlx.OneContext[int](
+		ctx,
+		db.DB(),
+		`SELECT COUNT(*) FROM role_bindings WHERE role_id = $1`,
+		roleID,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 func (db *Database) CountRoles(ctx context.Context) (int, error) {

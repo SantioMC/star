@@ -14,17 +14,14 @@
     {
       name: 'Server',
       id: 'server',
-      permission: 'star:server',
     },
     {
       name: 'Administration',
       id: 'admin',
-      permission: 'star:admin',
     },
   ] as const satisfies readonly {
     name: string
     id: string
-    permission?: StarPermission | string
   }[]
 
   type Category = typeof Category[number]['id']
@@ -54,37 +51,33 @@
       icon: 'users',
       href: '/admin/users',
       category: 'admin',
-      permission: 'star:admin:read:users'
+      permission: 'admin:user:read'
     },
     {
       name: 'Roles',
       icon: 'shield',
       href: '/admin/roles',
       category: 'admin',
-      permission: 'star:admin:read:roles'
+      permission: 'admin:role:read'
     },
     {
       name: 'Applications',
       icon: 'apps',
       href: '/admin/apps',
       category: 'admin',
-      permission: 'star:admin:read:applications'
+      permission: 'application:read'
     },
     {
       name: 'Providers',
       icon: 'plug-connected',
       href: '/admin/providers',
       category: 'admin',
-      permission: 'star:admin:read:providers'
-    },
-    {
-      name: 'Signing Keys',
-      icon: 'key',
-      href: '/admin/keys',
-      category: 'admin',
-      permission: 'star:admin:read:keys'
+      permission: 'admin:provider:read'
     }
   ]
+
+  const visibleItems = (category: Category) =>
+    items.filter(i => i.category == category && (!i.permission || hasPermission(i.permission)))
 
   const isActive = (href: string): boolean => {
     if (href.includes('#')) {
@@ -113,26 +106,24 @@
       </div>
 
       {#each Category as category (category.id)}
-        {#if !('permission' in category) || hasPermission(category.permission)}
+        {#if visibleItems(category.id).length > 0}
           <span class='text-muted-foreground/60 text-[11px] font-medium uppercase tracking-wider px-3 pt-5 pb-1'>
             {category.name}
           </span>
 
-          {#each items.filter(i => i.category == category.id) as item (item.name)}
-            {#if !item.permission || hasPermission(item.permission)}
-              <a
-                href={item.href}
-                class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
-                  {isActive(item.href)
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'}"
-              >
-                {#if item.icon}
-                  <Icon icon={item.icon} class="text-base opacity-70" />
-                {/if}
-                {item.name}
-              </a>
-            {/if}
+          {#each visibleItems(category.id) as item (item.name)}
+            <a
+              href={item.href}
+              class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                {isActive(item.href)
+                  ? 'bg-accent text-accent-foreground font-medium'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'}"
+            >
+              {#if item.icon}
+                <Icon icon={item.icon} class="text-base opacity-70" />
+              {/if}
+              {item.name}
+            </a>
           {/each}
         {/if}
       {/each}

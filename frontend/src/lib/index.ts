@@ -57,7 +57,7 @@ export const hasPermission = (permission: star.StarPermission | (string & {}), a
 	const jwt = getJWT(accessToken);
 	if (!jwt) return false;
 
-	for (const perm of jwt.permissions) {
+	for (const perm of jwt.permissions ?? []) {
 		if (perm === permission) {
 			return true;
 		}
@@ -70,6 +70,17 @@ export const hasPermission = (permission: star.StarPermission | (string & {}), a
 	}
 
 	return false;
+}
+
+const adminPermissions: star.StarPermission[] = [
+	'admin:user:read',
+	'admin:role:read',
+	'application:read',
+	'admin:provider:read',
+]
+
+export const hasAdminAccess = (accessToken: string | null = get(token)) => {
+	return adminPermissions.some((permission) => hasPermission(permission, accessToken))
 }
 
 export const refreshAccessToken = async (): Promise<string | null> => {
@@ -97,8 +108,6 @@ export const refreshAccessToken = async (): Promise<string | null> => {
 	return result.access_token
 }
 
-// The new JWT is slim — only auth data, no profile info.
-// Profile data is fetched from /oidc/userinfo.
 export interface JWTDetails {
 	sub: string
 	sid: string

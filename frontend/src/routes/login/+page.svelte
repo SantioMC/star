@@ -3,6 +3,7 @@
 	import * as star from '$lib/star';
 	import Captcha from '@/components/captcha.svelte';
 	import Icon from '@/components/icon.svelte';
+	import TotpInput from '@/components/totp-input.svelte';
 	import Button from '@/components/ui/button/button.svelte';
 	import * as Card from '@/components/ui/card';
 	import { Input } from '@/components/ui/input';
@@ -23,6 +24,9 @@
 
 	let captchaToken = $state('');
 	let captchaError = $state('');
+
+	let mfaFlow = $state<string | null>(null);
+	let mfaCode = $state('');
 
 	const login = async (event: Event | null = null) => {
 		if (env.PUBLIC_SITE_KEY && !captchaToken) {
@@ -48,10 +52,55 @@
 			return;
 		}
 
+		if (data.next === 'mfa_required') {
+			if (!data.factors.includes('totp')) {
+				error = 'Your account requires an authentication factor that is not supported';
+				return;
+			}
+
+			mfaFlow = data.flow;
+			mfaCode = '';
+			return;
+		}
+
 		token.set(data.access_token);
 		refreshToken.set(data.refresh_token);
 
 		continueFlow();
+	};
+
+	const submitTotp = async (event: Event | null = null) => {
+		event?.preventDefault();
+
+		if (!mfaFlow || loading) return;
+
+		const code = mfaCode.trim();
+		if (code.length < 6) return;
+
+		error = '';
+		loading = true;
+
+		const data = await star.loginTotp(mfaFlow, code);
+		loading = false;
+
+		if ('error' in data) {
+			mfaCode = '';
+			error = data.message;
+			return;
+		}
+
+		token.set(data.access_token);
+		refreshToken.set(data.refresh_token);
+
+		continueFlow();
+	};
+
+	const backToLogin = () => {
+		mfaFlow = null;
+		mfaCode = '';
+		error = '';
+		captchaToken = '';
+		password = '';
 	};
 
 	const captchaCallback = async (token: string) => {
@@ -71,7 +120,7 @@
 
 <div class="h-full w-full flex items-center justify-center">
 	<form
-		onsubmit={login}
+		onsubmit={mfaFlow ? submitTotp : login}
 		class="w-full sm:w-fit flex flex-col gap-4 items-center"
 	>
 		{#if notice}
@@ -99,6 +148,39 @@
 						<span class="text-red-400 text-center">{captchaError}</span>
 					{/if}
 				</Card.Content>
+			{:else if mfaFlow}
+				<Card.Header>
+					<Card.Title>Two-factor authentication</Card.Title>
+					<Card.Description>
+						Enter the 6-digit code from your authenticator app to finish
+						signing in
+					</Card.Description>
+				</Card.Header>
+				<Card.Content class="w-96">
+					<div class="grid gap-3 justify-items-center">
+						<Label>Authentication code</Label>
+						<TotpInput
+							bind:value={mfaCode}
+							disabled={loading}
+						/>
+					</div>
+
+					{#if error}
+						<span class="text-red-300 mt-2 block text-center">{error}</span>
+					{/if}
+				</Card.Content>
+				<Card.Footer class="flex-col gap-2">
+					<Button
+						type="submit"
+						class="w-full"
+						disabled={loading || mfaCode.trim().length < 6}
+					>
+						{#if loading}
+							<Spinner />
+						{/if}
+						Verify
+					</Button>
+				</Card.Footer>
 			{:else}
 				<Card.Header>
 					<Card.Title>Login to your account</Card.Title>
@@ -109,11 +191,12 @@
 				<Card.Content class="w-96">
 					<div class="flex flex-col gap-6">
 						<div class="grid gap-2">
-							<Label for="username">Username</Label>
+							<Label for="username">Username or Email</Label>
 							<Input
 								bind:value={username}
 								id="username"
 								type="text"
+								autocomplete="username"
 								required
 							/>
 						</div>

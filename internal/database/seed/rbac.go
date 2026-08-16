@@ -17,6 +17,7 @@ func seedRBAC(ctx context.Context, star *state.StarServer) error {
 			ID:          database.CreateID(database.RoleKey),
 			Name:        "superadmin",
 			Description: "The default super admin role",
+			Internal:    true,
 			CreatedAt:   time.Now(),
 		}
 

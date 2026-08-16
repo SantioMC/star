@@ -3,19 +3,25 @@
 	import { goto } from '$app/navigation';
 	import Email from '$lib/components/email.svelte';
 	import Icon from '$lib/components/icon.svelte';
+	import Copy from '@/components/copy.svelte';
+	import Modal from '@/components/modal.svelte';
 	import Session from '@/components/session.svelte';
 	import Sidebar from '@/components/sidebar.svelte';
+	import TotpInput from '@/components/totp-input.svelte';
 	import * as Avatar from '@/components/ui/avatar';
+	import { Badge } from '@/components/ui/badge';
+	import * as Item from '@/components/ui/item';
 	import { Button } from '@/components/ui/button';
 	import * as Card from '@/components/ui/card';
 	import { Input } from '@/components/ui/input';
 	import { Label } from '@/components/ui/label';
 	import { Spinner } from '@/components/ui/spinner';
-	import { getJWT, hasPermission } from '@/index';
+	import { getJWT, hasAdminAccess, hasPermission } from '@/index';
 	import * as star from '@/star';
 	import { isExpired } from '@/utils';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import { renderSVG } from 'uqr';
 
 	let data = $state<star.User | null>(null);
 	let sessions = $state<star.Session[]>([]);
@@ -32,6 +38,26 @@
 	let currentPassword = $state<string>('');
 	let newPassword = $state<string>('');
 	let confirmPassword = $state<string>('');
+
+	let totpEnabled = $state<boolean | null>(null);
+	let totpSecret = $state<string | null>(null);
+	let totpCode = $state<string>('');
+	let showManualKey = $state<boolean>(false);
+	let enrollingTotp = $state<boolean>(false);
+	let totpModal = $state<Modal>();
+	let totpModalOpen = $state<boolean>(false);
+	let disableTotpModal = $state<Modal>();
+
+	const totpQr = $derived(totpSecret ? renderSVG(totpSecret) : null);
+	const totpManualKey = $derived.by(() => {
+		if (!totpSecret) return null;
+
+		try {
+			return new URL(totpSecret).searchParams.get('secret');
+		} catch {
+			return null;
+		}
+	});
 
 	const sortedEmails = $derived(
 		[...emails].sort((a, b) => {
@@ -52,6 +78,17 @@
 
 		sessions = await star.getSessions();
 		emails = await star.getEmails();
+
+		const factors = await star.getMfaFactors();
+		totpEnabled = factors == null ? null : factors.factors.includes('totp');
+	});
+
+	$effect(() => {
+		if (!totpModalOpen) {
+			totpSecret = null;
+			totpCode = '';
+			showManualKey = false;
+		}
 	});
 
 	const removeSession = (session: star.Session) => {
@@ -121,6 +158,58 @@
 		goto('/logout');
 	};
 
+	const startTotpEnrollment = async () => {
+		if (enrollingTotp) return;
+
+		enrollingTotp = true;
+		const response = await star.enrollTotp();
+		enrollingTotp = false;
+
+		if ('error' in response) {
+			return toast.error(response.message);
+		}
+
+		totpSecret = response.secret;
+		totpCode = '';
+		totpModal?.open();
+	};
+
+	const confirmTotpEnrollment = async (e: Event | null = null) => {
+		e?.preventDefault();
+
+		const code = totpCode.trim();
+		if (code.length < 6 || loading) return;
+
+		loading = true;
+		const response = await star.verifyTotp(code);
+		loading = false;
+
+		if ('error' in response) {
+			totpCode = '';
+			return toast.error(response.message);
+		}
+
+		totpEnabled = true;
+		totpModal?.close();
+		toast.success('Two-factor authentication is now enabled');
+	};
+
+	const disableTotp = async () => {
+		if (loading) return;
+
+		loading = true;
+		const response = await star.deleteTotp();
+		loading = false;
+		disableTotpModal?.close();
+
+		if ('error' in response) {
+			return toast.error(response.message);
+		}
+
+		totpEnabled = false;
+		toast.success('Two-factor authentication has been disabled');
+	};
+
 	const updateDetails = async (e: Event) => {
 		e.preventDefault();
 
@@ -143,7 +232,7 @@
 
 <Sidebar
 	hidden={data == null ||
-		(!hasPermission('star:server') && !hasPermission('star:admin'))}
+		!hasAdminAccess()}
 >
 	{#if data != null}
 		<div class="flex flex-col md:w-3xl mx-auto py-12 px-4 gap-8">
@@ -155,7 +244,7 @@
 					</h2>
 				</div>
 
-				{#if hasPermission('star:admin:read:users')}
+				{#if hasPermission('admin:user:read')}
 					<Button
 						onclick={() => goto(`/admin/users/${data!.id}`)}
 						variant="secondary"
@@ -319,6 +408,65 @@
 
 			<Card.Root class="min-w-1/3 w-full md:w-auto">
 				<Card.CardHeader>
+					<Card.Title><Icon icon="shield-lock" /> Two-Factor Authentication</Card.Title>
+					<Card.Description class="max-w-xl">
+						Add another step of verification to your login, increasing your account security.
+					</Card.Description>
+				</Card.CardHeader>
+				<Card.Content>
+					<Item.Root variant="outline">
+						<Item.Content class="flex flex-row items-center gap-4">
+							<Icon class="text-2xl" icon="device-mobile" />
+							<div class="min-w-0">
+								<p class="text-base flex items-center gap-2 flex-wrap">
+									<span>Authenticator app</span>
+
+									{#if totpEnabled == null}
+										<Badge variant="outline">Unknown</Badge>
+									{:else if totpEnabled}
+										<Badge variant="outline" class="border-emerald-600/60 text-emerald-500">Enabled</Badge>
+									{:else}
+										<Badge variant="outline" class="border-amber-500/60 text-amber-400">Disabled</Badge>
+									{/if}
+								</p>
+
+								<Item.Description class="text-xs">
+									Time-based one-time codes (TOTP)
+								</Item.Description>
+							</div>
+
+							<div class="ml-auto flex items-center gap-1.5">
+								{#if totpEnabled == true && hasPermission('user:mfa:delete')}
+									<Button
+										variant="destructive"
+										size="sm"
+										onclick={() => disableTotpModal?.open()}
+										disabled={loading}
+									>
+										Disable
+									</Button>
+								{:else if totpEnabled == false && hasPermission('user:mfa:enroll')}
+									<Button
+										variant="secondary"
+										size="sm"
+										onclick={startTotpEnrollment}
+										disabled={enrollingTotp}
+									>
+										{#if enrollingTotp}
+											<Spinner />
+										{/if}
+
+										Enable
+									</Button>
+								{/if}
+							</div>
+						</Item.Content>
+					</Item.Root>
+				</Card.Content>
+			</Card.Root>
+
+			<Card.Root class="min-w-1/3 w-full md:w-auto">
+				<Card.CardHeader>
 					<Card.Title><Icon icon="device-desktop" /> Sessions</Card.Title>
 					<Card.Description class="max-w-xl">
 						The different devices and sessions currently logged into your
@@ -359,3 +507,91 @@
 		</div>
 	{/if}
 </Sidebar>
+
+<Modal bind:this={totpModal} bind:showModal={totpModalOpen} button class="xl:w-xl!">
+	<h1 class="text-xl font-semibold">Set up two-factor authentication</h1>
+	<h2 class="text-card-foreground/60 sm:max-w-10/12">
+		Scan the QR code below with your authenticator app, then enter the 6-digit
+		code it generates to confirm the setup.
+	</h2>
+
+	<div class="flex flex-col items-center gap-4 mt-6">
+		{#if totpQr}
+			<div class="w-48 rounded-lg bg-white p-3">
+				{@html totpQr}
+			</div>
+		{/if}
+
+		{#if totpManualKey}
+			<div class="flex flex-col items-center gap-1">
+				{#if showManualKey}
+					<span class="text-xs text-card-foreground/60">
+						Enter this key manually in your authenticator app
+					</span>
+					<code class="text-sm break-all text-center flex items-center gap-1">
+						{totpManualKey}
+						<Copy content={totpManualKey} />
+					</code>
+				{:else}
+					<span class="text-xs text-card-foreground/60">
+						Can't scan the code?
+						<button
+							type="button"
+							class="link"
+							onclick={() => (showManualKey = true)}
+						>
+							Click here
+						</button>
+					</span>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<form
+		class="flex flex-col items-center gap-4 mt-6"
+		onsubmit={confirmTotpEnrollment}
+	>
+		<div class="grid gap-3 justify-items-center">
+			<Label>Authentication code</Label>
+			<TotpInput
+				bind:value={totpCode}
+				disabled={loading}
+			/>
+		</div>
+
+		<Button
+			type="submit"
+			class="w-full mt-8"
+			disabled={loading || totpCode.trim().length < 6}
+		>
+			{#if loading}
+				<Spinner />
+			{/if}
+
+			Verify
+		</Button>
+	</form>
+</Modal>
+
+<Modal bind:this={disableTotpModal} button class="xl:w-xl!">
+	<h1 class="text-xl font-semibold">Disable two-factor authentication</h1>
+	<h2 class="text-card-foreground/60 sm:max-w-10/12">
+		Are you sure you want to disable two-factor authentication? Your account
+		will no longer require a one-time code when signing in, making it less
+		secure.
+	</h2>
+
+	<div class="flex items-center gap-2 justify-end mt-4">
+		<Button variant="secondary" onclick={() => disableTotpModal?.close()}>
+			Cancel
+		</Button>
+		<Button variant="destructive" onclick={disableTotp} disabled={loading}>
+			{#if loading}
+				<Spinner />
+			{/if}
+
+			Disable
+		</Button>
+	</div>
+</Modal>

@@ -5,7 +5,7 @@ CREATE TABLE users (
     first_name VARCHAR(255),
     last_name VARCHAR(255),    
     profile_picture VARCHAR(255),
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE user_emails (
@@ -15,7 +15,7 @@ CREATE TABLE user_emails (
     code VARCHAR(16) NOT NULL,
     verified BOOLEAN NOT NULL DEFAULT FALSE,
     preferred BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE accounts (
@@ -32,7 +32,7 @@ CREATE TABLE accounts (
     account_email VARCHAR(255),
     account_avatar VARCHAR(255),
 
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 -- +goose Down

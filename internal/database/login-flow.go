@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/vinovest/sqlx"
 )
 
@@ -26,8 +27,13 @@ const (
 type LoginFlow struct {
 	ID        string         `json:"id"`
 	UserID    string         `json:"user_id" db:"user_id"`
+	Token     string         `json:"token"`
 	Stage     LoginFlowStage `json:"stage"`
 	CreatedAt time.Time      `json:"created_at" db:"created_at"`
+}
+
+func CreateLoginFlowToken() string {
+	return cryptography.CreateSecureString(48)
 }
 
 func (db *Database) GetLoginStageByID(ctx context.Context, id string) *LoginFlow {
@@ -48,6 +54,26 @@ func (db *Database) GetLoginStageByID(ctx context.Context, id string) *LoginFlow
 	return &loginFlow
 }
 
+func (db *Database) GetLoginStageByToken(ctx context.Context, token string) *LoginFlow {
+	hashed := cryptography.HMAC(token, db.config.AppToken)
+
+	loginFlow, err := sqlx.OneContext[LoginFlow](
+		ctx,
+		db.DB(),
+		`SELECT * FROM login_flows WHERE token = $1 LIMIT 1`,
+		hashed,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		slog.Error("failed to get login flow by token", "err", err)
+		return nil
+	}
+
+	return &loginFlow
+}
+
 func (db *Database) DeleteLoginFlowByID(ctx context.Context, id string) error {
 	_, err := db.DB().ExecContext(
 		ctx,
@@ -59,15 +85,18 @@ func (db *Database) DeleteLoginFlowByID(ctx context.Context, id string) error {
 }
 
 func (db *Database) CreateLoginFlow(ctx context.Context, loginFlow *LoginFlow) error {
+	hashed := cryptography.HMAC(loginFlow.Token, db.config.AppToken)
+
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
 		INSERT INTO login_flows (
-			id, user_id, stage, created_at
-		) VALUES ($1, $2, $3, $4)
+			id, user_id, token, stage, created_at
+		) VALUES ($1, $2, $3, $4, $5)
 		`,
 		loginFlow.ID,
 		loginFlow.UserID,
+		hashed,
 		loginFlow.Stage,
 		loginFlow.CreatedAt,
 	)

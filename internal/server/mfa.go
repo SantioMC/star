@@ -14,9 +14,27 @@ import (
 )
 
 func mfaRouter(router fiber.Router) {
+	router.Get("/", getMfaFactors)
 	router.Delete("/totp", middleware.RequirePermission(permission.PermissionDeleteMFA), deleteTotp)
 	router.Post("/totp/enroll", middleware.RequirePermission(permission.PermissionEnrollMFA), enrollTotp)
 	router.Post("/totp/verify", middleware.RequirePermission(permission.PermissionEnrollMFA), verifyTotp)
+}
+
+func getMfaFactors(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+	userId, err := request.GetUserId(ctx)
+	if err != nil {
+		return err
+	}
+
+	factors, err := mfa.GetMFA(ctx, star, userId)
+	if err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"factors": factors,
+	})
 }
 
 func deleteTotp(ctx fiber.Ctx) error {
@@ -42,12 +60,12 @@ func deleteTotp(ctx fiber.Ctx) error {
 
 func enrollTotp(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	userId, err := request.GetUserId(ctx)
+	user, err := request.GetUser(ctx)
 	if err != nil {
 		return err
 	}
 
-	totp := star.Database.GetUserTotp(ctx, userId)
+	totp := star.Database.GetUserTotp(ctx, user.ID)
 	if totp != nil {
 		if totp.Verified {
 			return fiber.NewError(400, "TOTP is already enrolled")
@@ -59,14 +77,14 @@ func enrollTotp(ctx fiber.Ctx) error {
 		}
 	}
 
-	secret, err := mfa.CreateTotp(star, userId)
+	secret, err := mfa.CreateTotp(star, user)
 	if err != nil {
 		return err
 	}
 
 	totp = &database.Totp{
 		ID:        database.CreateID(database.TotpKey),
-		UserID:    userId,
+		UserID:    user.ID,
 		Secret:    secret,
 		Verified:  false,
 		CreatedAt: time.Now(),
@@ -104,7 +122,7 @@ func verifyTotp(ctx fiber.Ctx) error {
 	}
 
 	if err := mfa.VerifyTotp(totp.Secret, body.Code); err != nil {
-		return err
+		return fiber.NewError(401, err.Error())
 	}
 
 	totp.Verified = true

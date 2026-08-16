@@ -21,6 +21,7 @@
 	let loading = $state<boolean>(false);
 
 	let role = $state<star.Role | null>(null);
+	let available = $state<star.AvailablePermission[]>([]);
 	let name = $state<string>('');
 	let description = $state<string>('');
 	let permissionInput = $state<string>('');
@@ -29,18 +30,23 @@
 	let addPermissionModal = $state<Modal>();
 
 	let canModify = $derived(
-		hasPermission('star:admin:update:roles') && role != null && !role.super && !role.global
+		hasPermission('admin:role:write') && role != null && !role.internal
+	);
+
+	let unassigned = $derived(
+		available.filter(p => !role?.permissions.includes(p.name))
 	);
 
 	onMount(async () => {
 		if (!browser) return;
-		if (!hasPermission('star:admin:read:roles')) return goto('/');
+		if (!hasPermission('admin:role:read')) return goto('/');
 
 		role = await star.getRole(page.params.role!);
 		if (role == null) return goto('/admin/roles');
 
 		name = role.name;
 		description = role.description;
+		available = await star.getAvailablePermissions();
 	});
 
 	const updateRole = async () => {
@@ -70,7 +76,7 @@
 
 		loading = true;
 		const updated = [...role!.permissions, trimmed];
-		const result = await star.updateRole(role!.id, { scopes: updated });
+		const result = await star.updateRole(role!.id, { permissions: updated });
 		loading = false;
 
 		if ('error' in result) {
@@ -86,7 +92,7 @@
 	const removePermission = async (permission: string) => {
 		loading = true;
 		const updated = role!.permissions.filter(p => p !== permission);
-		const result = await star.updateRole(role!.id, { scopes: updated });
+		const result = await star.updateRole(role!.id, { permissions: updated });
 		loading = false;
 
 		if ('error' in result) {
@@ -136,11 +142,8 @@
 				<div class="flex flex-col items-center xl:items-start justify-center gap-2">
 					<h3 class="text-lg leading-4 flex items-center gap-2">
 						{role.name}
-						{#if role.global}
-							<Badge variant="secondary">Default role</Badge>
-						{/if}
-						{#if role.super}
-							<Badge>Super role</Badge>
+						{#if role.internal}
+							<Badge variant="secondary">Built-in role</Badge>
 						{/if}
 					</h3>
 					<div class="flex flex-col xl:flex-row items-center xl:gap-3 text-sm text-primary/60 flex-wrap">
@@ -150,7 +153,7 @@
 						</span>
 						<span>
 							<Icon icon="calendar-event" />
-							Created {formatTime(role.created_at)}
+							Created {formatTime(new Date(role.created_at))}
 						</span>
 						<span>
 							<Icon icon="lock" />
@@ -159,7 +162,7 @@
 					</div>
 				</div>
 
-				{#if canModify}
+				{#if canModify && hasPermission('admin:role:delete')}
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger class="ml-auto">
 							<Button variant="ghost" size="icon">
@@ -168,42 +171,27 @@
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content>
 							<DropdownMenu.Group>
-								{#if hasPermission('star:admin:delete:roles')}
-									<DropdownMenu.Item
-										variant="destructive"
-										onclick={() => deleteRoleModal?.open()}
-									>
-										<Icon icon="trash" />
-										Delete
-									</DropdownMenu.Item>
-								{/if}
+								<DropdownMenu.Item
+									variant="destructive"
+									onclick={() => deleteRoleModal?.open()}
+								>
+									<Icon icon="trash" />
+									Delete
+								</DropdownMenu.Item>
 							</DropdownMenu.Group>
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
 				{/if}
 			</div>
 
-			{#if role.super}
+			{#if role.internal}
 				<Card.Root class="w-full">
 					<Card.Content class="flex flex-col overflow-hidden flex-wrap text-yellow-100">
 						<Card.Title class="text-yellow-200 mb-4">
-							<Icon icon="shield" /> Super Role
+							<Icon icon="shield" /> Built-in Role
 						</Card.Title>
 						<span>
-							This role grants full access to all permissions and can not be modified.
-						</span>
-					</Card.Content>
-				</Card.Root>
-			{/if}
-
-			{#if role.global}
-				<Card.Root class="w-full">
-					<Card.Content class="flex flex-col overflow-hidden flex-wrap text-blue-100">
-						<Card.Title class="text-blue-200 mb-4">
-							<Icon icon="users" /> Default Role
-						</Card.Title>
-						<span>
-							This role is automatically assigned to all users and can not be modified.
+							This role is managed by star and can not be modified or deleted.
 						</span>
 					</Card.Content>
 				</Card.Root>
@@ -246,7 +234,7 @@
 						<Icon icon="lock" class="text-2xl" /> Permissions
 					</Card.Title>
 					<Card.Description class="md:max-w-2/3">
-						Permissions granted to users with this role. These are matched against the <code>scopes</code> claim in access tokens.
+						Permissions granted to users with this role. These are matched against the <code>permissions</code> claim in access tokens.
 					</Card.Description>
 				</Card.CardHeader>
 				<Card.Content>
@@ -314,7 +302,7 @@
 <Modal bind:this={addPermissionModal} button class="xl:w-xl!">
 	<h1 class="text-xl font-semibold">Add Permission</h1>
 	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		Add a permission scope to this role. Users with this role will be granted this permission.
+		Add a permission to this role. Users with this role will be granted this permission.
 	</h2>
 
 	<form onsubmit={addPermission} class="mt-6">
@@ -324,10 +312,16 @@
 				<Input
 					id="permission"
 					type="text"
-					placeholder="star:user:read"
+					placeholder="admin:user:read"
+					list="available-permissions"
 					bind:value={permissionInput}
 					required
 				/>
+				<datalist id="available-permissions">
+					{#each unassigned as permission (permission.id)}
+						<option value={permission.name}>{permission.description}</option>
+					{/each}
+				</datalist>
 			</div>
 		</div>
 

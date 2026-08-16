@@ -3,6 +3,8 @@ package server
 import (
 	"errors"
 	"log/slog"
+	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/request"
+	"github.com/tubblelive/star/internal/server/transformer"
 	"github.com/tubblelive/star/internal/server/types"
 	"github.com/tubblelive/star/internal/username"
 )
@@ -34,6 +37,28 @@ func userRouter(router fiber.Router) {
 	router.Delete("/password", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionChangePassword), deletePassword)
 
 	router.Route("/login", loginRouter)
+
+	router.Get("/:user", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUser)
+	router.Patch("/:user", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminUpdateUser)
+	router.Delete("/:user", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminDeleteUser)
+	router.Delete("/:user/sessions", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSessions)
+	router.Post("/:user/password", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
+}
+
+// misc: maybe move this to transformer?
+func populateUser(ctx fiber.Ctx, user *database.User) transformer.AdminUser {
+	star := common.GetState(ctx)
+
+	email := star.Database.GetPrimaryEmail(ctx, user.ID)
+	roles := star.Database.GetUserRoles(ctx, user.ID)
+
+	transformed := make([]transformer.AdminRole, len(roles))
+	for idx, role := range roles {
+		permissions := star.Database.GetRolePermissions(ctx, role.ID)
+		transformed[idx] = transformer.TransformRole(role, permissions)
+	}
+
+	return transformer.TransformAdminUser(user, email, transformed)
 }
 
 func registerUser(ctx fiber.Ctx) error {
@@ -71,8 +96,7 @@ func registerUser(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "username or email already taken")
 	}
 
-	existing := star.Database.GetUserByName(ctx, username)
-	if existing != nil {
+	if len(star.Database.GetUsersByName(ctx, username)) > 0 {
 		return fiber.NewError(400, "username or email already taken")
 	}
 
@@ -119,7 +143,11 @@ func registerUser(ctx fiber.Ctx) error {
 	}
 
 	// Send verification email
-	url := star.Config.ServerURL + "/verify?email=" + request.Email + "&code=" + email.Code
+	values := url.Values{}
+	values.Set("email", request.Email)
+	values.Set("code", email.Code)
+
+	url := star.Config.ServerURL + "/verify?" + values.Encode()
 	if err := star.Email.Send(
 		request.Email,
 		"Verify your email address",
@@ -153,6 +181,10 @@ func changePassword(ctx fiber.Ctx) error {
 
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
 	if account != nil && account.Password != nil {
+		if data.OldPassword == nil {
+			return fiber.NewError(401, "The old password was not specified")
+		}
+
 		success := cryptography.VerifyHash(*data.OldPassword, *account.Password)
 		if !success {
 			return fiber.NewError(401, "The old password is incorrect")
@@ -261,6 +293,242 @@ func getAllUsers(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "limit must be between 1 and 100")
 	}
 
-	users := star.Database.GetUsers(ctx, page, limit)
-	return ctx.JSON(users)
+	query := ctx.Query("query")
+
+	var users []database.User
+	if query != "" {
+		users = star.Database.SearchUsers(ctx, query, page, limit)
+	} else {
+		users = star.Database.GetUsers(ctx, page, limit)
+	}
+
+	transformed := make([]transformer.AdminUser, len(users))
+	for idx := range users {
+		transformed[idx] = populateUser(ctx, &users[idx])
+	}
+
+	return ctx.JSON(transformed)
+}
+
+func adminGetUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	return ctx.JSON(populateUser(ctx, user))
+}
+
+func adminUpdateUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var data types.AdminUpdateUserRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	if data.Username != nil && *data.Username != user.Name {
+		sanitized, err := username.ValidateUsername(*data.Username, &username.DefaultSettings)
+		if err != nil {
+			return fiber.NewError(400, err.Error())
+		}
+
+		for _, existing := range star.Database.GetUsersByName(ctx, sanitized) {
+			if existing.ID != user.ID {
+				return fiber.NewError(400, "This username is already taken")
+			}
+		}
+
+		user.Name = sanitized
+	}
+
+	if data.FirstName != nil {
+		user.FirstName = data.FirstName
+	}
+
+	if data.LastName != nil {
+		user.LastName = data.LastName
+	}
+
+	if err := star.Database.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	if data.Roles != nil {
+		if err := setUserRoles(ctx, user.ID, *data.Roles); err != nil {
+			return err
+		}
+	}
+
+	return ctx.JSON(populateUser(ctx, user))
+}
+
+func setUserRoles(ctx fiber.Ctx, userID string, roleIDs []string) error {
+	star := common.GetState(ctx)
+
+	requesterID, err := request.GetUserId(ctx)
+	if err != nil {
+		return err
+	}
+
+	if requesterID == userID {
+		return fiber.NewError(403, "You are not permitted to modify your own roles")
+	}
+
+	requested := slices.Compact(slices.Sorted(slices.Values(roleIDs)))
+	for _, roleID := range requested {
+		if star.Database.GetRoleByID(ctx, roleID) == nil {
+			return fiber.NewError(400, "Unknown role: "+roleID)
+		}
+	}
+
+	current := star.Database.GetUserRoleBindings(ctx, userID)
+	for _, binding := range current {
+		if !slices.Contains(requested, binding.RoleID) {
+			if err := star.Database.DeleteRoleBindingByID(ctx, binding.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, roleID := range requested {
+		exists := slices.ContainsFunc(current, func(binding database.RoleBinding) bool {
+			return binding.RoleID == roleID
+		})
+
+		if exists {
+			continue
+		}
+
+		binding := &database.RoleBinding{
+			ID:        database.CreateID(database.RoleBindingKey),
+			RoleID:    roleID,
+			UserID:    userID,
+			CreatedAt: time.Now(),
+		}
+
+		if err := star.Database.CreateRoleBinding(ctx, binding); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func adminSetPassword(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	requesterID, err := request.GetUserId(ctx)
+	if err != nil {
+		return err
+	}
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	if requesterID == user.ID {
+		return fiber.NewError(403, "Use the password change endpoint to update your own password")
+	}
+
+	var data types.AdminSetPasswordRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	sanitized, err := password.ValidatePassword(data.Password, star.Settings.GetPasswordSettings())
+	if err != nil {
+		return fiber.NewError(400, err.Error())
+	}
+
+	hashed, alg := cryptography.HashString(sanitized)
+
+	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
+	if account == nil {
+		email := star.Database.GetPrimaryEmail(ctx, user.ID)
+		if email == nil {
+			return fiber.NewError(400, "This user has no primary email to create an internal account with")
+		}
+
+		account = &database.Account{
+			ID:          database.CreateID(database.AccountKey),
+			Type:        "internal",
+			UserID:      user.ID,
+			Email:       &email.Email,
+			Name:        &user.Name,
+			Password:    &hashed,
+			PasswordAlg: alg,
+			CreatedAt:   time.Now(),
+		}
+
+		if err := star.Database.CreateAccount(ctx, account); err != nil {
+			return err
+		}
+	} else {
+		account.Password = &hashed
+		account.PasswordAlg = alg
+
+		if err := star.Database.UpdateAccount(ctx, account); err != nil {
+			return err
+		}
+	}
+
+	if err := star.Database.DeleteUserSessions(ctx, user.ID); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
+}
+
+func adminDeleteUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	requesterID, err := request.GetUserId(ctx)
+	if err != nil {
+		return err
+	}
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	if user.ID == requesterID {
+		return fiber.NewError(403, "You are not permitted to delete your own user")
+	}
+
+	if err := star.Database.DeleteUser(ctx, user.ID); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
+}
+
+func adminInvalidateUserSessions(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	if err := star.Database.DeleteUserSessions(ctx, user.ID); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
 }

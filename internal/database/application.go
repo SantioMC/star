@@ -17,15 +17,13 @@ type ApplicationKind string
 
 const ApplicationKey = "app"
 
-// todo: this is likely incredibly wrong, we should validate and fix this
 const (
 	ApplicationKindPublic       ApplicationKind = "public"
-	ApplicationKindPKCE         ApplicationKind = "pkce"
 	ApplicationKindConfidential ApplicationKind = "confidential"
 )
 
 var ApplicationKinds = []ApplicationKind{
-	ApplicationKindPublic, ApplicationKindPKCE, ApplicationKindConfidential,
+	ApplicationKindPublic, ApplicationKindConfidential,
 }
 
 type Application struct {
@@ -177,7 +175,8 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		UPDATE applications
 		SET name = $2, application_url = $3, client_id = $4,
 		client_secret = $5, internal = $6, token_duration = $7,
-		session_duration = $8, redirect_uris = $9, development_mode = $10
+		session_duration = $8, redirect_uris = $9, development_mode = $10,
+		kind = $11
 		WHERE id = $1
 		`,
 		application.ID,
@@ -190,6 +189,7 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		application.SessionDuration,
 		application.RedirectURIs,
 		application.DevelopmentMode,
+		application.Kind,
 	)
 
 	return err

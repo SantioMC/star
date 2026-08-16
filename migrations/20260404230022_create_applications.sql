@@ -11,7 +11,7 @@ CREATE TABLE applications (
     session_duration INTEGER NOT NULL DEFAULT 604800,
     redirect_uris VARCHAR(255)[] NOT NULL,
     development_mode BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 ALTER TABLE sessions ADD COLUMN application_id VARCHAR(64) REFERENCES applications(id) ON DELETE CASCADE;
@@ -27,11 +27,16 @@ CREATE TABLE authorization_codes (
     nonce VARCHAR(255),
     code_challenge VARCHAR(255),
     code_challenge_method VARCHAR(12),
-    created_at TIMESTAMP NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
-    redeemed_at TIMESTAMP
+    session_id VARCHAR(64) REFERENCES sessions(id) ON DELETE SET NULL,
+    authenticated_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    redeemed_at TIMESTAMPTZ
 );
 
+CREATE INDEX authorization_codes_code_lookup ON authorization_codes (code);
+
 -- +goose Down
+DROP TABLE IF EXISTS authorization_codes;
 ALTER TABLE sessions DROP COLUMN application_id;
 DROP TABLE IF EXISTS applications;

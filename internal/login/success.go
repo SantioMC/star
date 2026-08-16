@@ -44,7 +44,6 @@ func CreateSuccessfulStage(
 	accessToken, err := token.Create(ctx, star, session, &token.Options{
 		Duration:    time.Hour,
 		Permissions: permissions,
-		SuperUser:   true,
 	})
 
 	if err != nil {

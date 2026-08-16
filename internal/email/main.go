@@ -20,6 +20,7 @@ func parse(html string, options map[string]string) string {
 
 var alphabet = []rune("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
+// This is ONLY for email verification, not to be used for anything else
 func CreateCode(length int) string {
 	b := make([]rune, length)
 	repeats := 0

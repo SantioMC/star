@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/vinovest/sqlx"
 )
@@ -16,22 +17,26 @@ const AuthCodeKey = "code"
 type AuthorizationCode struct {
 	ID string `json:"id"`
 
-	UserID      string `json:"user_id"`
-	Application string `json:"application"`
+	UserID        string `json:"user_id" db:"user_id"`
+	ApplicationID string `json:"application_id" db:"application_id"`
 
 	Code        string `json:"code"`
-	RedirectURI string `json:"redirect_uri"`
+	RedirectURI string `json:"redirect_uri" db:"redirect_uri"`
 
-	Scopes []string `json:"scopes"`
-	State  *string  `json:"state"`
-	Nonce  *string  `json:"nonce"`
+	Scopes pq.StringArray `json:"scopes"`
+	State  *string        `json:"state"`
+	Nonce  *string        `json:"nonce"`
 
-	CodeChallenge       *string `json:"code_challenge"`
-	CodeChallengeMethod *string `json:"code_challenge_method"`
+	CodeChallenge       *string `json:"code_challenge" db:"code_challenge"`
+	CodeChallengeMethod *string `json:"code_challenge_method" db:"code_challenge_method"`
 
-	CreatedAt  time.Time  `json:"created_at"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	RedeemedAt *time.Time `json:"redeemed_at"`
+	SessionID *string `json:"session_id" db:"session_id"`
+
+	AuthenticatedAt time.Time `json:"authenticated_at" db:"authenticated_at"`
+
+	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
+	ExpiresAt  time.Time  `json:"expires_at" db:"expires_at"`
+	RedeemedAt *time.Time `json:"redeemed_at" db:"redeemed_at"`
 }
 
 func (db *Database) GetAuthorizationCodeByID(ctx context.Context, id string) *AuthorizationCode {
@@ -49,20 +54,17 @@ func (db *Database) GetAuthorizationCodeByID(ctx context.Context, id string) *Au
 		return nil
 	}
 
-	if authCode.Code, err = cryptography.DecryptAES(authCode.Code, db.config.AppToken); err != nil {
-		slog.Error("failed to decrypt auth code", "err", err)
-		return nil
-	}
-
 	return &authCode
 }
 
 func (db *Database) GetAuthorizationCodeByCode(ctx context.Context, code string) *AuthorizationCode {
+	hashed := cryptography.HMAC(code, db.config.AppToken)
+
 	authCode, err := sqlx.OneContext[AuthorizationCode](
 		ctx,
 		db.DB(),
 		`SELECT * FROM authorization_codes WHERE code = $1 LIMIT 1`,
-		code,
+		hashed,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -72,38 +74,31 @@ func (db *Database) GetAuthorizationCodeByCode(ctx context.Context, code string)
 		return nil
 	}
 
-	if authCode.Code, err = cryptography.DecryptAES(authCode.Code, db.config.AppToken); err != nil {
-		slog.Error("failed to decrypt auth code", "err", err)
-		return nil
-	}
-
 	return &authCode
 }
 
 func (db *Database) CreateAuthorizationCode(ctx context.Context, code *AuthorizationCode) error {
-	encryptedCode, err := cryptography.EncryptAES(code.Code, db.config.AppToken)
-	if err != nil {
-		return err
-	}
+	hashedCode := cryptography.HMAC(code.Code, db.config.AppToken)
 
-	_, err = db.DB().ExecContext(
+	_, err := db.DB().ExecContext(
 		ctx,
 		`
 		INSERT INTO authorization_codes (
-			id, user_id, application, code, redirect_uri, scopes, state, nonce,
-			code_challenge, code_challenge_method, created_at, expires_at, redeemed_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			id, user_id, application_id, code, redirect_uri, scopes, state, nonce,
+			code_challenge, code_challenge_method, authenticated_at, created_at, expires_at, redeemed_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		`,
 		code.ID,
 		code.UserID,
-		code.Application,
-		encryptedCode,
+		code.ApplicationID,
+		hashedCode,
 		code.RedirectURI,
 		code.Scopes,
 		code.State,
 		code.Nonce,
 		code.CodeChallenge,
 		code.CodeChallengeMethod,
+		code.AuthenticatedAt,
 		code.CreatedAt,
 		code.ExpiresAt,
 		code.RedeemedAt,
@@ -136,13 +131,23 @@ func (db *Database) DeleteDeadAuthCodes(ctx context.Context) (int64, error) {
 	return result.RowsAffected()
 }
 
-func (db *Database) MarkAuthorizationCodeAsRedeemed(ctx context.Context, id string) error {
-	_, err := db.DB().ExecContext(
+func (db *Database) RedeemAuthorizationCode(ctx context.Context, id string, sessionID string) (bool, error) {
+	result, err := db.DB().ExecContext(
 		ctx,
-		`UPDATE authorization_codes SET redeemed_at = $1 WHERE id = $2`,
+		`UPDATE authorization_codes SET redeemed_at = $1, session_id = $2 WHERE id = $3 AND redeemed_at IS NULL`,
 		time.Now(),
+		sessionID,
 		id,
 	)
 
-	return err
+	if err != nil {
+		return false, err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return affected > 0, nil
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/models"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -22,15 +24,57 @@ func appRouter(router fiber.Router) {
 	router.Get("/", middleware.RequirePermission(permission.PermissionReadApplications), getApplications)
 	router.Post("/", middleware.RequirePermission(permission.PermissionCreateApplications), createApplication)
 
+	router.Post("/authorization", middleware.RequirePermission(permission.PermissionCreateAuthorization), createAppAuthorization)
+
+	router.Get("/:application", middleware.RequirePermission(permission.PermissionReadApplications), getApplication)
 	router.Patch("/:application", middleware.RequirePermission(permission.PermissionWriteApplications), updateApplication)
 	router.Delete("/:application", middleware.RequirePermission(permission.PermissionDeleteApplications), deleteApplication)
 
-	router.Post("/authorization", middleware.RequirePermission(permission.PermissionCreateAuthorization), createAppAuthorization)
+	router.Post("/:application/rotate", middleware.RequirePermission(permission.PermissionWriteApplications), rotateApplicationSecret)
 }
 
 func getApplications(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	return ctx.JSON(star.Database.GetApplications(ctx))
+}
+
+func getApplication(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	application := star.Database.GetApplicationByID(ctx, ctx.Params("application"))
+	if application == nil {
+		return fiber.NewError(404, "Application not found")
+	}
+
+	return ctx.JSON(application)
+}
+
+func rotateApplicationSecret(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	application := star.Database.GetApplicationByID(ctx, ctx.Params("application"))
+	if application == nil {
+		return fiber.NewError(404, "Application not found")
+	}
+
+	if application.Internal {
+		return fiber.NewError(403, "You are not permitted to modify this application")
+	}
+
+	if application.Kind != database.ApplicationKindConfidential {
+		return fiber.NewError(400, "Only confidential applications have a client secret")
+	}
+
+	secret := database.CreateApplicationSecret()
+	application.ClientSecret = &secret
+
+	if err := star.Database.UpdateApplication(ctx, application); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"client_secret": secret,
+	})
 }
 
 func createApplication(ctx fiber.Ctx) error {
@@ -53,7 +97,7 @@ func createApplication(ctx fiber.Ctx) error {
 
 	var clientSecret *string = nil
 	if kind == database.ApplicationKindConfidential {
-		secret := cryptography.CreateSecureString(24)
+		secret := database.CreateApplicationSecret()
 		clientSecret = &secret
 	}
 
@@ -131,7 +175,16 @@ func updateApplication(ctx fiber.Ctx) error {
 			return fiber.NewError(400, "Invalid application kind")
 		}
 
-		application.Kind = kind
+		if kind != application.Kind {
+			application.Kind = kind
+
+			if kind == database.ApplicationKindConfidential {
+				secret := database.CreateApplicationSecret()
+				application.ClientSecret = &secret
+			} else {
+				application.ClientSecret = nil
+			}
+		}
 	}
 
 	if request.ApplicationURL != nil {
@@ -148,6 +201,10 @@ func updateApplication(ctx fiber.Ctx) error {
 
 	if request.SessionDuration != nil {
 		application.SessionDuration = models.Seconds(*request.SessionDuration)
+	}
+
+	if application.TokenDuration.Duration() > time.Hour*24*3 {
+		return fiber.NewError(400, "Token duration may not exceed 3 days")
 	}
 
 	if application.SessionDuration <= application.TokenDuration {
@@ -178,6 +235,18 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		return err
 	}
 
+	jwt, err := request.GetJWT(ctx)
+	if err != nil {
+		return err
+	}
+
+	authenticatedAt := time.Now()
+	if current := star.Database.GetSessionByID(ctx, jwt.SessionID); current != nil {
+		authenticatedAt = current.AuthenticatedAt
+	} else {
+		slog.Warn("issuing an authorization code for a session that no longer exists", "session", jwt.SessionID, "user", user.ID)
+	}
+
 	var request types.CreateApplicationAuthorizationRequest
 	if err := ctx.Bind().Body(&request); err != nil {
 		return err
@@ -192,22 +261,49 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "Redirect URI is not allowed for this application")
 	}
 
+	challenge := ""
+	if request.CodeChallenge != nil {
+		challenge = *request.CodeChallenge
+	}
+
+	method := ""
+	if request.CodeChallengeMethod != nil {
+		method = *request.CodeChallengeMethod
+	}
+
+	if _, description, ok := oauth.ValidateCodeChallenge(application, challenge, method); !ok {
+		return fiber.NewError(400, description)
+	}
+
 	scopes := strings.Split(request.Scope, " ")
-	validScopes, modified := oauth.ValidateScopes(scopes)
+	validScopes, modified := openid.ValidateScopes(scopes)
+	if len(validScopes) == 0 {
+		return fiber.NewError(400, "None of the requested scopes are supported")
+	}
+
+	var codeChallenge *string = nil
+	var codeChallengeMethod *string = nil
+
+	if challenge != "" {
+		s256 := oauth.CodeChallengeMethodS256
+		codeChallenge = &challenge
+		codeChallengeMethod = &s256
+	}
 
 	authCode := database.AuthorizationCode{
 		ID:                  database.CreateID(database.AuthCodeKey),
 		UserID:              user.ID,
-		Application:         request.ApplicationID,
+		ApplicationID:       request.ApplicationID,
 		Code:                cryptography.CreateSecureString(64),
 		RedirectURI:         request.RedirectURI,
-		Scopes:              validScopes,
+		Scopes:              pq.StringArray(validScopes),
 		State:               request.State,
 		Nonce:               request.Nonce,
-		CodeChallenge:       request.CodeChallenge,
-		CodeChallengeMethod: request.CodeChallengeMethod,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
+		AuthenticatedAt:     authenticatedAt,
 		CreatedAt:           time.Now(),
-		ExpiresAt:           time.Now().Add(time.Hour),
+		ExpiresAt:           time.Now().Add(time.Minute * 5),
 	}
 
 	if err := star.Database.CreateAuthorizationCode(ctx, &authCode); err != nil {

@@ -7,12 +7,16 @@ CREATE TABLE sessions (
     user_agent VARCHAR(255) NOT NULL,
     geolocation VARCHAR(255),
     token VARCHAR(255) NOT NULL,
+    scopes VARCHAR(128)[],
     device VARCHAR(64) NOT NULL,
     status VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    expires_at TIMESTAMP NOT NULL
+    authenticated_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
 );
+
+CREATE INDEX sessions_token_lookup ON sessions (token);
 
 -- +goose Down
 DROP TABLE IF EXISTS sessions;

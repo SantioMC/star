@@ -6,14 +6,15 @@ import (
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
+	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/state"
 )
 
-func CreateTotp(star *state.StarServer, userId string) (string, error) {
+func CreateTotp(star *state.StarServer, user *database.User) (string, error) {
 	value, err := totp.Generate(totp.GenerateOpts{
 		SecretSize:  32,
-		Issuer:      star.Config.ServerURL,
-		AccountName: userId,
+		Issuer:      "star",
+		AccountName: user.Name,
 		Period:      30,
 		Digits:      6,
 		Algorithm:   otp.AlgorithmSHA1,

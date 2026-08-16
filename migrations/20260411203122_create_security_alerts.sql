@@ -7,7 +7,7 @@ CREATE TABLE security_alerts (
     data JSONB,
     user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
     application_id VARCHAR(64) REFERENCES applications(id) ON DELETE CASCADE,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 -- +goose Down

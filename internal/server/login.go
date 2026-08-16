@@ -2,8 +2,10 @@ package server
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/login"
@@ -14,8 +16,39 @@ import (
 )
 
 func loginRouter(router fiber.Router) {
-	router.Post("/", middleware.RequireCaptcha, loginUser)
-	router.Post("/totp", loginFlowTotp)
+	router.Post("/", limiter.New(middleware.HeavyRateLimiter), middleware.RequireCaptcha, loginUser)
+	router.Post("/totp", limiter.New(middleware.HeavyRateLimiter), loginFlowTotp)
+}
+
+func findUserByIdentifier(ctx fiber.Ctx, identifier string) *database.User {
+	star := common.GetState(ctx)
+
+	matches := star.Database.GetUsersByName(ctx, identifier)
+	for _, user := range matches {
+		if user.Name == identifier {
+			return &user
+		}
+	}
+
+	if len(matches) == 1 {
+		return &matches[0]
+	} else if len(matches) > 1 {
+		slog.Warn("login attempt failed", "reason", "username matches multiple users", "identifier", identifier)
+		return nil
+	}
+
+	if !strings.Contains(identifier, "@") {
+		return nil
+	}
+
+	matches = star.Database.GetUsersByVerifiedEmail(ctx, identifier)
+	if len(matches) == 1 {
+		return &matches[0]
+	} else if len(matches) > 1 {
+		slog.Warn("login attempt failed", "reason", "email matches multiple users", "identifier", identifier)
+	}
+
+	return nil
 }
 
 func loginUser(ctx fiber.Ctx) error {
@@ -26,9 +59,9 @@ func loginUser(ctx fiber.Ctx) error {
 		return err
 	}
 
-	user := star.Database.GetUserByName(ctx, request.Username)
+	user := findUserByIdentifier(ctx, request.Username)
 	if user == nil {
-		slog.Warn("login attempt failed", "reason", "invalid username")
+		slog.Warn("login attempt failed", "reason", "unknown login identifier")
 		return fiber.NewError(401, "Invalid username or password")
 	}
 
@@ -82,7 +115,7 @@ func loginFlowTotp(ctx fiber.Ctx) error {
 		return err
 	}
 
-	loginFlow := star.Database.GetLoginStageByID(ctx, request.FlowID)
+	loginFlow := star.Database.GetLoginStageByToken(ctx, request.Flow)
 	if loginFlow == nil || loginFlow.Stage == database.StageCompleted {
 		return fiber.NewError(400, "invalid login flow identifier provided")
 	}

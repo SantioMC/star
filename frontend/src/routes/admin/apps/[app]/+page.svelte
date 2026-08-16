@@ -2,15 +2,13 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import oauth2 from '$lib/assets/oauth2.png';
 	import * as star from '$lib/star';
-	import CardChoice from '@/components/card-choice.svelte';
 	import Categorizied from '@/components/categorizied.svelte';
 	import Copy from '@/components/copy.svelte';
+	import Hidden from '@/components/hidden.svelte';
 	import Icon from '@/components/icon.svelte';
 	import Modal from '@/components/modal.svelte';
-	import Permission from '@/components/permission.svelte';
-	import OauthProvider from '@/components/provider/oauth-provider.svelte';
+	import RedirectUri from '@/components/provider/redirect-uri.svelte';
 	import Sidebar from '@/components/sidebar.svelte';
 	import { Badge } from '@/components/ui/badge';
 	import { Button } from '@/components/ui/button';
@@ -20,41 +18,42 @@
 	import { Label } from '@/components/ui/label';
 	import { Spinner } from '@/components/ui/spinner';
 	import { hasPermission } from '@/index';
-	import { dateFormatter, formatTime } from '@/utils';
+	import { formatTime } from '@/utils';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	let app = $state<star.AdminApplication | null>(null);
-	let permissions = $state<star.Permission[]>([])
 
 	let loading = $state<boolean>(false);
-	let hasProviders = $state<boolean>(false);
-	let callbackUrl = $state<string>('');
-	let permissionName = $state<string>('');
-	let description = $state<string>('');
+	let name = $state<string>('');
+	let url = $state<string>('');
+	let kind = $state<'public' | 'confidential'>('public');
+	let developmentMode = $state<boolean>(false);
+	let tokenDuration = $state<number>(3600);
+	let sessionDuration = $state<number>(604800);
+	let redirectUri = $state<string>('');
 
-	let createProviderModal = $state<Modal>()
-	let deleteAppModal = $state<Modal>()
-	let editCallbackURLModal = $state<Modal>()
-	let createPermissionModal = $state<Modal>()
-
-	let currentCallbackUrl = $derived(
-		app?.callback?.startsWith('/') ? app?.url + app?.callback : app?.callback
-	);
+	let deleteAppModal = $state<Modal>();
+	let rotateSecretModal = $state<Modal>();
+	let addRedirectUriModal = $state<Modal>();
 
 	let canModify = $derived(
-		app?.internal == false && hasPermission('star:admin:update:applications')
+		app?.internal == false && hasPermission('application:write')
 	);
 
 	onMount(async () => {
 		if (!browser) return;
-		if (!hasPermission('star:admin:read:applications')) return goto('/');
-		
+		if (!hasPermission('application:read')) return goto('/');
+
 		app = await star.getApplication(page.params.app!);
 		if (app == null) return goto('/admin/apps');
 
-		permissions = await star.getPermissions(app.id);
-		hasProviders = !!app.oauth_provider
+		name = app.name;
+		url = app.application_url;
+		kind = app.kind;
+		developmentMode = app.development_mode;
+		tokenDuration = app.token_duration;
+		sessionDuration = app.session_duration;
 	});
 
 	const deleteApp = async () => {
@@ -64,64 +63,87 @@
 		loading = false;
 
 		if ('error' in result) {
-			toast.error(result.message)
+			toast.error(result.message);
 		} else {
-			goto('/admin/apps')
+			goto('/admin/apps');
 		}
-	}
+	};
 
-	$effect(() => {
-		callbackUrl = currentCallbackUrl ?? ''
-	})
+	const refresh = async () => {
+		app = await star.getApplication(app!.id);
+	};
 
-	const updateCallbackURL = async () => {
-		loading = true
-		const result = await star.updateApplication(app!.id, { callback_url: callbackUrl });
+	const updateApp = async () => {
+		loading = true;
+		const result = await star.updateApplication(app!.id, {
+			name,
+			url,
+			kind,
+			development_mode: developmentMode,
+			token_duration: tokenDuration,
+			session_duration: sessionDuration
+		});
 		loading = false;
 
 		if ('error' in result) {
-			toast.error(result.message)
+			toast.error(result.message);
 		} else {
-			app!.callback = callbackUrl
-			editCallbackURLModal?.close();
+			await refresh();
+			toast.success('Successfully updated application');
 		}
-	}
+	};
 
-	const createProvider = async (kind: string) => {
-		loading = true
-		const result = await star.createProvider(app!.id, kind);
+	const rotateSecret = async () => {
+		rotateSecretModal?.close();
+		const result = await star.rotateApplicationSecret(app!.id);
+
+		if ('error' in result) {
+			toast.error(result.message);
+		} else {
+			await refresh();
+			toast.success('Successfully rotated the client secret');
+		}
+	};
+
+	const addRedirectUri = async (e: Event) => {
+		e.preventDefault();
+
+		const trimmed = redirectUri.trim();
+		if (!trimmed) return;
+
+		if (app!.redirect_uris.includes(trimmed)) {
+			toast.error('This redirect URI is already registered');
+			return;
+		}
+
+		loading = true;
+		const result = await star.updateApplication(app!.id, {
+			redirect_uris: [...app!.redirect_uris, trimmed]
+		});
 		loading = false;
 
 		if ('error' in result) {
-			toast.error(result.message)
+			toast.error(result.message);
 		} else {
-			location.reload()
+			await refresh();
+			redirectUri = '';
+			addRedirectUriModal?.close();
+			toast.success('Successfully added redirect URI');
 		}
-	}
+	};
 
-	const createPermission = async () => {
-		loading = true
-		const result = await star.createPermission({
-			app: app!.id,
-			permission: permissionName,
-			description: description
+	const removeRedirectUri = async (uri: string) => {
+		const result = await star.updateApplication(app!.id, {
+			redirect_uris: app!.redirect_uris.filter((u) => u != uri)
 		});
 
-		loading = false;
-
 		if ('error' in result) {
-			toast.error(result.message)
+			toast.error(result.message);
 		} else {
-			permissionName = ''
-			description = ''
-			permissions.push(result)
-			createPermissionModal?.close()
+			await refresh();
+			toast.success('Removed redirect URI');
 		}
-	}
-
-	const removePermission = (permission: star.Permission) => {
-		permissions = permissions.filter(p => p.id != permission.id)
-	}
+	};
 </script>
 
 <Sidebar class="md:p-8 max-w-6xl mx-auto">
@@ -155,6 +177,10 @@
 							{#if app.internal}
 								<Badge>Internal</Badge>
 							{/if}
+							<Badge variant="outline">{app.kind}</Badge>
+							{#if app.development_mode}
+								<Badge variant="outline" class="border-orange-400/60 text-orange-400">Development</Badge>
+							{/if}
 						</h3>
 						<div
 							class="flex flex-col xl:flex-row items-center xl:gap-3 text-sm text-primary/60 flex-wrap"
@@ -164,27 +190,26 @@
 								{app.id}
 							</span>
 							<span>
-								<Icon icon="tag" />
-								{app.slug}
-							</span>
-							<span>
 								<Icon icon="calendar-event" />
-								Created {dateFormatter.format(new Date(app.created_at * 1000))}
+								Created {formatTime(new Date(app.created_at))}
 							</span>
 						</div>
 					</div>
 
-					{#if canModify}
+					{#if canModify && hasPermission('application:delete')}
 						<DropdownMenu.Root>
-							<DropdownMenu.Trigger class='ml-auto'>
-								<Button variant='ghost' size='icon'>
-									<Icon icon='dots' class='text-2xl' />
+							<DropdownMenu.Trigger class="ml-auto">
+								<Button variant="ghost" size="icon">
+									<Icon icon="dots" class="text-2xl" />
 								</Button>
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content>
 								<DropdownMenu.Group>
-									<DropdownMenu.Item variant='destructive' onclick={() => deleteAppModal?.open()}>
-										<Icon icon='trash' />
+									<DropdownMenu.Item
+										variant="destructive"
+										onclick={() => deleteAppModal?.open()}
+									>
+										<Icon icon="trash" />
 										Delete
 									</DropdownMenu.Item>
 								</DropdownMenu.Group>
@@ -208,141 +233,222 @@
 						</Card.Content>
 					</Card.Root>
 				{/if}
-			</div>
 
-			<Card.Root class="min-w-1/3 w-full md:w-auto">
-				<Card.CardHeader>
-					<Card.Title class="flex items-center gap-1">
-						<Icon icon="package" class="text-2xl" /> Application Information
-					</Card.Title>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-row justify-between">
-					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
-						<Categorizied title='Application Name'>
-							<p class="text-md">{app.name}</p>
-						</Categorizied>
-						<Categorizied title='Slug'>
+				<Card.Root class="min-w-1/3 w-full md:w-auto">
+					<Card.CardHeader>
+						<Card.Title class="flex items-center gap-1">
+							<Icon icon="key" class="text-2xl" /> OAuth 2.0 Credentials
+						</Card.Title>
+						<Card.Description class="md:max-w-2/3">
+							The credentials the application uses to identify itself against
+							star's OAuth 2.0 endpoints.
+						</Card.Description>
+					</Card.CardHeader>
+					<Card.Content class="flex flex-col gap-4">
+						<Categorizied title="Client ID">
 							<code class="text-md mt-1">
-								{app.slug}
-								<Copy content={app.slug} />
+								{app.client_id}
+								<Copy content={app.client_id} />
 							</code>
 						</Categorizied>
-						<Categorizied title='Application URL'>
-							<a href={app.url} target="_blank" class="text-md text-blue-300">
-								{app.url}
-								<Icon icon="external-link" />
-							</a>
-						</Categorizied>
-					</div>
-					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
-						<Categorizied title='Callback URL'>
-							<div class="flex flex-item items-center gap-1">
-								<code class="text-md mt-1 block">
-									{#if currentCallbackUrl}
-										{currentCallbackUrl}
-										<Copy content={currentCallbackUrl} />
-									{:else}
-										Unspecified
-									{/if}
-								</code>
+
+						{#if app.kind == 'confidential'}
+							<Categorizied title="Client Secret">
+								{#if app.client_secret}
+									<Hidden content={app.client_secret} />
+								{:else}
+									<code class="text-md mt-1">Unset</code>
+								{/if}
+							</Categorizied>
+						{:else}
+							<Categorizied title="Client Secret">
+								<p class="text-md text-primary/60">
+									Public clients have no client secret and must use PKCE
+								</p>
+							</Categorizied>
+						{/if}
+					</Card.Content>
+					{#if canModify && app.kind == 'confidential'}
+						<Card.Footer>
+							<Button
+								variant="outline"
+								class="ml-auto"
+								onclick={() => rotateSecretModal?.open()}
+							>
+								<Icon icon="refresh" />
+								Rotate Secret
+							</Button>
+						</Card.Footer>
+					{/if}
+				</Card.Root>
+
+				<Card.Root class="min-w-1/3 w-full md:w-auto">
+					<Card.CardHeader>
+						<Card.Title class="flex items-center gap-1">
+							<Icon icon="world" class="text-2xl" /> Redirect URIs
+						</Card.Title>
+						<Card.Description class="md:max-w-2/3">
+							The exact redirect URIs the application is allowed to use during
+							the authorization code flow. Redirects are matched exactly.
+						</Card.Description>
+					</Card.CardHeader>
+					<Card.Content class="flex flex-col gap-2">
+						{#if app.redirect_uris.length == 0}
+							<div class="flex flex-col gap-4 items-center w-full my-12">
+								<span class="text-xl font-semibold leading-2">
+									No Redirect URIs
+								</span>
+								<span
+									class="text-primary/60 leading-5 m-0 -translate-y-1.5 text-center max-w-3/4"
+								>
+									This application has no registered redirect URIs, the
+									authorization flow will fail until one is added.
+								</span>
 								{#if canModify}
-									<Button size='icon' variant='ghost' onclick={() => editCallbackURLModal?.open()}>
-										<Icon icon='pencil' />
+									<Button onclick={() => addRedirectUriModal?.open()}>
+										Add Redirect URI
 									</Button>
 								{/if}
 							</div>
-						</Categorizied>
-						<Categorizied title='Created At'>
-							<p class="text-md">
-								<Icon icon="clock" />
-								{formatTime(app.created_at)}
-							</p>
-						</Categorizied>
-						<Categorizied title='Updated At'>
-							<p class="text-md">
-								<Icon icon="clock" />
-								{formatTime(app.updated_at)}
-							</p>
-						</Categorizied>
-					</div>
-				</Card.Content>
-			</Card.Root>
-			
-			<Card.Root class="min-w-1/3 w-full md:w-auto">
-				<Card.CardHeader>
-					<Card.Title class="flex items-center gap-1">
-						<Icon icon="package" class="text-2xl" /> Application Permissions
-					</Card.Title>
-					<Card.Description class='md:max-w-2/3'>Applications compatible with star can check whether a user is authorized perform actions based on their permissions. The <code>scopes</code> claim in access tokens defines the scopes the token is authorized to perform.</Card.Description>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-row justify-between">
-					{#if permissions.length == 0}
-						<div class="flex flex-col gap-4 items-center w-full my-12">
-							<span class="text-xl font-semibold leading-2">No Permissions</span>
-							<span class="text-primary/60 leading-5 m-0 -translate-y-1.5 text-center max-w-3/4">
-								Leverage star's permission system to keep all access managed by star. Permissions are a great way to have consistent RBAC between all your applications.
-							</span>
-							{#if canModify}
-								<Button onclick={() => createPermissionModal?.open()}>Create Permission</Button>
-							{/if}
-						</div>
-					{:else}
-						<div class="w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-							{#each permissions as permission (permission.id)}
-								<Permission {permission} modifiable={canModify} ondelete={() => removePermission(permission)} />
+						{:else}
+							{#each app.redirect_uris as uri (uri)}
+								{#if canModify}
+									<RedirectUri
+										redirectUri={uri}
+										onremove={() => removeRedirectUri(uri)}
+									/>
+								{:else}
+									<code class="w-auto! flex! items-center gap-2 px-2">
+										<Icon icon="world" />
+										{uri}
+									</code>
+								{/if}
 							{/each}
-
-							{#if canModify && permissions.length > 0}
-								<Button class='w-full border border-primary/30 h-16 hover:bg-primary/80! hover:text-secondary!' variant='ghost' onclick={() => createPermissionModal?.open()}>
-									<Icon icon='plus' />
-									<span class="text-md">Create</span>
-								</Button>
-							{/if}
-						</div>
+						{/if}
+					</Card.Content>
+					{#if canModify && app.redirect_uris.length > 0}
+						<Card.Footer>
+							<Button
+								class="ml-auto"
+								onclick={() => addRedirectUriModal?.open()}
+							>
+								Add Redirect URI
+							</Button>
+						</Card.Footer>
 					{/if}
-				</Card.Content>
-			</Card.Root>
+				</Card.Root>
 
-			<h3 class="text-xl flex items-center gap-1">
-				<Icon icon="shield" />
-				Providers
-			</h3>
+				<Card.Root class="min-w-1/3 w-full md:w-auto">
+					<Card.CardHeader>
+						<Card.Title class="flex items-center gap-1">
+							<Icon icon="package" class="text-2xl" /> Application Settings
+						</Card.Title>
+					</Card.CardHeader>
+					<Card.Content class="flex flex-col gap-6">
+						<form class="flex flex-col gap-6">
+							<div class="grid gap-2">
+								<Label for="name">Name</Label>
+								<Input
+									id="name"
+									type="text"
+									required
+									bind:value={name}
+									disabled={!canModify}
+								/>
+							</div>
 
-			{#if !hasProviders}
-				<div class="flex flex-col gap-4 items-center w-full my-32">
-					<span class="text-xl font-semibold leading-2">No Providers</span>
-					<span class="text-primary/60 leading-2">
-						This application currently has no assigned providers
-					</span>
+							<div class="grid gap-2">
+								<Label for="url">Application URL</Label>
+								<Input
+									id="url"
+									type="url"
+									required
+									bind:value={url}
+									disabled={!canModify}
+								/>
+							</div>
+
+							<div class="grid gap-2">
+								<Label for="kind">Client Type</Label>
+								<select
+									id="kind"
+									bind:value={kind}
+									disabled={!canModify}
+									class="border rounded-md bg-transparent px-3 py-2 text-sm"
+								>
+									<option value="public">
+										Public (browser or native app, uses PKCE)
+									</option>
+									<option value="confidential">
+										Confidential (server-side, uses a client secret)
+									</option>
+								</select>
+							</div>
+
+							<div class="flex gap-2 sm:gap-8">
+								<div class="flex-1/2 gap-2 grid">
+									<Label for="tokenDuration">Token Duration (seconds)</Label>
+									<Input
+										id="tokenDuration"
+										type="number"
+										min="60"
+										bind:value={tokenDuration}
+										disabled={!canModify}
+									/>
+								</div>
+
+								<div class="flex-1/2 gap-2 grid">
+									<Label for="sessionDuration">
+										Session Duration (seconds)
+									</Label>
+									<Input
+										id="sessionDuration"
+										type="number"
+										min="60"
+										bind:value={sessionDuration}
+										disabled={!canModify}
+									/>
+								</div>
+							</div>
+
+							<Label class="flex items-center gap-2">
+								<input
+									type="checkbox"
+									bind:checked={developmentMode}
+									disabled={!canModify}
+								/>
+								Development mode
+							</Label>
+						</form>
+					</Card.Content>
 					{#if canModify}
-						<Button class="my-2" onclick={() => createProviderModal?.open()}>Create Provider</Button>
+						<Card.Footer>
+							<Button class="ml-auto" onclick={updateApp} disabled={loading}>
+								{#if loading}
+									<Spinner />
+								{/if}
+								Update
+							</Button>
+						</Card.Footer>
 					{/if}
-				</div>
-			{/if}
-
-			{#if app.oauth_provider}
-				<OauthProvider modifiable={canModify} provider={app.oauth_provider} ondelete={() => app!.oauth_provider = null} />
-			{/if}
+				</Card.Root>
+			</div>
 		</div>
 	{/if}
 </Sidebar>
 
-<Modal bind:this={createProviderModal} button class='xl:w-xl!'>
-	<h1 class='text-xl font-semibold'>Create Provider</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Create a new provider for this application, allowing the app to authenticate against star using an authorization protocol</h2>
+<Modal bind:this={deleteAppModal} button class="xl:w-xl!">
+	<h1 class="text-xl font-semibold">Are you sure?</h1>
+	<h2 class="text-card-foreground/60 sm:max-w-10/12">
+		This action can not be reversed! Deleting this application will invalidate
+		all of its sessions and break any logins using it.
+	</h2>
 
-	<div class="flex flex-row gap-4 flex-wrap my-4">
-		<CardChoice image={oauth2} class='w-[calc(33%-0.75rem)] h-48' recommended name='oauth2' onclick={() => createProvider('oauth')} />
-	</div>
-</Modal>
-
-<Modal bind:this={deleteAppModal} button class='xl:w-xl!'>
-	<h1 class='text-xl font-semibold'>Are you sure?</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>This action can not be reversed! You will not be able to restore this application if it is deleted.</h2>
-
-	<div class='flex items-center gap-2 justify-end mt-4'>
-		<Button variant='secondary' onclick={() => deleteAppModal?.close()}>Cancel</Button>
-		<Button variant='destructive' onclick={deleteApp} disabled={loading}>
+	<div class="flex items-center gap-2 justify-end mt-4">
+		<Button variant="secondary" onclick={() => deleteAppModal?.close()}>
+			Cancel
+		</Button>
+		<Button variant="destructive" onclick={deleteApp} disabled={loading}>
 			{#if loading}
 				<Spinner />
 			{/if}
@@ -352,49 +458,55 @@
 	</div>
 </Modal>
 
-<Modal bind:this={editCallbackURLModal} button class='xl:w-xl!'>
-	<h1 class='text-xl font-semibold'>Change Callback URL</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Modify where star will redirect the user logging into the application, star will set the <code>access_token</code> and <code>refresh_token</code> query parameters once redirected successfully</h2>
+<Modal bind:this={rotateSecretModal} button class="xl:w-xl!">
+	<h1 class="text-xl font-semibold">Rotate Client Secret</h1>
+	<h2 class="text-card-foreground/60 sm:max-w-10/12">
+		Rotating the client secret immediately invalidates the current secret, the
+		application will fail to authenticate until it is updated with the new
+		secret.
+	</h2>
 
-	<form onsubmit={updateCallbackURL} class='mt-6'>
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="callback_url">Callback URL</Label>
-				<Input id="callback_url" type="text" placeholder='' bind:value={callbackUrl} required />
-			</div>
-		</div>
-
-		<div class='flex items-center gap-2 justify-end mt-6'>
-			<Button variant='secondary' onclick={() => editCallbackURLModal?.close()}>Cancel</Button>
-			<Button onclick={updateCallbackURL}>Change Callback</Button>
-		</div>
-	</form>
+	<div class="flex items-center gap-2 justify-end mt-4">
+		<Button variant="secondary" onclick={() => rotateSecretModal?.close()}>
+			Cancel
+		</Button>
+		<Button variant="destructive" onclick={rotateSecret}>Rotate Secret</Button>
+	</div>
 </Modal>
 
-<Modal bind:this={createPermissionModal} button>
-	<h1 class='text-xl font-semibold'>Create Permission</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Create a new permission scope for this application, used to control access to resources via role-based access control</h2>
+<Modal bind:this={addRedirectUriModal} button class="xl:w-xl!">
+	<h1 class="text-xl font-semibold">Add Redirect URI</h1>
+	<h2 class="text-card-foreground/60 sm:max-w-10/12">
+		Add an exact redirect URI the application may redirect users to after
+		authorization.
+	</h2>
 
-	<form onsubmit={createPermission} class='mt-6'>
+	<form onsubmit={addRedirectUri} class="mt-6">
 		<div class="flex flex-col gap-6 w-full mx-auto">
 			<div class="grid gap-2">
-				<Label for="name">Permission</Label>
-				<Input id="name" type="text" placeholder='star:user:read' bind:value={permissionName} required />
-			</div>
-			<div class="grid gap-2">
-				<Label for="description">Description</Label>
-				<Input id="description" type="text" placeholder='Permits reading user details' bind:value={description} required />
+				<Label for="redirect_uri">Redirect URI</Label>
+				<Input
+					id="redirect_uri"
+					type="url"
+					placeholder="https://example.com/callback"
+					bind:value={redirectUri}
+					required
+				/>
 			</div>
 		</div>
 
-		<div class='flex items-center gap-2 justify-end mt-6'>
-			<Button variant='secondary' onclick={() => createPermissionModal?.close()}>Cancel</Button>
-			<Button disabled={loading} onclick={createPermission}>
+		<div class="flex items-center gap-2 justify-end mt-6">
+			<Button
+				variant="secondary"
+				onclick={() => addRedirectUriModal?.close()}
+			>
+				Cancel
+			</Button>
+			<Button disabled={loading} type="submit">
 				{#if loading}
 					<Spinner />
 				{/if}
-
-				Create Permission
+				Add Redirect URI
 			</Button>
 		</div>
 	</form>

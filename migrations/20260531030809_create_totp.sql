@@ -4,7 +4,7 @@ CREATE TABLE totp (
     user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     secret TEXT NOT NULL,
     verified BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE backup_codes (
@@ -16,8 +16,9 @@ CREATE TABLE backup_codes (
 CREATE TABLE login_flows (
     id VARCHAR(64) PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(64) NOT NULL,
     stage VARCHAR(32) NOT NULL,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 -- +goose Down

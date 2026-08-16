@@ -18,6 +18,17 @@ type ChangePasswordRequest struct {
 	NewPassword string  `json:"new_password" validate:"required"`
 }
 
+type AdminSetPasswordRequest struct {
+	Password string `json:"password" validate:"required"`
+}
+
+type AdminUpdateUserRequest struct {
+	Username  *string   `json:"username" validate:"omitempty"`
+	FirstName *string   `json:"first_name" validate:"omitempty,max=255"`
+	LastName  *string   `json:"last_name" validate:"omitempty,max=255"`
+	Roles     *[]string `json:"roles" validate:"omitempty"`
+}
+
 type AddUserEmailRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }

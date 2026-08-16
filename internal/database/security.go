@@ -16,6 +16,7 @@ type SecurityAlertSeverity string
 const SecurityAlertKey = "sec"
 
 const (
+	SecurityAlertASessionReused        SecurityAlertKind = "authentication.session.already_rotated"
 	SecurityAlertAuthorizationCodeUsed SecurityAlertKind = "authorization.code.already_used"
 
 	SecurityAlertSeverityHigh   SecurityAlertSeverity = "high"

@@ -1,15 +1,17 @@
-package oauth
+package openid
 
 import "slices"
 
 // Common / Default scopes
+
 var ScopeOpenID = "openid"
 var ScopeProfile = "profile"
 var ScopeEmail = "email"
+var ScopeRoles = "roles"
 var ScopeOfflineAccess = "offline_access"
 
 var SupportedScopes = []string{
-	ScopeOpenID, ScopeProfile, ScopeEmail, ScopeOfflineAccess,
+	ScopeOpenID, ScopeProfile, ScopeEmail, ScopeRoles, ScopeOfflineAccess,
 }
 
 func ValidateScopes(scopes []string) ([]string, bool) {

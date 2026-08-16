@@ -10,30 +10,22 @@
 	import { Spinner } from "@/components/ui/spinner";
 	import * as Table from '@/components/ui/table';
 	import { hasPermission } from "@/index";
-	import { debounced, isExpired, relativeTime } from "@/utils";
+	import { debounced, relativeTime } from "@/utils";
 	import { onMount } from "svelte";
 
 	let users = $state<star.AdminUser[]>([])
 	let loading = $state<boolean>(true)
 	let query = $state<string>('')
 
-	type Status = 'active' | 'inactive' | 'suspended'
-
-	const getStatus = (user: star.AdminUser): Status => {
-		if (user.suspension != null) return 'suspended'
-		if (user.sessions.find(s => !isExpired(s)) == null) return 'inactive'
-		return 'active'
-	}
-
 	const onSearch = async () => {
 		loading = true;
-		users = await star.searchUsers(query)
+		users = await star.getAllUsers(1, query)
 		loading = false;
 	}
 
 	onMount(async () => {
 		if (!browser) return
-		if (!hasPermission('star:admin:read:users')) return location.href = '/'
+		if (!hasPermission('admin:user:read')) return location.href = '/'
 		users = await star.getAllUsers()
 		loading = false
 	})
@@ -42,7 +34,7 @@
 <Sidebar class='lg:p-8 max-w-6xl mx-auto'>
 	<h1 class='text-2xl font-semibold'>User Management</h1>
 	<h2 class='text-lg text-primary/60'>View and manage users</h2>
-	
+
 	<div class='mt-24'>
 		<div class="flex flex-row items-center gap-2">
 			<InputGroup.Root class='w-full xl:max-w-1/3 my-4'>
@@ -55,8 +47,6 @@
 					{/if}
 				</InputGroup.Addon>
 			</InputGroup.Root>
-
-			<Button class='ml-auto'>Invite User</Button>
 		</div>
 
 		<Table.Root>
@@ -64,8 +54,8 @@
 			<Table.Header>
 				<Table.Row>
 				<Table.Head class='w-1/4'>User</Table.Head>
-				<Table.Head>Status</Table.Head>
-				<Table.Head>Last Login</Table.Head>
+				<Table.Head>Email</Table.Head>
+				<Table.Head>Roles</Table.Head>
 				<Table.Head>Created</Table.Head>
 				<Table.Head class='text-end'>Actions</Table.Head>
 				</Table.Row>
@@ -77,24 +67,25 @@
 						<img src={user.profile_picture ?? ""} alt="{user.username}'s profile picture" class='w-10 h-10 rounded-full' />
 						<div class="flex flex-col items-start">
 							<span>{user.username}</span>
-							<span class='text-primary/70 text-ellipsis overflow-hidden w-56'>{user.email}</span>
+							<span class='text-primary/70 text-ellipsis overflow-hidden w-56'>{user.email ?? 'No email'}</span>
 						</div>
 					</Table.Cell>
 					<Table.Cell>
-						{@const status = getStatus(user)}
-						{#if status == 'active'}
-							<Badge variant='outline' class='border-emerald-600/60 text-emerald-500'>Active</Badge>
-						{:else if status == 'inactive'}
-							<Badge variant='outline' class='border-gray-400/60 text-gray-400'>Inactive</Badge>
-						{:else if status == 'suspended'}
-							<Badge variant='outline' class='border-red-400/60 text-red-400'>Suspended</Badge>
+						{#if user.email_verified}
+							<Badge variant='outline' class='border-emerald-600/60 text-emerald-500'>Verified</Badge>
+						{:else}
+							<Badge variant='outline' class='border-gray-400/60 text-gray-400'>Unverified</Badge>
 						{/if}
 					</Table.Cell>
 					<Table.Cell>
-						{#if user.last_login_at}
-							{relativeTime(user.last_login_at)} ago
+						{#if user.roles.length == 0}
+							<span class='text-primary/50'>None</span>
 						{:else}
-							Never logged in
+							<div class='flex flex-row flex-wrap gap-1'>
+								{#each user.roles as role (role.id)}
+									<Badge variant='outline'>{role.name}</Badge>
+								{/each}
+							</div>
 						{/if}
 					</Table.Cell>
 					<Table.Cell>{relativeTime(user.created_at)} ago</Table.Cell>

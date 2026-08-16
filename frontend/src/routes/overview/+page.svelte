@@ -72,11 +72,11 @@
 					<div class="flex flex-col gap-1.5 text-sm">
 						<div class="flex justify-between">
 							<span class="text-muted-foreground">Version</span>
-							<span class="text-violet-200 font-medium">{metrics?.version ?? "—"}</span>
+							<span class="text-violet-200 font-medium">{metrics?.version ?? "-"}</span>
 						</div>
 						<div class="flex justify-between">
 							<span class="text-muted-foreground">Node</span>
-							<span class="text-violet-200 font-medium font-mono text-xs">{metrics?.node_id ?? "—"}</span>
+							<span class="text-violet-200 font-medium font-mono text-xs">{metrics?.node_id ?? "-"}</span>
 						</div>
 						<div class="flex justify-between">
 							<span class="text-muted-foreground">Uptime</span>

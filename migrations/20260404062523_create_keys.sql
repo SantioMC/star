@@ -5,8 +5,8 @@ CREATE TABLE signing_keys (
     public_key TEXT NOT NULL,
     private_key TEXT NOT NULL,
     algorithm VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    expires_at TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ
 );
 
 CREATE INDEX signing_keys_active_fetch ON signing_keys (status, expires_at);

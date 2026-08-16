@@ -10,9 +10,9 @@ import (
 )
 
 type RequireMFAStage struct {
-	Next        string          `json:"next"`
-	LoginFlowID string          `json:"flow_id"`
-	Factors     []mfa.MFAMethod `json:"factors"`
+	Next    string          `json:"next"`
+	Flow    string          `json:"flow"`
+	Factors []mfa.MFAMethod `json:"factors"`
 }
 
 func CreateRequireMFAStage(
@@ -24,9 +24,11 @@ func CreateRequireMFAStage(
 ) (*RequireMFAStage, error) {
 	id := database.CreateID(database.LoginFlowKey)
 
+	token := database.CreateLoginFlowToken()
 	if err := star.Database.CreateLoginFlow(ctx, &database.LoginFlow{
 		ID:        id,
 		UserID:    user.ID,
+		Token:     token,
 		Stage:     database.StageMFARequired,
 		CreatedAt: time.Now(),
 	}); err != nil {
@@ -34,8 +36,8 @@ func CreateRequireMFAStage(
 	}
 
 	return &RequireMFAStage{
-		Next:        "mfa_required",
-		LoginFlowID: id,
-		Factors:     mfa,
+		Next:    "mfa_required",
+		Flow:    token,
+		Factors: mfa,
 	}, nil
 }
