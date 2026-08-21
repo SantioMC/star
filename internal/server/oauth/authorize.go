@@ -66,23 +66,23 @@ func Authorize(ctx fiber.Ctx) error {
 		}
 	}
 
-	clientId := ctx.Query("client_id")
-	if clientId == "" {
+	clientID := ctx.Query("client_id")
+	if clientID == "" {
 		return authorizationError(ctx, "Missing client_id")
 	}
 
-	application := star.Database.GetApplicationByClientID(ctx, clientId)
+	application := star.Database.GetApplicationByClientID(ctx, clientID)
 	if application == nil {
 		return authorizationError(ctx, "Invalid or unknown application, a client_id was specified but no matching application was found")
 	}
 
-	redirectUri := ctx.Query("redirect_uri")
-	if redirectUri == "" {
+	redirectURI := ctx.Query("redirect_uri")
+	if redirectURI == "" {
 		return authorizationError(ctx, "Missing redirect_uri, the authorization server requires one")
 	}
 
-	if !slices.Contains(application.RedirectURIs, redirectUri) {
-		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectUri)
+	if !slices.Contains(application.RedirectURIs, redirectURI) {
+		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectURI)
 		return authorizationError(ctx, "The redirect_uri specified is not allowed for this application")
 	}
 
@@ -90,11 +90,11 @@ func Authorize(ctx fiber.Ctx) error {
 	responseType := ctx.Query("response_type")
 
 	if responseType == "" {
-		return redirectError(ctx, redirectUri, Oauth2ErrorInvalidRequest, "Missing response_type", state)
+		return redirectError(ctx, redirectURI, Oauth2ErrorInvalidRequest, "Missing response_type", state)
 	}
 
 	if !slices.Contains(SupportedResponseTypes, responseType) {
-		return redirectError(ctx, redirectUri, Oauth2ErrorUnsupportedResponseType, "Unsupported or unknown response type, only 'code' is supported", state)
+		return redirectError(ctx, redirectURI, Oauth2ErrorUnsupportedResponseType, "Unsupported or unknown response type, only 'code' is supported", state)
 	}
 
 	scopes := strings.Fields(ctx.Query("scope"))
@@ -102,16 +102,16 @@ func Authorize(ctx fiber.Ctx) error {
 		scopes = []string{openid.ScopeOpenID}
 	}
 
-	validScopes, _ := openid.ValidateScopes(scopes)
-	if len(validScopes) == 0 {
-		return redirectError(ctx, redirectUri, Oauth2ErrorInvalidScope, "None of the requested scopes are supported", state)
+	resolution := openid.ResolveScopes(ctx, star.Database, application, scopes)
+	if len(resolution.Granted) == 0 {
+		return redirectError(ctx, redirectURI, Oauth2ErrorInvalidScope, "None of the requested scopes are supported", state)
 	}
 
 	challenge := ctx.Query("code_challenge")
 	method := ctx.Query("code_challenge_method")
 
 	if kind, description, ok := ValidateCodeChallenge(application, challenge, method); !ok {
-		return redirectError(ctx, redirectUri, kind, description, state)
+		return redirectError(ctx, redirectURI, kind, description, state)
 	}
 
 	return request.ShowFrontend(ctx)

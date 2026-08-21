@@ -3,7 +3,6 @@ package oauth
 import (
 	"log/slog"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -45,8 +44,8 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		return revokeReplayedCode(ctx, star, authCode)
 	}
 
-	redirectUri := form.Get("redirect_uri")
-	if redirectUri == "" || redirectUri != authCode.RedirectURI {
+	redirectURI := form.Get("redirect_uri")
+	if redirectURI == "" || redirectURI != authCode.RedirectURI {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The redirect_uri does not match the authorization request")
 	}
 
@@ -59,10 +58,17 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for no longer exists")
 	}
 
+	resolution := openid.ResolveScopes(ctx, star.Database, application, authCode.Scopes)
+	if len(resolution.Granted) == 0 {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidScope, "None of the scopes granted by this authorization code are available anymore")
+	}
+
+	granted := resolution.Names()
+
 	newSession, err := session.CreateSession(ctx, star, &session.Options{
 		User:            user,
 		Application:     application,
-		Scopes:          authCode.Scopes,
+		Scopes:          granted,
 		Duration:        application.SessionDuration.Duration(),
 		AuthenticatedAt: authCode.AuthenticatedAt,
 	})
@@ -84,9 +90,13 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		return revokeReplayedCode(ctx, star, star.Database.GetAuthorizationCodeByID(ctx, authCode.ID))
 	}
 
+	claims := openid.UserClaims(ctx, star.Database, user, granted)
 	accessToken, err := token.Create(ctx, star, newSession, &token.Options{
-		Duration: application.TokenDuration.Duration(),
-		Scope:    authCode.Scopes,
+		Application: application,
+		Duration:    application.TokenDuration.Duration(),
+		Scope:       granted,
+		Audience:    resolution.Audiences(application.ID, star.DefaultApp.ID),
+		Claims:      claims,
 	})
 
 	if err != nil {
@@ -97,16 +107,14 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		AccessToken: string(accessToken),
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(application.TokenDuration.Duration().Seconds()),
-		Scope:       strings.Join(authCode.Scopes, " "),
+		Scope:       strings.Join(granted, " "),
 	}
 
-	if slices.Contains(authCode.Scopes, openid.ScopeOfflineAccess) {
+	if openid.HasScope(granted, openid.ScopeOfflineAccess) {
 		response.RefreshToken = newSession.Token
 	}
 
-	if slices.Contains(authCode.Scopes, openid.ScopeOpenID) {
-		claims := openid.UserClaims(ctx, star.Database, user, authCode.Scopes)
-
+	if openid.HasScope(granted, openid.ScopeOpenID) {
 		idToken, err := token.CreateIDToken(star, newSession, application, claims, authCode.Nonce)
 		if err != nil {
 			return err

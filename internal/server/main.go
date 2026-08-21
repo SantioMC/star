@@ -143,6 +143,7 @@ func StartServer(star *state.StarServer) error {
 	api.Use(middleware.RequireAuth).Route("/mfa", mfaRouter)
 	api.Use(middleware.RequireAuth).Route("/role", roleRouter)
 	api.Use(middleware.RequireAuth).Route("/provider", providerRouter)
+	api.Use(middleware.RequireAuth).Route("/settings", settingsRouter)
 
 	api.All("*", func(ctx fiber.Ctx) error {
 		// We don't want API routes to fallback to the frontend and send a 200

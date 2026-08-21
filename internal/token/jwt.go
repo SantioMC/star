@@ -17,15 +17,21 @@ const (
 	JwtAlgorithm = jose.ES512
 )
 
+const (
+	TypeJWT         jose.ContentType = "JWT"
+	TypeAccessToken jose.ContentType = "at+jwt"
+)
+
 type JWT string
-type JWTBody struct {
+type JWTOptions struct {
+	Type     jose.ContentType
 	Duration time.Duration
 	Fields   map[string]any
 }
 
 func createJWT(
 	state *state.StarServer,
-	body JWTBody,
+	options JWTOptions,
 ) (JWT, error) {
 	var signingKey *database.SigningKey = nil
 	for _, key := range *state.SigningKeys {
@@ -36,7 +42,12 @@ func createJWT(
 	}
 
 	if signingKey == nil {
-		return "", errors.New("no active signing key found")
+		return "", ErrNoActiveSigningKey
+	}
+
+	tokenType := options.Type
+	if tokenType == "" {
+		tokenType = TypeJWT
 	}
 
 	headers := map[jose.HeaderKey]any{
@@ -56,23 +67,22 @@ func createJWT(
 		},
 		(&jose.SignerOptions{
 			ExtraHeaders: headers,
-		}).WithType("JWT"),
+		}).WithType(tokenType),
 	)
 
 	if err != nil {
 		return "", err
 	}
 
-	// todo: change iss to be uri
 	data := map[string]any{
 		"iss": state.Config.ServerURL,
 		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(body.Duration).Unix(),
+		"exp": time.Now().Add(options.Duration).Unix(),
 		"nbf": time.Now().Add(-clockSkew).Unix(),
-		"naf": time.Now().Add(body.Duration + clockSkew).Unix(),
+		"naf": time.Now().Add(options.Duration + clockSkew).Unix(),
 	}
 
-	for key, value := range body.Fields {
+	for key, value := range options.Fields {
 		data[key] = value
 	}
 
@@ -111,27 +121,51 @@ func VerifyJWT(state *state.StarServer, jwt string, publicKey *ecdsa.PublicKey) 
 	}
 
 	if claims.ExpiresAt < time.Now().Unix() {
-		return nil, fmt.Errorf("token is expired")
+		return nil, errors.New("token is expired")
 	}
 
 	if claims.NotBefore > time.Now().Unix() {
-		return nil, fmt.Errorf("token is not yet valid")
+		return nil, errors.New("token is not yet valid")
 	}
 
 	if claims.Issuer != state.Config.ServerURL {
-		return nil, fmt.Errorf("token is not issued by the correct server")
+		return nil, errors.New("token is not issued by the correct server")
+	}
+
+	if len(claims.Audience) == 0 {
+		return nil, errors.New("token has no audience")
 	}
 
 	return &claims, nil
+}
+
+type Audience []string
+
+func (audience *Audience) UnmarshalJSON(data []byte) error {
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*audience = Audience{single}
+		return nil
+	}
+
+	var multiple []string
+	if err := json.Unmarshal(data, &multiple); err != nil {
+		return err
+	}
+
+	*audience = Audience(multiple)
+	return nil
 }
 
 type AccessTokenJWT struct {
 	ExpiresAt   int64    `json:"exp"`
 	NotBefore   int64    `json:"nbf"`
 	IssuedAt    int64    `json:"iat"`
+	TokenID     string   `json:"jti"`
 	Subject     string   `json:"sub"`
-	Audience    string   `json:"aud"`
+	Audience    Audience `json:"aud"`
 	Issuer      string   `json:"iss"`
+	ClientID    string   `json:"client_id"`
 	SessionID   string   `json:"sid"`
 	Scope       string   `json:"scope"`
 	Permissions []string `json:"permissions"`

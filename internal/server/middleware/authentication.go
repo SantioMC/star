@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -33,7 +34,7 @@ func RequireAuth(ctx fiber.Ctx) error {
 		return err
 	}
 
-	if jwt.Audience != star.DefaultApp.ID {
+	if !slices.Contains(jwt.Audience, star.DefaultApp.ID) {
 		return unauthorized(ctx, "This token is not permitted to access this application")
 	}
 
@@ -49,9 +50,12 @@ func RequireOAuth(ctx fiber.Ctx) error {
 		return err
 	}
 
-	if jwt.Audience != star.DefaultApp.ID {
-		application := star.Database.GetApplicationByID(ctx, jwt.Audience)
-		if application == nil {
+	for _, audience := range jwt.Audience {
+		if audience == star.DefaultApp.ID {
+			continue
+		}
+
+		if star.Database.GetApplicationByID(ctx, audience) == nil {
 			return unauthorized(ctx, "The token audience is not a registered application")
 		}
 	}
@@ -82,7 +86,7 @@ func verifyBearer(ctx fiber.Ctx) (*token.AccessTokenJWT, error) {
 		return nil, unauthorized(ctx, "The access token is malformed")
 	}
 
-	kid, err := getKeyId(ctx, value)
+	kid, err := getKeyID(ctx, value)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +117,7 @@ func verifyBearer(ctx fiber.Ctx) (*token.AccessTokenJWT, error) {
 	return jwt, nil
 }
 
-func getKeyId(ctx fiber.Ctx, jwt string) (string, error) {
+func getKeyID(ctx fiber.Ctx, jwt string) (string, error) {
 	segments := strings.Split(jwt, ".")
 	if len(segments) != 3 {
 		return "", unauthorized(ctx, "The access token is malformed")
@@ -125,7 +129,7 @@ func getKeyId(ctx fiber.Ctx, jwt string) (string, error) {
 		return "", unauthorized(ctx, "The access token is malformed")
 	}
 
-	var headerMap map[string]interface{}
+	var headerMap map[string]any
 	if err := json.Unmarshal(header, &headerMap); err != nil {
 		slog.Warn("failed to unmarshal jwt header", "error", err, "header", string(header))
 		return "", unauthorized(ctx, "The access token is malformed")

@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as star from '$lib/star';
+	import Icon from '@/components/icon.svelte';
 	import { Button } from '@/components/ui/button';
 	import * as Card from '@/components/ui/card';
 	import { Spinner } from '@/components/ui/spinner';
@@ -21,7 +22,9 @@
 
 		if (!isLoggedIn()) return requestLogin();
 
-		application = await star.getOAuthApplication(clientId);
+		const scope = page.url.searchParams.get('scope') ?? 'openid';
+
+		application = await star.getOAuthApplication(clientId, scope);
 		if (application?.implicit) {
 			return submit();
 		}
@@ -142,11 +145,30 @@
 				<Card.Header>
 					<Card.Title>Login to {application.name}</Card.Title>
 					<Card.Description>
-						Click on the 'Continue' button to continue logging in to {application.name}.
+						{application.name} is asking for access to your account, review what it
+						will be able to do before continuing.
 					</Card.Description>
 				</Card.Header>
+				<Card.Content class="flex flex-col gap-3">
+					{#each application.scopes as entry (entry.scope)}
+						<div class="flex items-start gap-2 text-sm">
+							<Icon icon="check" class="text-emerald-500 mt-0.5" />
+							<div class="flex flex-col">
+								<span>{entry.description}</span>
+							</div>
+						</div>
+					{/each}
+				</Card.Content>
 				<Card.Footer class="flex-col gap-2">
 					<Button class="w-full" onclick={submit}>Continue</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						class="w-full"
+						onclick={() => history.back()}
+					>
+						Cancel
+					</Button>
 				</Card.Footer>
 			{/if}
 		</Card.Root>

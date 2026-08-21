@@ -7,6 +7,7 @@ type CreateApplicationRequest struct {
 	Kind           string  `json:"kind" validate:"required"`
 	ApplicationURL string  `json:"url" validate:"required"`
 	ClientID       *string `json:"client_id" validate:"omitempty"`
+	Namespace      *string `json:"namespace" validate:"omitempty,max=32"`
 }
 
 type UpdateApplicationRequest struct {
@@ -15,10 +16,23 @@ type UpdateApplicationRequest struct {
 	Kind            *string        `json:"kind" validate:"omitempty"`
 	ApplicationURL  *string        `json:"url" validate:"omitempty"`
 	ClientID        *string        `json:"client_id" validate:"omitempty"`
+	Namespace       *string        `json:"namespace" validate:"omitempty,max=32"`
 	TokenDuration   *time.Duration `json:"token_duration" validate:"omitempty"`
 	SessionDuration *time.Duration `json:"session_duration" validate:"omitempty"`
 	RedirectURIs    []string       `json:"redirect_uris" validate:"omitempty"`
 	DevelopmentMode *bool          `json:"development_mode" validate:"omitempty"`
+}
+
+type CreateApplicationScopeRequest struct {
+	Name        string `json:"name" validate:"required,max=128"`
+	Description string `json:"description" validate:"required,max=255"`
+	Requestable bool   `json:"requestable"`
+}
+
+type UpdateApplicationScopeRequest struct {
+	Name        *string `json:"name" validate:"omitempty,max=128"`
+	Description *string `json:"description" validate:"omitempty,max=255"`
+	Requestable *bool   `json:"requestable" validate:"omitempty"`
 }
 
 type CreateApplicationAuthorizationRequest struct {

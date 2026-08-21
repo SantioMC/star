@@ -46,7 +46,7 @@ func getOpenIDConfiguration(ctx fiber.Ctx) error {
 		UserinfoEndpoint:                  fmt.Sprintf("%s/oidc/userinfo", star.Config.ServerURL),
 		DeviceAuthorizationEndpoint:       "",
 		RegistrationEndpoint:              "",
-		ScopesSupported:                   openid.SupportedScopes,
+		ScopesSupported:                   openid.SupportedScopes(),
 		ResponseTypesSupported:            oauth.SupportedResponseTypes,
 		GrantTypesSupported:               oauth.SupportedGrantTypes,
 		CodeChallengeMethodsSupported:     []string{oauth.CodeChallengeMethodS256},

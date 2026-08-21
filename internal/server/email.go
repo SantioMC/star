@@ -10,6 +10,7 @@ import (
 	"github.com/tubblelive/star/emails"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -19,13 +20,13 @@ import (
 )
 
 func emailRouter(router fiber.Router) {
-	router.Get("/", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionReadEmails), getUserEmails)
-	router.Post("/", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAddEmails), addUserEmail)
+	router.Get("/", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailRead), middleware.RequirePermission(permission.PermissionReadEmails), getUserEmails)
+	router.Post("/", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailWrite), middleware.RequirePermission(permission.PermissionAddEmails), addUserEmail)
 
 	router.Post("/verify", limiter.New(middleware.HeavyRateLimiter), verifyEmail)
 
-	router.Delete("/:email", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionDeleteEmails), deleteUserEmail)
-	router.Post("/:email/primary", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionUpdatePrimaryEmail), updatePrimaryEmail)
+	router.Delete("/:email", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailWrite), middleware.RequirePermission(permission.PermissionDeleteEmails), deleteUserEmail)
+	router.Post("/:email/primary", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailWrite), middleware.RequirePermission(permission.PermissionUpdatePrimaryEmail), updatePrimaryEmail)
 }
 
 func getUserEmails(ctx fiber.Ctx) error {

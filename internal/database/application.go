@@ -30,6 +30,7 @@ type Application struct {
 	ID              string          `json:"id"`
 	Kind            ApplicationKind `json:"kind"`
 	Name            string          `json:"name"`
+	Namespace       string          `json:"namespace"`
 	ApplicationURL  string          `json:"application_url" db:"application_url"`
 	ClientID        string          `json:"client_id" db:"client_id"`
 	ClientSecret    *string         `json:"client_secret" db:"client_secret"`
@@ -120,6 +121,31 @@ func (db *Database) GetApplicationByName(ctx context.Context, name string) *Appl
 	return &application
 }
 
+func (db *Database) GetApplicationByNamespace(ctx context.Context, namespace string) *Application {
+	application, err := sqlx.OneContext[Application](
+		ctx,
+		db.DB(),
+		`SELECT * FROM applications WHERE namespace = $1 LIMIT 1`,
+		namespace,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		slog.Error("failed to get application by namespace", "err", err)
+		return nil
+	}
+
+	if application.ClientSecret != nil {
+		if *application.ClientSecret, err = cryptography.DecryptAES(*application.ClientSecret, db.config.AppToken); err != nil {
+			slog.Error("failed to decrypt application client secret", "err", err)
+			return nil
+		}
+	}
+
+	return &application
+}
+
 func (db *Database) CreateApplication(ctx context.Context, application *Application) error {
 	var clientSecret *string = nil
 	if application.ClientSecret != nil {
@@ -135,15 +161,16 @@ func (db *Database) CreateApplication(ctx context.Context, application *Applicat
 		ctx,
 		`
 		INSERT INTO applications (
-			id, kind, name, application_url, client_id,
+			id, kind, name, namespace, application_url, client_id,
 			client_secret, internal, token_duration,
 			session_duration, redirect_uris, development_mode,
 			created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`,
 		application.ID,
 		application.Kind,
 		application.Name,
+		application.Namespace,
 		application.ApplicationURL,
 		application.ClientID,
 		clientSecret,
@@ -176,7 +203,7 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		SET name = $2, application_url = $3, client_id = $4,
 		client_secret = $5, internal = $6, token_duration = $7,
 		session_duration = $8, redirect_uris = $9, development_mode = $10,
-		kind = $11
+		kind = $11, namespace = $12
 		WHERE id = $1
 		`,
 		application.ID,
@@ -190,6 +217,7 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		application.RedirectURIs,
 		application.DevelopmentMode,
 		application.Kind,
+		application.Namespace,
 	)
 
 	return err

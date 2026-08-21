@@ -18,7 +18,7 @@ func oauthRouter(router fiber.Router) {
 	})
 
 	router.Get("/authorize", authorizeHandler)
-	router.Get("/application/:client_id", applicationHandler)
+	router.Get("/application/:client_id", tokenLimiter, applicationHandler)
 	router.Post("/token", tokenLimiter, tokenHandler)
 	router.Post("/revoke", tokenLimiter, revokeHandler)
 }

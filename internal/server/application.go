@@ -17,25 +17,45 @@ import (
 	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/oauth"
 	"github.com/tubblelive/star/internal/server/request"
+	"github.com/tubblelive/star/internal/server/transformer"
 	"github.com/tubblelive/star/internal/server/types"
+	"github.com/tubblelive/star/internal/state"
 )
 
 func appRouter(router fiber.Router) {
-	router.Get("/", middleware.RequirePermission(permission.PermissionReadApplications), getApplications)
-	router.Post("/", middleware.RequirePermission(permission.PermissionCreateApplications), createApplication)
+	readApplications := middleware.RequireScope(openid.ScopeApplicationsRead)
+	writeApplications := middleware.RequireScope(openid.ScopeApplicationsWrite)
+	deleteApplications := middleware.RequireScope(openid.ScopeApplicationsDelete)
 
-	router.Post("/authorization", middleware.RequirePermission(permission.PermissionCreateAuthorization), createAppAuthorization)
+	router.Get("/", readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplications)
+	router.Post("/", writeApplications, middleware.RequirePermission(permission.PermissionCreateApplications), createApplication)
 
-	router.Get("/:application", middleware.RequirePermission(permission.PermissionReadApplications), getApplication)
-	router.Patch("/:application", middleware.RequirePermission(permission.PermissionWriteApplications), updateApplication)
-	router.Delete("/:application", middleware.RequirePermission(permission.PermissionDeleteApplications), deleteApplication)
+	router.Post(
+		"/authorization",
+		middleware.RequireScope(openid.ScopeUserAuthorizeApps),
+		middleware.RequirePermission(permission.PermissionCreateAuthorization),
+		createAppAuthorization,
+	)
 
-	router.Post("/:application/rotate", middleware.RequirePermission(permission.PermissionWriteApplications), rotateApplicationSecret)
+	router.Get("/:application", readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplication)
+	router.Patch("/:application", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), updateApplication)
+	router.Delete("/:application", deleteApplications, middleware.RequirePermission(permission.PermissionDeleteApplications), deleteApplication)
+
+	router.Post("/:application/rotate", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), rotateApplicationSecret)
+
+	router.Get("/:application/scopes", readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplicationScopes)
+	router.Post("/:application/scopes", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), createApplicationScope)
+	router.Patch("/:application/scopes/:scope", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), updateApplicationScope)
+	router.Delete("/:application/scopes/:scope", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), deleteApplicationScope)
 }
 
 func getApplications(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	return ctx.JSON(star.Database.GetApplications(ctx))
+
+	applications := star.Database.GetApplications(ctx)
+	scopes := star.Database.GetAllApplicationScopes(ctx)
+
+	return ctx.JSON(transformer.TransformApplications(applications, scopes))
 }
 
 func getApplication(ctx fiber.Ctx) error {
@@ -46,7 +66,8 @@ func getApplication(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "Application not found")
 	}
 
-	return ctx.JSON(application)
+	scopes := star.Database.GetApplicationScopes(ctx, application.ID)
+	return ctx.JSON(transformer.TransformApplication(*application, scopes))
 }
 
 func rotateApplicationSecret(ctx fiber.Ctx) error {
@@ -77,6 +98,27 @@ func rotateApplicationSecret(ctx fiber.Ctx) error {
 	})
 }
 
+func resolveNamespace(ctx fiber.Ctx, star *state.StarServer, requested string, fallback string) (string, error) {
+	namespace := openid.NormalizeNamespace(requested)
+	if namespace == "" {
+		namespace = openid.NormalizeNamespace(fallback)
+	}
+
+	if !openid.ValidNamespace(namespace) {
+		return "", fiber.NewError(400, "The namespace must be 2-32 characters of lowercase letters, digits, and dashes, starting with a letter")
+	}
+
+	if openid.ReservedNamespace(namespace) {
+		return "", fiber.NewError(400, "The namespace '"+namespace+"' is reserved")
+	}
+
+	if existing := star.Database.GetApplicationByNamespace(ctx, namespace); existing != nil {
+		return "", fiber.NewError(400, "Another application already uses the namespace '"+namespace+"'")
+	}
+
+	return namespace, nil
+}
+
 func createApplication(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
@@ -90,9 +132,23 @@ func createApplication(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "Invalid application kind")
 	}
 
+	requestedNamespace := ""
+	if request.Namespace != nil {
+		requestedNamespace = *request.Namespace
+	}
+
+	namespace, err := resolveNamespace(ctx, star, requestedNamespace, request.Name)
+	if err != nil {
+		return err
+	}
+
 	clientId := cryptography.CreateSecureString(24)
 	if request.ClientID != nil {
 		clientId = *request.ClientID
+	}
+
+	if star.Database.GetApplicationByClientID(ctx, clientId) != nil {
+		return fiber.NewError(400, "Another application already uses this client id")
 	}
 
 	var clientSecret *string = nil
@@ -104,6 +160,7 @@ func createApplication(ctx fiber.Ctx) error {
 	application := &database.Application{
 		ID:              database.CreateID(database.ApplicationKey),
 		Name:            request.Name,
+		Namespace:       namespace,
 		ApplicationURL:  request.ApplicationURL,
 		Kind:            kind,
 		ClientID:        clientId,
@@ -169,6 +226,23 @@ func updateApplication(ctx fiber.Ctx) error {
 		application.Name = *request.Name
 	}
 
+	if request.Namespace != nil {
+		namespace := openid.NormalizeNamespace(*request.Namespace)
+
+		if namespace != application.Namespace {
+			if len(star.Database.GetApplicationScopes(ctx, application.ID)) > 0 {
+				return fiber.NewError(400, "Delete this application's scopes before changing its namespace")
+			}
+
+			resolved, err := resolveNamespace(ctx, star, namespace, application.Name)
+			if err != nil {
+				return err
+			}
+
+			application.Namespace = resolved
+		}
+	}
+
 	if request.Kind != nil {
 		kind := database.ApplicationKind(*request.Kind)
 		if !slices.Contains(database.ApplicationKinds, kind) {
@@ -191,7 +265,11 @@ func updateApplication(ctx fiber.Ctx) error {
 		application.ApplicationURL = *request.ApplicationURL
 	}
 
-	if request.ClientID != nil {
+	if request.ClientID != nil && *request.ClientID != application.ClientID {
+		if star.Database.GetApplicationByClientID(ctx, *request.ClientID) != nil {
+			return fiber.NewError(400, "Another application already uses this client id")
+		}
+
 		application.ClientID = *request.ClientID
 	}
 
@@ -220,6 +298,151 @@ func updateApplication(ctx fiber.Ctx) error {
 	}
 
 	if err := star.Database.UpdateApplication(ctx, application); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
+}
+
+func modifiableApplication(ctx fiber.Ctx) (*database.Application, error) {
+	star := common.GetState(ctx)
+
+	application := star.Database.GetApplicationByID(ctx, ctx.Params("application"))
+	if application == nil {
+		return nil, fiber.NewError(404, "Application not found")
+	}
+
+	if application.Internal {
+		return nil, fiber.NewError(403, "You are not permitted to modify this application")
+	}
+
+	return application, nil
+}
+
+func getApplicationScopes(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	application := star.Database.GetApplicationByID(ctx, ctx.Params("application"))
+	if application == nil {
+		return fiber.NewError(404, "Application not found")
+	}
+
+	return ctx.JSON(star.Database.GetApplicationScopes(ctx, application.ID))
+}
+
+func validateScopeName(star *state.StarServer, ctx fiber.Ctx, application *database.Application, name string) error {
+	trimmed := strings.TrimSpace(name)
+
+	if !openid.ValidScopeName(application.Namespace, trimmed) {
+		return fiber.NewError(400, "Scopes must be named '"+application.Namespace+":<key>' using lowercase letters, digits, dots, dashes, underscores, and colons")
+	}
+
+	if openid.Builtin(trimmed) != nil {
+		return fiber.NewError(400, "This scope name is reserved by star")
+	}
+
+	if existing := star.Database.GetApplicationScopeByName(ctx, trimmed); existing != nil {
+		return fiber.NewError(400, "A scope with this name already exists")
+	}
+
+	return nil
+}
+
+func createApplicationScope(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	application, err := modifiableApplication(ctx)
+	if err != nil {
+		return err
+	}
+
+	var request types.CreateApplicationScopeRequest
+	if err := ctx.Bind().Body(&request); err != nil {
+		return err
+	}
+
+	name := strings.TrimSpace(request.Name)
+	if err := validateScopeName(star, ctx, application, name); err != nil {
+		return err
+	}
+
+	scope := &database.ApplicationScope{
+		ID:            database.CreateID(database.ApplicationScopeKey),
+		ApplicationID: application.ID,
+		Name:          name,
+		Description:   strings.TrimSpace(request.Description),
+		Requestable:   request.Requestable,
+		CreatedAt:     time.Now(),
+	}
+
+	if err := star.Database.CreateApplicationScope(ctx, scope); err != nil {
+		return err
+	}
+
+	return ctx.JSON(scope)
+}
+
+func updateApplicationScope(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	application, err := modifiableApplication(ctx)
+	if err != nil {
+		return err
+	}
+
+	scope := star.Database.GetApplicationScopeByID(ctx, ctx.Params("scope"))
+	if scope == nil || scope.ApplicationID != application.ID {
+		return fiber.NewError(404, "Scope not found")
+	}
+
+	var request types.UpdateApplicationScopeRequest
+	if err := ctx.Bind().Body(&request); err != nil {
+		return err
+	}
+
+	if request.Name != nil {
+		name := strings.TrimSpace(*request.Name)
+
+		if name != scope.Name {
+			if err := validateScopeName(star, ctx, application, name); err != nil {
+				return err
+			}
+
+			scope.Name = name
+		}
+	}
+
+	if request.Description != nil {
+		scope.Description = strings.TrimSpace(*request.Description)
+	}
+
+	if request.Requestable != nil {
+		scope.Requestable = *request.Requestable
+	}
+
+	if err := star.Database.UpdateApplicationScope(ctx, scope); err != nil {
+		return err
+	}
+
+	return ctx.JSON(scope)
+}
+
+func deleteApplicationScope(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	application, err := modifiableApplication(ctx)
+	if err != nil {
+		return err
+	}
+
+	scope := star.Database.GetApplicationScopeByID(ctx, ctx.Params("scope"))
+	if scope == nil || scope.ApplicationID != application.ID {
+		return fiber.NewError(404, "Scope not found")
+	}
+
+	if err := star.Database.DeleteApplicationScopeByID(ctx, scope.ID); err != nil {
 		return err
 	}
 
@@ -275,11 +498,14 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		return fiber.NewError(400, description)
 	}
 
-	scopes := strings.Split(request.Scope, " ")
-	validScopes, modified := openid.ValidateScopes(scopes)
-	if len(validScopes) == 0 {
+	scopes := strings.Fields(request.Scope)
+	resolution := openid.ResolveScopes(ctx, star.Database, application, scopes)
+
+	if len(resolution.Granted) == 0 {
 		return fiber.NewError(400, "None of the requested scopes are supported")
 	}
+
+	validScopes := resolution.Names()
 
 	var codeChallenge *string = nil
 	var codeChallengeMethod *string = nil
@@ -314,6 +540,6 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		Code:           authCode.Code,
 		State:          authCode.State,
 		Scopes:         validScopes,
-		ScopedModified: modified,
+		ScopedModified: len(resolution.Invalid) > 0,
 	})
 }

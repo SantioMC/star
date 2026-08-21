@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/mfa"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -14,10 +15,10 @@ import (
 )
 
 func mfaRouter(router fiber.Router) {
-	router.Get("/", getMfaFactors)
-	router.Delete("/totp", middleware.RequirePermission(permission.PermissionDeleteMFA), deleteTotp)
-	router.Post("/totp/enroll", middleware.RequirePermission(permission.PermissionEnrollMFA), enrollTotp)
-	router.Post("/totp/verify", middleware.RequirePermission(permission.PermissionEnrollMFA), verifyTotp)
+	router.Get("/", middleware.RequireScope(openid.ScopeUserMFARead), getMfaFactors)
+	router.Delete("/totp", middleware.RequireScope(openid.ScopeUserMFAWrite), middleware.RequirePermission(permission.PermissionDeleteMFA), deleteTotp)
+	router.Post("/totp/enroll", middleware.RequireScope(openid.ScopeUserMFAWrite), middleware.RequirePermission(permission.PermissionEnrollMFA), enrollTotp)
+	router.Post("/totp/verify", middleware.RequireScope(openid.ScopeUserMFAWrite), middleware.RequirePermission(permission.PermissionEnrollMFA), verifyTotp)
 }
 
 func getMfaFactors(ctx fiber.Ctx) error {

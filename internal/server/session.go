@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -10,11 +11,11 @@ import (
 )
 
 func sessionRouter(router fiber.Router) {
-	router.Get("/", getUserSessions)
-	router.Delete("/", middleware.RequirePermission(permission.PermissionDeleteSessions), invalidateUserSessions)
+	router.Get("/", middleware.RequireScope(openid.ScopeUserSessionsRead), getUserSessions)
+	router.Delete("/", middleware.RequireScope(openid.ScopeUserSessionsWrite), middleware.RequirePermission(permission.PermissionDeleteSessions), invalidateUserSessions)
 
-	router.Get("/:session", getUserSession)
-	router.Delete("/:session", middleware.RequirePermission(permission.PermissionDeleteSessions), invalidateUserSession)
+	router.Get("/:session", middleware.RequireScope(openid.ScopeUserSessionsRead), getUserSession)
+	router.Delete("/:session", middleware.RequireScope(openid.ScopeUserSessionsWrite), middleware.RequirePermission(permission.PermissionDeleteSessions), invalidateUserSession)
 }
 
 func getUserSessions(ctx fiber.Ctx) error {

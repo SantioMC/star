@@ -3,8 +3,9 @@ CREATE TABLE applications (
     id VARCHAR(64) PRIMARY KEY,
     kind VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    namespace VARCHAR(32) NOT NULL UNIQUE,
     application_url VARCHAR(255) NOT NULL,
-    client_id VARCHAR(255) NOT NULL,
+    client_id VARCHAR(255) NOT NULL UNIQUE,
     client_secret VARCHAR(255),
     internal BOOLEAN NOT NULL DEFAULT FALSE,
     token_duration INTEGER NOT NULL DEFAULT 3600,
@@ -13,6 +14,17 @@ CREATE TABLE applications (
     development_mode BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL
 );
+
+CREATE TABLE application_scopes (
+    id VARCHAR(64) PRIMARY KEY,
+    application_id VARCHAR(64) NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    name VARCHAR(128) NOT NULL UNIQUE,
+    description VARCHAR(255) NOT NULL,
+    requestable BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX application_scopes_application_lookup ON application_scopes (application_id);
 
 ALTER TABLE sessions ADD COLUMN application_id VARCHAR(64) REFERENCES applications(id) ON DELETE CASCADE;
 
@@ -39,4 +51,5 @@ CREATE INDEX authorization_codes_code_lookup ON authorization_codes (code);
 -- +goose Down
 DROP TABLE IF EXISTS authorization_codes;
 ALTER TABLE sessions DROP COLUMN application_id;
+DROP TABLE IF EXISTS application_scopes;
 DROP TABLE IF EXISTS applications;

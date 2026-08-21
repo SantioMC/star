@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/lib/pq"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -78,14 +79,17 @@ var providerPresets = []providerPreset{
 var defaultProviderScopes = []string{"openid", "profile", "email"}
 
 func providerRouter(router fiber.Router) {
-	router.Get("/", middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviders)
-	router.Post("/", middleware.RequirePermission(permission.PermissionAdminCreateProviders), createProvider)
+	readProviders := middleware.RequireScope(openid.ScopeAdminProvidersRead)
+	writeProviders := middleware.RequireScope(openid.ScopeAdminProvidersWrite)
 
-	router.Get("/presets", middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviderPresets)
+	router.Get("/", readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviders)
+	router.Post("/", writeProviders, middleware.RequirePermission(permission.PermissionAdminCreateProviders), createProvider)
 
-	router.Get("/:provider", middleware.RequirePermission(permission.PermissionAdminReadProviders), getProvider)
-	router.Patch("/:provider", middleware.RequirePermission(permission.PermissionAdminWriteProviders), updateProvider)
-	router.Delete("/:provider", middleware.RequirePermission(permission.PermissionAdminDeleteProviders), deleteProvider)
+	router.Get("/presets", readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviderPresets)
+
+	router.Get("/:provider", readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProvider)
+	router.Patch("/:provider", writeProviders, middleware.RequirePermission(permission.PermissionAdminWriteProviders), updateProvider)
+	router.Delete("/:provider", writeProviders, middleware.RequirePermission(permission.PermissionAdminDeleteProviders), deleteProvider)
 }
 
 func getProviders(ctx fiber.Ctx) error {

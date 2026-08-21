@@ -7,6 +7,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/models"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/state"
 )
 
@@ -15,6 +16,7 @@ func seedApplication(ctx context.Context, star *state.StarServer) error {
 		ID:              database.CreateID(database.ApplicationKey),
 		Kind:            database.ApplicationKindPublic,
 		Name:            "star",
+		Namespace:       openid.StarNamespace,
 		ApplicationURL:  star.Config.ServerURL,
 		ClientID:        "star",
 		ClientSecret:    nil,

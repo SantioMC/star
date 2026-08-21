@@ -77,6 +77,7 @@ const adminPermissions: star.StarPermission[] = [
 	'admin:role:read',
 	'application:read',
 	'admin:provider:read',
+	'admin:settings:read',
 ]
 
 export const hasAdminAccess = (accessToken: string | null = get(token)) => {
@@ -111,10 +112,12 @@ export const refreshAccessToken = async (): Promise<string | null> => {
 export interface JWTDetails {
 	sub: string
 	sid: string
+	aud: string[]
 	exp: number
 	iat: number
 	iss: string
 	naf: number
 	nbf: number
+	scope?: string
 	permissions: string[]
 }

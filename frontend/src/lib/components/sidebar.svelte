@@ -73,6 +73,13 @@
       href: '/admin/providers',
       category: 'admin',
       permission: 'admin:provider:read'
+    },
+    {
+      name: 'Settings',
+      icon: 'settings',
+      href: '/admin/settings',
+      category: 'admin',
+      permission: 'admin:settings:read'
     }
   ]
 

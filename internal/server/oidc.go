@@ -24,12 +24,10 @@ func getUserInfo(ctx fiber.Ctx) error {
 		return err
 	}
 
-	scopes := strings.Fields(jwt.Scope)
-	if jwt.Audience == star.DefaultApp.ID && len(scopes) == 0 {
-		scopes = openid.SupportedScopes
-	}
+	firstParty := slices.Contains(jwt.Audience, star.DefaultApp.ID)
+	scopes := openid.EffectiveScopes(strings.Fields(jwt.Scope), firstParty)
 
-	if !slices.Contains(scopes, openid.ScopeOpenID) {
+	if !openid.HasScope(scopes, openid.ScopeOpenID) {
 		ctx.Set(fiber.HeaderWWWAuthenticate, `Bearer error="insufficient_scope", error_description="The openid scope is required"`)
 		return fiber.NewError(403, "The openid scope is required to access userinfo")
 	}

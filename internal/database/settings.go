@@ -53,8 +53,9 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		`
 		UPDATE settings
 		SET allow_registration = $2, allow_logins = $3, password_settings = $4, email_code_length = $5
-		WHERE id = 1
+		WHERE id = $1
 		`,
+		settings.ID,
 		settings.AllowRegistration,
 		settings.AllowLogins,
 		settings.PasswordSettings,

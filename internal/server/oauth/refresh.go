@@ -63,6 +63,18 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		scope = requested
 	}
 
+	resolution := openid.ResolveScopes(ctx, star.Database, sessionApp, scope)
+	if len(scope) > 0 && len(resolution.Granted) == 0 {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidScope, "None of the scopes granted to this session are available anymore")
+	}
+
+	scope = resolution.Names()
+
+	user := star.Database.GetUserByID(ctx, current.UserID)
+	if user == nil {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for no longer exists")
+	}
+
 	refreshed, err := session.RefreshSession(ctx, star, current, sessionApp.SessionDuration.Duration())
 	if err != nil {
 		return err
@@ -75,10 +87,14 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		}
 	}
 
+	claims := openid.UserClaims(ctx, star.Database, user, scope)
 	accessToken, err := token.Create(ctx, star, refreshed, &token.Options{
+		Application: sessionApp,
 		Duration:    sessionApp.TokenDuration.Duration(),
 		Scope:       scope,
+		Audience:    resolution.Audiences(sessionApp.ID, star.DefaultApp.ID),
 		Permissions: permissions,
+		Claims:      claims,
 	})
 
 	if err != nil {
@@ -93,14 +109,7 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		Scope:        strings.Join(scope, " "),
 	}
 
-	if slices.Contains(scope, openid.ScopeOpenID) {
-		user := star.Database.GetUserByID(ctx, refreshed.UserID)
-		if user == nil {
-			return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for no longer exists")
-		}
-
-		claims := openid.UserClaims(ctx, star.Database, user, scope)
-
+	if openid.HasScope(scope, openid.ScopeOpenID) {
 		idToken, err := token.CreateIDToken(star, refreshed, sessionApp, claims, nil)
 		if err != nil {
 			return err

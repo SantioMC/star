@@ -33,7 +33,41 @@ export type StarPermission =
   | "admin:provider:read"
   | "admin:provider:create"
   | "admin:provider:write"
-  | "admin:provider:delete";
+  | "admin:provider:delete"
+  | "admin:settings:read"
+  | "admin:settings:write";
+
+// Scopes issued by star itself, purely for typescript typings
+export type StarScope =
+  | "openid"
+  | "offline_access"
+  | "profile"
+  | "oidc"
+  | "email"
+  | "roles"
+  | "star:user:read"
+  | "star:user:write"
+  | "star:user:password:write"
+  | "star:user:email:read"
+  | "star:user:email:write"
+  | "star:user:roles:read"
+  | "star:user:sessions:read"
+  | "star:user:sessions:write"
+  | "star:user:mfa:read"
+  | "star:user:mfa:write"
+  | "star:user:applications:authorize"
+  | "star:applications:read"
+  | "star:applications:write"
+  | "star:applications:delete"
+  | "star:admin:users:read"
+  | "star:admin:users:write"
+  | "star:admin:users:delete"
+  | "star:admin:roles:read"
+  | "star:admin:roles:write"
+  | "star:admin:providers:read"
+  | "star:admin:providers:write"
+  | "star:admin:settings:read"
+  | "star:admin:settings:write";
 
 export const api = ky.extend({
   prefixUrl: API_URL,
@@ -166,9 +200,20 @@ export const refreshToken = async (refreshToken: string) => {
     .catch((e) => orTypedError<OAuthTokenError>(e));
 };
 
-export const getOAuthApplication = (clientId: string) => {
+export const getOAuthApplication = (
+  clientId: string,
+  scope: string | null = null,
+) => {
+  const searchParams = new URLSearchParams();
+  if (scope) {
+    searchParams.set("scope", scope);
+  }
+
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+
   return api
-    .get(`oauth/application/${encodeURIComponent(clientId)}`)
+    .get(`oauth/application/${encodeURIComponent(clientId)}${suffix}`)
     .json<PublicApplication>()
     .catch((_) => null);
 };
@@ -438,6 +483,46 @@ export const updateApplication = async (app: string, changes: AppChanges) => {
     .catch(orError);
 };
 
+export const getApplicationScopes = async (app: string) => {
+  return api
+    .get(`api/app/${encodeURIComponent(app)}/scopes`)
+    .json<ApplicationScope[]>()
+    .catch(() => [] as ApplicationScope[]);
+};
+
+export const createApplicationScope = async (
+  app: string,
+  data: CreateApplicationScopeRequest,
+) => {
+  return api
+    .post(`api/app/${encodeURIComponent(app)}/scopes`, { json: data })
+    .json<ApplicationScope>()
+    .catch(orError);
+};
+
+export const updateApplicationScope = async (
+  app: string,
+  scope: string,
+  changes: UpdateApplicationScopeRequest,
+) => {
+  return api
+    .patch(
+      `api/app/${encodeURIComponent(app)}/scopes/${encodeURIComponent(scope)}`,
+      { json: changes },
+    )
+    .json<ApplicationScope>()
+    .catch(orError);
+};
+
+export const deleteApplicationScope = async (app: string, scope: string) => {
+  return api
+    .delete(
+      `api/app/${encodeURIComponent(app)}/scopes/${encodeURIComponent(scope)}`,
+    )
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
 export const rotateApplicationSecret = async (app: string) => {
   return api
     .post(`api/app/${encodeURIComponent(app)}/rotate`)
@@ -556,6 +641,22 @@ export const deleteKey = async (id: string) => {
     .catch(orError);
 };
 
+export const getServerSettings = async () => {
+  return api
+    .get("api/settings")
+    .json<ServerSettings>()
+    .catch((_) => null);
+};
+
+export const updateServerSettings = async (
+  changes: UpdateServerSettingsRequest,
+) => {
+  return api
+    .patch("api/settings", { json: changes })
+    .json<ServerSettings>()
+    .catch(orError);
+};
+
 export interface StarError {
   error: boolean;
   status: number;
@@ -585,6 +686,64 @@ export interface PublicApplication {
   id: string;
   name: string;
   implicit: boolean;
+  scopes: PublicScope[];
+  invalid_scopes: string[];
+}
+
+export interface PublicScope {
+  scope: string;
+  description: string;
+  application: string;
+}
+
+export interface ApplicationScope {
+  id: string;
+  application_id: string;
+  name: string;
+  description: string;
+  requestable: boolean;
+  created_at: string;
+}
+
+export interface CreateApplicationScopeRequest {
+  name: string;
+  description: string;
+  requestable?: boolean;
+}
+
+export interface UpdateApplicationScopeRequest {
+  name?: string;
+  description?: string;
+  requestable?: boolean;
+}
+
+export interface BuiltinScope {
+  name: string;
+  description: string;
+  aliases?: string[];
+  restricted: boolean;
+}
+
+export interface PasswordSettings {
+  min_length: number;
+  max_length: number;
+  min_symbols: number;
+  min_upper: number;
+  min_lower: number;
+}
+
+export interface ServerSettings {
+  allow_registration: boolean;
+  allow_logins: boolean;
+  email_code_length: number;
+  password_settings: PasswordSettings;
+}
+
+export interface UpdateServerSettingsRequest {
+  allow_registration?: boolean;
+  allow_logins?: boolean;
+  email_code_length?: number;
+  password_settings?: Partial<PasswordSettings>;
 }
 
 export interface AuthorizationCodeResponse {
@@ -635,6 +794,7 @@ export interface CreateAppRequest {
   kind: "public" | "confidential";
   url: string;
   client_id?: string;
+  namespace?: string;
 }
 
 export interface CreateRoleRequest {
@@ -679,6 +839,7 @@ export interface AppChanges {
   kind?: "public" | "confidential";
   url?: string;
   client_id?: string;
+  namespace?: string;
   token_duration?: number;
   session_duration?: number;
   redirect_uris?: string[];
@@ -766,6 +927,7 @@ export interface AdminApplication {
   id: string;
   kind: "public" | "confidential";
   name: string;
+  namespace: string;
   application_url: string;
   client_id: string;
   client_secret: string | null;
@@ -774,6 +936,8 @@ export interface AdminApplication {
   session_duration: number;
   redirect_uris: string[];
   development_mode: boolean;
+  scopes: ApplicationScope[];
+  builtin_scopes?: BuiltinScope[];
   created_at: string;
 }
 

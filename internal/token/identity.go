@@ -29,7 +29,8 @@ func CreateIDToken(
 		fields["nonce"] = *nonce
 	}
 
-	return createJWT(server, JWTBody{
+	return createJWT(server, JWTOptions{
+		Type:     TypeJWT,
 		Duration: application.TokenDuration.Duration(),
 		Fields:   fields,
 	})

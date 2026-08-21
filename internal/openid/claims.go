@@ -2,7 +2,6 @@ package openid
 
 import (
 	"context"
-	"slices"
 	"strings"
 
 	"github.com/tubblelive/star/internal/database"
@@ -21,8 +20,8 @@ func UserClaims(
 		"sub": user.ID,
 	}
 
-	wantsProfile := slices.Contains(scopes, ScopeProfile)
-	wantsEmail := slices.Contains(scopes, ScopeEmail)
+	wantsProfile := HasScope(scopes, ScopeUserRead)
+	wantsEmail := HasScope(scopes, ScopeUserEmailRead)
 
 	address := ""
 	if wantsProfile || wantsEmail {
@@ -54,7 +53,7 @@ func UserClaims(
 		}
 	}
 
-	if slices.Contains(scopes, ScopeRoles) {
+	if HasScope(scopes, ScopeUserRolesRead) {
 		roles := db.GetUserRoles(ctx, user.ID)
 		names := make([]string, len(roles))
 

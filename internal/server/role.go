@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -15,14 +16,17 @@ import (
 )
 
 func roleRouter(router fiber.Router) {
-	router.Get("/", middleware.RequirePermission(permission.PermissionAdminReadRoles), getRoles)
-	router.Post("/", middleware.RequirePermission(permission.PermissionAdminCreateRoles), createRole)
+	readRoles := middleware.RequireScope(openid.ScopeAdminRolesRead)
+	writeRoles := middleware.RequireScope(openid.ScopeAdminRolesWrite)
 
-	router.Get("/permissions", middleware.RequirePermission(permission.PermissionAdminReadRoles), getAvailablePermissions)
+	router.Get("/", readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getRoles)
+	router.Post("/", writeRoles, middleware.RequirePermission(permission.PermissionAdminCreateRoles), createRole)
 
-	router.Get("/:role", middleware.RequirePermission(permission.PermissionAdminReadRoles), getRole)
-	router.Patch("/:role", middleware.RequirePermission(permission.PermissionAdminWriteRoles), updateRole)
-	router.Delete("/:role", middleware.RequirePermission(permission.PermissionAdminDeleteRoles), deleteRole)
+	router.Get("/permissions", readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getAvailablePermissions)
+
+	router.Get("/:role", readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getRole)
+	router.Patch("/:role", writeRoles, middleware.RequirePermission(permission.PermissionAdminWriteRoles), updateRole)
+	router.Delete("/:role", writeRoles, middleware.RequirePermission(permission.PermissionAdminDeleteRoles), deleteRole)
 }
 
 func getAvailablePermissions(ctx fiber.Ctx) error {

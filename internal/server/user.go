@@ -14,6 +14,7 @@ import (
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/password"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -27,22 +28,23 @@ func userRouter(router fiber.Router) {
 	router.Get(
 		"/",
 		middleware.RequireAuth,
+		middleware.RequireScope(openid.ScopeAdminUsersRead),
 		middleware.RequirePermission(permission.PermissionAdminReadUsers),
 		getAllUsers,
 	)
 
 	router.Post("/register", middleware.RequireCaptcha, registerUser)
 
-	router.Post("/password/change", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionChangePassword), changePassword)
-	router.Delete("/password", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionChangePassword), deletePassword)
+	router.Post("/password/change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserPasswordWrite), middleware.RequirePermission(permission.PermissionChangePassword), changePassword)
+	router.Delete("/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserPasswordWrite), middleware.RequirePermission(permission.PermissionChangePassword), deletePassword)
 
 	router.Route("/login", loginRouter)
 
-	router.Get("/:user", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUser)
-	router.Patch("/:user", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminUpdateUser)
-	router.Delete("/:user", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminDeleteUser)
-	router.Delete("/:user/sessions", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSessions)
-	router.Post("/:user/password", middleware.RequireAuth, middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
+	router.Get("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUser)
+	router.Patch("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminUpdateUser)
+	router.Delete("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminDeleteUser)
+	router.Delete("/:user/sessions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSessions)
+	router.Post("/:user/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
 }
 
 // misc: maybe move this to transformer?

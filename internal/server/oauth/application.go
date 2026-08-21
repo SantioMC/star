@@ -1,14 +1,25 @@
 package oauth
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/server/common"
 )
 
+type PublicScope struct {
+	Scope       string `json:"scope"`
+	Description string `json:"description"`
+	Application string `json:"application"`
+}
+
 type PublicApplication struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Implicit bool   `json:"implicit"`
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	Implicit      bool          `json:"implicit"`
+	Scopes        []PublicScope `json:"scopes"`
+	InvalidScopes []string      `json:"invalid_scopes"`
 }
 
 func Application(ctx fiber.Ctx) error {
@@ -19,9 +30,32 @@ func Application(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "Application not found")
 	}
 
+	requested := strings.Fields(ctx.Query("scope"))
+	if len(requested) == 0 {
+		requested = []string{openid.ScopeOpenID}
+	}
+
+	resolution := openid.ResolveScopes(ctx, star.Database, application, requested)
+	scopes := make([]PublicScope, len(resolution.Granted))
+
+	for idx, granted := range resolution.Granted {
+		owner := granted.ApplicationName
+		if owner == "" {
+			owner = star.DefaultApp.Name
+		}
+
+		scopes[idx] = PublicScope{
+			Scope:       granted.Scope,
+			Description: granted.Description,
+			Application: owner,
+		}
+	}
+
 	return ctx.JSON(PublicApplication{
-		ID:       application.ID,
-		Name:     application.Name,
-		Implicit: application.Internal,
+		ID:            application.ID,
+		Name:          application.Name,
+		Implicit:      application.Internal,
+		Scopes:        scopes,
+		InvalidScopes: resolution.Invalid,
 	})
 }

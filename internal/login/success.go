@@ -42,6 +42,7 @@ func CreateSuccessfulStage(
 	}
 
 	accessToken, err := token.Create(ctx, star, session, &token.Options{
+		Application: star.DefaultApp,
 		Duration:    time.Hour,
 		Permissions: permissions,
 	})

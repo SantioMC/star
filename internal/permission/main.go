@@ -15,4 +15,5 @@ var BuiltinPermissions = []PermissionDefinition{
 	PermissionAdminReadUsers, PermissionAdminWriteUsers, PermissionAdminDeleteUsers,
 	PermissionAdminReadRoles, PermissionAdminCreateRoles, PermissionAdminWriteRoles, PermissionAdminDeleteRoles,
 	PermissionAdminReadProviders, PermissionAdminCreateProviders, PermissionAdminWriteProviders, PermissionAdminDeleteProviders,
+	PermissionAdminReadSettings, PermissionAdminWriteSettings,
 }
