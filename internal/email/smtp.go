@@ -1,6 +1,8 @@
 package email
 
 import (
+	"html/template"
+
 	gomail "gopkg.in/gomail.v2"
 )
 
@@ -29,17 +31,20 @@ func NewSMTPProvider(
 	}
 }
 
-func (provider *SMTPProvider) Send(to string, subject string, body string, options map[string]string) error {
+func (provider *SMTPProvider) Send(to string, subject string, body *template.Template, data any) error {
+	html, err := Render(body, data)
+	if err != nil {
+		return err
+	}
+
 	message := gomail.NewMessage()
 
 	message.SetHeader("From", provider.sender)
 	message.SetHeader("To", to)
 	message.SetHeader("Subject", subject)
-	message.SetBody("text/html", parse(body, options))
+	message.SetBody("text/html", html)
 
-	err := provider.dialer.DialAndSend(message)
-
-	return err
+	return provider.dialer.DialAndSend(message)
 }
 
 func (provider *SMTPProvider) GetSender() string {

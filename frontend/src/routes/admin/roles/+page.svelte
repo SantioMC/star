@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import * as star from "$lib/star";
@@ -79,7 +80,7 @@
 
 <PageHeader
     title="Roles & Permissions"
-    description="Star uses role-based access control, grant permissions to users through roles"
+    description="{$branding.name} uses role-based access control, grant permissions to users through roles"
 >
     {#snippet actions()}
         {#if canCreate}

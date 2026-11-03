@@ -3,11 +3,11 @@ package server
 import (
 	"errors"
 	"log/slog"
-	"net/url"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/emails"
+	"github.com/tubblelive/star/internal/branding"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/openid"
@@ -79,19 +79,16 @@ func addUserEmail(ctx fiber.Ctx) error {
 }
 
 func sendVerificationEmail(star *state.StarServer, name string, address string, code string) {
-	values := url.Values{}
-	values.Set("email", address)
-	values.Set("code", code)
-
-	verificationURL := star.Config.ServerURL + "/verify?" + values.Encode()
+	verificationURL := emails.VerificationURL(star.Config.ServerURL, address, code)
 	err := star.Email.Send(
 		address,
 		"Verify your email address",
-		emails.VerificationEmail,
-		map[string]string{
-			"Name":            name,
-			"VerificationURL": verificationURL,
-			"Code":            code,
+		emails.Verification,
+		emails.VerificationData{
+			Brand:           branding.ForEmail(star.Branding.Load(), star.Config.ServerURL),
+			Name:            name,
+			VerificationURL: verificationURL,
+			Code:            code,
 		},
 	)
 

@@ -23,6 +23,7 @@ func UpdateCache(state *state.StarServer) {
 	ctx := context.Background()
 	UpdateKeys(ctx, state)
 	UpdateSettings(ctx, state)
+	UpdateBranding(ctx, state)
 	UpdateApplication(ctx, state)
 	UpdateRevocations(ctx, state)
 }

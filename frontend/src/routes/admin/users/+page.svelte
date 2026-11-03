@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import Badge from "@/components/badge.svelte";
@@ -59,7 +60,7 @@
 
 <PageHeader
     title="User Directory"
-    description="View and manage every user registered with Star"
+    description="View and manage every user registered with {$branding.name}"
 />
 
 <SearchInput

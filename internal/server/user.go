@@ -37,6 +37,7 @@ func userRouter(router fiber.Router) {
 
 	router.Post("/password/change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserPasswordWrite), middleware.RequirePermission(permission.PermissionChangePassword), changePassword)
 	router.Delete("/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserPasswordWrite), middleware.RequirePermission(permission.PermissionChangePassword), deletePassword)
+	router.Route("/password/reset", passwordResetRouter)
 
 	router.Route("/login", loginRouter)
 
@@ -207,32 +208,30 @@ func changePassword(ctx fiber.Ctx) error {
 		if err := star.Database.UpdateAccount(ctx, account); err != nil {
 			return err
 		}
+	} else {
+		// Create if we have no internal account
+		email := star.Database.GetPrimaryEmail(ctx, user.ID)
+		if email == nil {
+			return errors.New("no primary email found for user")
+		}
 
-		return ctx.JSON(fiber.Map{
-			"success": true,
-		})
+		account = &database.Account{
+			ID:          database.CreateID(database.AccountKey),
+			Type:        "internal",
+			UserID:      user.ID,
+			Email:       &email.Email,
+			Name:        &user.Name,
+			Password:    &hashed,
+			PasswordAlg: alg,
+			CreatedAt:   time.Now(),
+		}
+
+		if err := star.Database.CreateAccount(ctx, account); err != nil {
+			return err
+		}
 	}
 
-	// Create if we have no internal account
-	email := star.Database.GetPrimaryEmail(ctx, user.ID)
-	if email == nil {
-		return errors.New("no primary email found for user")
-	}
-
-	account = &database.Account{
-		ID:          database.CreateID(database.AccountKey),
-		Type:        "internal",
-		UserID:      user.ID,
-		Email:       &email.Email,
-		Name:        &user.Name,
-		Password:    &hashed,
-		PasswordAlg: alg,
-		CreatedAt:   time.Now(),
-	}
-
-	if err := star.Database.CreateAccount(ctx, account); err != nil {
-		return err
-	}
+	notifyPasswordChanged(ctx, star, user.ID, star.ClientIP(ctx))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -579,6 +578,7 @@ func adminSetPassword(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	notifyPasswordChanged(ctx, star, user.ID, "")
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

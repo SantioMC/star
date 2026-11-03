@@ -4,7 +4,7 @@
     import { page } from "$app/state";
     import * as star from "$lib/star";
     import Button from "@/components/button.svelte";
-    import Card from "@/components/card.svelte";
+    import AuthShell from "@/components/auth-shell.svelte";
     import Icon from "@/components/icon.svelte";
     import { isLoggedIn, requestLogin } from "@/index";
     import { onMount } from "svelte";
@@ -54,42 +54,40 @@
     });
 </script>
 
-<div class="h-full w-full flex items-center justify-center px-4">
-    <Card class="-my-4 w-full sm:w-sm">
-        {#if error}
-            <div class="flex flex-col">
-                <h1 class="text-lg">
-                    {ownerRequired
-                        ? "Sign in to verify this email"
-                        : "Failed to verify your account"}
-                </h1>
-                <p
-                    class={ownerRequired
-                        ? "text-muted text-sm mt-1"
-                        : "text-red-300 text-sm mt-1"}
-                >
-                    {error}
-                </p>
-            </div>
-            <div class="mt-6 flex">
-                {#if ownerRequired}
-                    <Button class="w-full" onclick={signIn}>Sign in</Button>
-                {:else}
-                    <Button class="w-full" onclick={() => goto("/login")}>
-                        Go to Login
-                    </Button>
-                {/if}
-            </div>
-        {:else if loading}
-            <div class="flex flex-col">
-                <h1 class="text-lg">Verifying your account</h1>
-                <p class="text-muted text-sm">
-                    One moment while we verify your account...
-                </p>
-            </div>
-            <div class="flex items-center justify-center h-40 w-full">
-                <Icon icon="loader-2" class="animate-spin text-3xl text-muted" />
-            </div>
-        {/if}
-    </Card>
-</div>
+<AuthShell>
+    {#if error}
+        <div class="flex flex-col">
+            <h1 class="text-lg">
+                {ownerRequired
+                    ? "Sign in to verify this email"
+                    : "Failed to verify your account"}
+            </h1>
+            <p
+                class={ownerRequired
+                    ? "text-muted text-sm mt-1"
+                    : "text-red-300 text-sm mt-1"}
+            >
+                {error}
+            </p>
+        </div>
+        <div class="mt-6 flex">
+            {#if ownerRequired}
+                <Button class="w-full" onclick={signIn}>Sign in</Button>
+            {:else}
+                <Button class="w-full" onclick={() => goto("/login")}>
+                    Go to Login
+                </Button>
+            {/if}
+        </div>
+    {:else if loading}
+        <div class="flex flex-col">
+            <h1 class="text-lg">Verifying your account</h1>
+            <p class="text-muted text-sm">
+                One moment while we verify your account...
+            </p>
+        </div>
+        <div class="flex items-center justify-center h-40 w-full">
+            <Icon icon="loader-2" class="animate-spin text-3xl text-muted" />
+        </div>
+    {/if}
+</AuthShell>

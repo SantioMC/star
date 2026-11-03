@@ -24,6 +24,19 @@ type ChangePasswordRequest struct {
 	NewPassword string  `json:"new_password" validate:"required"`
 }
 
+type RequestPasswordResetRequest struct {
+	Email string `json:"email" validate:"required,email,max=255"`
+}
+
+type VerifyPasswordResetRequest struct {
+	Token string `json:"token" validate:"required,max=64"`
+}
+
+type CompletePasswordResetRequest struct {
+	Token    string `json:"token" validate:"required,max=64"`
+	Password string `json:"password" validate:"required"`
+}
+
 type UpdateUserRequest struct {
 	Username  *string `json:"username" validate:"omitempty"`
 	FirstName *string `json:"first_name" validate:"omitempty,max=255"`

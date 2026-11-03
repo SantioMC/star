@@ -1,6 +1,8 @@
 package email
 
 import (
+	"html/template"
+
 	"github.com/resend/resend-go/v3"
 )
 
@@ -13,19 +15,25 @@ func NewResendProvider(sender string, apiKey string) *ResendProvider {
 	client := resend.NewClient(apiKey)
 
 	return &ResendProvider{
+		sender: sender,
 		client: client,
 	}
 }
 
-func (provider *ResendProvider) Send(to string, subject string, body string, options map[string]string) error {
+func (provider *ResendProvider) Send(to string, subject string, body *template.Template, data any) error {
+	html, err := Render(body, data)
+	if err != nil {
+		return err
+	}
+
 	params := &resend.SendEmailRequest{
 		From:    provider.sender,
 		To:      []string{to},
-		Html:    parse(body, options),
+		Html:    html,
 		Subject: subject,
 	}
 
-	_, err := provider.client.Emails.Send(params)
+	_, err = provider.client.Emails.Send(params)
 	return err
 }
 

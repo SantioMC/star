@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import Card from "@/components/card.svelte";
     import CheckboxCard from "@/components/checkbox-card.svelte";
     import Notice from "@/components/notice.svelte";
@@ -29,7 +30,7 @@
 
 <SettingsForm
     title="Access Settings"
-    description="Control who can sign up and sign in to this Star instance"
+    description="Control who can sign up and sign in to this {$branding.name} instance"
     {dirty}
     onsave={save}
     ondiscard={discard}
@@ -37,7 +38,7 @@
     <Card
         title="Registration & Logins"
         icon="door-enter"
-        description="Applies to every application authenticating through Star, including this dashboard."
+        description="Applies to every application authenticating through {$branding.name}, including this dashboard."
         class="flex flex-col gap-4"
     >
         <div class="flex flex-col gap-2">

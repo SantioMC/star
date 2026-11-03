@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import * as star from "$lib/star";
@@ -324,7 +325,7 @@
     <Card
         title="Roles"
         icon="shield"
-        description="Roles grant this user permissions across Star and connected applications."
+        description="Roles grant this user permissions across {$branding.name} and connected applications."
         class="flex flex-col gap-4"
     >
         {#snippet actions()}

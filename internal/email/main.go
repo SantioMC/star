@@ -1,23 +1,24 @@
 package email
 
 import (
-	"html"
-	"strings"
+	"bytes"
+	"html/template"
 
 	"github.com/tubblelive/star/internal/cryptography"
 )
 
 type EmailProvider interface {
 	GetSender() string
-	Send(to string, subject string, body string, options map[string]string) error
+	Send(to string, subject string, body *template.Template, data any) error
 }
 
-func parse(body string, options map[string]string) string {
-	for key, value := range options {
-		body = strings.ReplaceAll(body, "{{"+key+"}}", html.EscapeString(value))
+func Render(body *template.Template, data any) (string, error) {
+	var buffer bytes.Buffer
+	if err := body.Execute(&buffer, data); err != nil {
+		return "", err
 	}
 
-	return body
+	return buffer.String(), nil
 }
 
 func CreateCode(length int) string {

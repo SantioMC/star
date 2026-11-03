@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import Button from "./button.svelte";
     import Hidden from "./hidden.svelte";
     import Modal from "./modal.svelte";
@@ -23,7 +24,7 @@
         <div class="flex flex-col gap-1 pr-8">
             <h1 class="text-xl font-semibold">Save your client secret</h1>
             <h2 class="text-sm text-muted">
-                Star only stores a hash of this secret, so it can not be shown
+                {$branding.name} only stores a hash of this secret, so it can not be shown
                 again. Rotate the secret if it is ever lost.
             </h2>
         </div>

@@ -18,6 +18,7 @@ export const API_URL = env.PUBLIC_API_URL ?? "/";
 export type StarPermission =
   | "*"
   | "user:password:write"
+  | "user:password:reset"
   | "user:application:authorize"
   | "user:application:revoke"
   | "user:email:read"
@@ -376,6 +377,37 @@ export const verifyEmail = async (email: string, code: string) => {
   return api
     .post(`api/email/verify`, {
       json: { email, code },
+    })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
+export const requestPasswordReset = async (email: string, captcha?: string) => {
+  return api
+    .post(`api/user/password/reset`, {
+      json: { email },
+      headers: captcha ? { "X-Captcha-Token": captcha } : {},
+    })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
+export const verifyPasswordReset = async (token: string) => {
+  return api
+    .post(`api/user/password/reset/verify`, {
+      json: { token },
+    })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
+export const completePasswordReset = async (
+  token: string,
+  password: string,
+) => {
+  return api
+    .post(`api/user/password/reset/complete`, {
+      json: { token, password },
     })
     .json<{ success: boolean }>()
     .catch(orError);
@@ -869,6 +901,41 @@ export const updateServerSettings = async (
     .catch(orError);
 };
 
+export const getBranding = async () => {
+  return api
+    .get("api/branding")
+    .json<Branding>()
+    .catch((_) => null);
+};
+
+export const updateBranding = async (changes: UpdateBrandingRequest) => {
+  return api
+    .patch("api/branding", { json: changes })
+    .json<Branding>()
+    .catch(orError);
+};
+
+export const uploadBrandingLogo = async (logo: Blob) => {
+  return api
+    .put("api/branding/logo", { body: logo })
+    .json<Branding>()
+    .catch(orError);
+};
+
+export const deleteBrandingLogo = async () => {
+  return api.delete("api/branding/logo").json<Branding>().catch(orError);
+};
+
+export const createEmailPreview = async (request: EmailPreviewRequest) => {
+  return api
+    .post("api/branding/preview", { json: request })
+    .json<{ ticket: string }>()
+    .catch(orError);
+};
+
+export const getEmailPreviewUrl = (ticket: string) =>
+  `${API_URL}/api/branding/preview?ticket=${encodeURIComponent(ticket)}`;
+
 export interface StarError {
   error: boolean;
   status: number;
@@ -976,6 +1043,39 @@ export interface UpdateServerSettingsRequest {
   allow_logins?: boolean;
   email_code_length?: number;
   password_settings?: Partial<PasswordSettings>;
+}
+
+export type BrandingLayout = "centered" | "split" | "minimal";
+
+export interface Branding {
+  name: string;
+  accent_color: string;
+  heading_font: string;
+  body_font: string;
+  layout: BrandingLayout;
+  logo_url: string | null;
+  support_email: string | null;
+  privacy_url: string | null;
+  terms_url: string | null;
+}
+
+export type UpdateBrandingRequest = Partial<
+  Omit<Branding, "logo_url" | "support_email" | "privacy_url" | "terms_url">
+> & {
+  support_email?: string;
+  privacy_url?: string;
+  terms_url?: string;
+};
+
+export type EmailTemplate =
+  | "verification"
+  | "password-reset"
+  | "password-changed";
+
+export interface EmailPreviewRequest {
+  template: EmailTemplate;
+  branding?: UpdateBrandingRequest;
+  remove_logo?: boolean;
 }
 
 export interface AuthorizationCodeResponse {

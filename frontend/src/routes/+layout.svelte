@@ -1,6 +1,7 @@
 <script lang="ts">
     import { page } from "$app/state";
     import favicon from "$lib/assets/favicon.svg";
+    import { branding, loadBranding } from "@/branding";
     import { Toaster } from "@/components/ui/sonner";
     import { isLoggedIn, restoreSession } from "@/index";
     import { onMount } from "svelte";
@@ -12,13 +13,15 @@
         "/login",
         "/register",
         "/verify",
+        "/forgot-password",
+        "/reset-password",
         "/oauth/authorize",
     ];
 
     let ready = $state(false);
 
     onMount(async () => {
-        await restoreSession();
+        await Promise.all([restoreSession(), loadBranding()]);
 
         if (!PUBLIC_ROUTES.includes(page.url.pathname) && !isLoggedIn()) {
             location.href = "/login";
@@ -29,7 +32,10 @@
     });
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head>
+    <title>{$branding.name}</title>
+    <link rel="icon" href={$branding.logo_url ?? favicon} />
+</svelte:head>
 <Toaster
     position="bottom-right"
     duration={3000}

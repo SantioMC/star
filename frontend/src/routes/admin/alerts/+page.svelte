@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import * as star from "$lib/star";
@@ -71,7 +72,7 @@
 
 <PageHeader
     title="Security Alerts"
-    description="Events Star detected that should never happen during normal use and need review"
+    description="Events {$branding.name} detected that should never happen during normal use and need review"
 >
     {#snippet actions()}
         <Button

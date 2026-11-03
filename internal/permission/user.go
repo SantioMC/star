@@ -6,6 +6,12 @@ var PermissionChangePassword = PermissionDefinition{
 	Default:     true,
 }
 
+var PermissionResetPassword = PermissionDefinition{
+	Name:        "user:password:reset",
+	Description: "Allows resetting the user's password through a link sent to a verified email",
+	Default:     true,
+}
+
 var PermissionCreateAuthorization = PermissionDefinition{
 	Name:        "user:application:authorize",
 	Description: "Allows the user to authorize an application",

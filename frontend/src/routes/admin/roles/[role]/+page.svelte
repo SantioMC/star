@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import * as star from "$lib/star";
@@ -241,7 +242,7 @@
         </Notice>
     {:else if role.internal}
         <Notice icon="lock" title="Built-in role.">
-            This role is managed by Star and can not be modified or deleted.
+            This role is managed by {$branding.name} and can not be modified or deleted.
         </Notice>
     {/if}
 

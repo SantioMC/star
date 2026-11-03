@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import * as star from "$lib/star";
@@ -183,7 +184,7 @@
     <Card
         title="Credentials"
         icon="key"
-        description="The OAuth client issued to Star by this provider."
+        description="The OAuth client issued to {$branding.name} by this provider."
         class="flex flex-col gap-4"
     >
         {#snippet actions()}
@@ -243,7 +244,7 @@
         <Card
             title="Endpoints"
             icon="link"
-            description="The OAuth and OpenID Connect endpoints Star calls for this provider."
+            description="The OAuth and OpenID Connect endpoints {$branding.name} calls for this provider."
             class="flex flex-col gap-4"
         >
             <dl class="flex flex-col gap-4">

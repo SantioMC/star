@@ -41,7 +41,7 @@
     }: ButtonOptions | AnchorOptions = $props();
 
     const variants = {
-        primary: "bg-primary text-[#111] not-disabled:hover:bg-primary/80",
+        primary: "bg-primary text-primary-foreground not-disabled:hover:bg-primary/80",
         secondary:
             "bg-transparent border border-background-200 text-foreground not-disabled:hover:bg-background-200",
         danger: "bg-transparent border border-red-300/80 text-foreground not-disabled:hover:bg-red-400/30 text-red-300",

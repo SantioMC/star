@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import {
@@ -93,7 +94,7 @@
 
 <PageHeader
     title="Applications"
-    description="Clients allowed to authenticate users registered with Star"
+    description="Clients allowed to authenticate users registered with {$branding.name}"
 >
     {#snippet actions()}
         {#if canCreate}
@@ -198,7 +199,7 @@
             <div class="flex flex-col gap-1 pr-8">
                 <h1 class="text-xl font-semibold">Create application</h1>
                 <h2 class="text-sm text-muted">
-                    Register a new client that can authenticate users with Star.
+                    Register a new client that can authenticate users with {$branding.name}.
                 </h2>
             </div>
 

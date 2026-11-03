@@ -15,6 +15,10 @@ func Seed(ctx context.Context, star *state.StarServer) error {
 		return err
 	}
 
+	if err := seedBranding(ctx, star); err != nil {
+		return err
+	}
+
 	if err := seedKeys(ctx, star); err != nil {
 		return err
 	}

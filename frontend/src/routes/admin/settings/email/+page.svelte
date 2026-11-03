@@ -1,12 +1,17 @@
 <script lang="ts">
+    import { branding } from "@/branding";
+    import * as star from "$lib/star";
     import Card from "@/components/card.svelte";
+    import EmailPreview from "@/components/email-preview.svelte";
     import NumberField from "@/components/number-field.svelte";
+    import Segmented from "@/components/segmented.svelte";
     import SettingsForm from "@/components/settings-form.svelte";
     import { getSettingsContext } from "../context.svelte";
 
     const settings = getSettingsContext();
 
     let codeLength = $state(String(settings.current!.email_code_length));
+    let template = $state<star.EmailTemplate>("verification");
 
     const parsedLength = $derived(Number(codeLength));
     const dirty = $derived(
@@ -26,7 +31,7 @@
 
 <SettingsForm
     title="Email Settings"
-    description="Configure how Star verifies email addresses"
+    description="Configure how {$branding.name} verifies email addresses and preview the emails it sends"
     {dirty}
     {issue}
     onsave={save}
@@ -47,4 +52,26 @@
             />
         </div>
     </Card>
+
+    {#snippet preview()}
+        <Card
+            title="Email Templates"
+            icon="mail-opened"
+            description="Example emails with sample data, styled with the current branding."
+        >
+            <div class="mt-6">
+                <Segmented
+                    bind:value={template}
+                    label="Email template"
+                    options={[
+                        { value: "verification", label: "Verification" },
+                        { value: "password-reset", label: "Password Reset" },
+                        { value: "password-changed", label: "Password Changed" },
+                    ]}
+                />
+            </div>
+
+            <EmailPreview {template} class="mt-4 h-[720px]" />
+        </Card>
+    {/snippet}
 </SettingsForm>

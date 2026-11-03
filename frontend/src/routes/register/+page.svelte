@@ -3,7 +3,7 @@
     import * as star from "$lib/star";
     import Button from "@/components/button.svelte";
     import Captcha from "@/components/captcha.svelte";
-    import Card from "@/components/card.svelte";
+    import AuthShell from "@/components/auth-shell.svelte";
     import Icon from "@/components/icon.svelte";
     import Input from "@/components/input.svelte";
     import { Label } from "@/components/ui/label";
@@ -122,148 +122,143 @@
     };
 </script>
 
-<div class="h-full w-full flex items-center justify-center px-4">
-    <form
-        onsubmit={register}
-        class="w-full sm:w-fit flex flex-col gap-4 items-center"
-    >
-        <Card class="-my-4 w-full sm:w-sm">
-            {#if promptCaptcha}
-                <div class="flex flex-col">
-                    <h1 class="text-lg">Solve the Captcha</h1>
-                    <p class="text-muted text-sm">
-                        Please wait or manually solve the provided captcha to
-                        prove you are a human
-                    </p>
-                </div>
-                <div class="mt-6 flex items-center flex-col gap-2">
-                    <Captcha
-                        onsuccess={captchaCallback}
-                        onerror={(e) => (captchaError = e)}
-                    />
-                    {#if captchaError}
-                        <span class="text-red-300 text-center text-sm">
-                            {captchaError}
-                        </span>
+<AuthShell>
+    <form onsubmit={register}>
+        {#if promptCaptcha}
+            <div class="flex flex-col">
+                <h1 class="text-lg">Solve the Captcha</h1>
+                <p class="text-muted text-sm">
+                    Please wait or manually solve the provided captcha to
+                    prove you are a human
+                </p>
+            </div>
+            <div class="mt-6 flex items-center flex-col gap-2">
+                <Captcha
+                    onsuccess={captchaCallback}
+                    onerror={(e) => (captchaError = e)}
+                />
+                {#if captchaError}
+                    <span class="text-red-300 text-center text-sm">
+                        {captchaError}
+                    </span>
+                {/if}
+            </div>
+        {:else if registered}
+            <div class="flex flex-col">
+                <h1 class="text-lg flex items-center gap-2">
+                    <Icon icon="mail" />
+                    Verify your email
+                </h1>
+                <p class="text-muted text-sm mt-1">
+                    We sent a verification email to
+                    <span class="text-foreground">{registeredEmail}</span>.
+                    Please check your inbox and spam folder, it may take a
+                    minute to arrive.
+                </p>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={resendEmail}
+                    {loading}
+                    disabled={countdown > 0}
+                >
+                    {#if countdown > 0}
+                        Resend email ({countdown}s)
+                    {:else}
+                        Resend email
                     {/if}
-                </div>
-            {:else if registered}
-                <div class="flex flex-col">
-                    <h1 class="text-lg flex items-center gap-2">
-                        <Icon icon="mail" />
-                        Verify your email
-                    </h1>
-                    <p class="text-muted text-sm mt-1">
-                        We sent a verification email to
-                        <span class="text-foreground">{registeredEmail}</span>.
-                        Please check your inbox and spam folder, it may take a
-                        minute to arrive.
-                    </p>
-                </div>
-                <div class="mt-6 flex justify-end">
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onclick={resendEmail}
-                        {loading}
-                        disabled={countdown > 0}
-                    >
-                        {#if countdown > 0}
-                            Resend email ({countdown}s)
-                        {:else}
-                            Resend email
+                </Button>
+            </div>
+        {:else}
+            <div class="flex flex-col">
+                <h1 class="text-lg">Create an account</h1>
+                <p class="text-muted text-sm">
+                    Enter your account details below to create your account
+                </p>
+            </div>
+            <div class="my-6">
+                <div class="flex flex-col gap-6">
+                    <div class="grid gap-2">
+                        <Label for="username" class="select-none">
+                            Username
+                        </Label>
+                        <Input
+                            bind:value={username}
+                            id="username"
+                            type="text"
+                            autocomplete="username"
+                            aria-invalid={usernameIssue != null}
+                            aria-describedby={usernameIssue
+                                ? "username-issue"
+                                : undefined}
+                            required
+                        />
+                        {#if usernameIssue}
+                            <p
+                                id="username-issue"
+                                class="text-xs text-red-300"
+                            >
+                                {usernameIssue}
+                            </p>
                         {/if}
-                    </Button>
-                </div>
-            {:else}
-                <div class="flex flex-col">
-                    <h1 class="text-lg">Create an account</h1>
-                    <p class="text-muted text-sm">
-                        Enter your account details below to create your account
-                    </p>
-                </div>
-                <div class="my-6">
-                    <div class="flex flex-col gap-6">
-                        <div class="grid gap-2">
-                            <Label for="username" class="select-none">
-                                Username
-                            </Label>
-                            <Input
-                                bind:value={username}
-                                id="username"
-                                type="text"
-                                autocomplete="username"
-                                aria-invalid={usernameIssue != null}
-                                aria-describedby={usernameIssue
-                                    ? "username-issue"
-                                    : undefined}
-                                required
-                            />
-                            {#if usernameIssue}
-                                <p
-                                    id="username-issue"
-                                    class="text-xs text-red-300"
-                                >
-                                    {usernameIssue}
-                                </p>
-                            {/if}
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="email" class="select-none">Email</Label>
-                            <Input
-                                bind:value={email}
-                                id="email"
-                                type="email"
-                                autocomplete="email"
-                                required
-                            />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="password" class="select-none">
-                                Password
-                            </Label>
-                            <Input
-                                bind:value={password}
-                                id="password"
-                                type="password"
-                                autocomplete="new-password"
-                                required
-                            />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="confirm-password" class="select-none">
-                                Confirm Password
-                            </Label>
-                            <Input
-                                bind:value={confirmPassword}
-                                id="confirm-password"
-                                type="password"
-                                autocomplete="new-password"
-                                required
-                            />
-                        </div>
                     </div>
-
-                    {#if error}
-                        <span class="text-red-300 mt-2 block">{error}</span>
-                    {/if}
-                </div>
-                <div class="flex-col gap-2 flex">
-                    <Button type="submit" class="w-full" {loading}>
-                        Create Account
-                    </Button>
-
-                    <div class="flex items-center gap-1 text-sm text-muted">
-                        Already have an account?
-                        <a
-                            href="/login"
-                            class="text-primary hover:text-primary/80 transition-colors"
-                        >
-                            Log in
-                        </a>
+                    <div class="grid gap-2">
+                        <Label for="email" class="select-none">Email</Label>
+                        <Input
+                            bind:value={email}
+                            id="email"
+                            type="email"
+                            autocomplete="email"
+                            required
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="password" class="select-none">
+                            Password
+                        </Label>
+                        <Input
+                            bind:value={password}
+                            id="password"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="confirm-password" class="select-none">
+                            Confirm Password
+                        </Label>
+                        <Input
+                            bind:value={confirmPassword}
+                            id="confirm-password"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                        />
                     </div>
                 </div>
-            {/if}
-        </Card>
+
+                {#if error}
+                    <span class="text-red-300 mt-2 block">{error}</span>
+                {/if}
+            </div>
+            <div class="flex-col gap-2 flex">
+                <Button type="submit" class="w-full" {loading}>
+                    Create Account
+                </Button>
+
+                <div class="flex items-center gap-1 text-sm text-muted">
+                    Already have an account?
+                    <a
+                        href="/login"
+                        class="text-primary hover:text-primary/80 transition-colors"
+                    >
+                        Log in
+                    </a>
+                </div>
+            </div>
+        {/if}
     </form>
-</div>
+</AuthShell>

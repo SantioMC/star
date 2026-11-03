@@ -12,6 +12,7 @@
         onsave,
         ondiscard,
         children,
+        preview,
     }: {
         title: string;
         description?: string;
@@ -20,6 +21,7 @@
         onsave: () => Promise<unknown>;
         ondiscard: () => void;
         children?: Snippet;
+        preview?: Snippet;
     } = $props();
 
     const canModify = hasPermission("admin:settings:write");
@@ -42,6 +44,8 @@
     <fieldset disabled={!canModify} class="contents">
         {@render children?.()}
     </fieldset>
+
+    {@render preview?.()}
 
     {#if canModify}
         <div class="flex items-center justify-end gap-2">

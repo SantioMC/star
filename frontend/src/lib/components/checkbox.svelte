@@ -22,6 +22,6 @@
     />
     <Icon
         icon="check"
-        class="pointer-events-none absolute inset-0 hidden items-center justify-center text-xs text-[#111] peer-checked:flex"
+        class="pointer-events-none absolute inset-0 hidden items-center justify-center text-xs text-primary-foreground peer-checked:flex"
     />
 </span>

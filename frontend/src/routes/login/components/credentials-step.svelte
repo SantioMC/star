@@ -41,7 +41,17 @@
         />
     </div>
     <div class="grid gap-2">
-        <Label for="password">Password</Label>
+        <div class="flex items-center justify-between">
+            <Label for="password">Password</Label>
+            {#if !lockUsername}
+                <a
+                    href="/forgot-password"
+                    class="text-sm text-primary hover:text-primary/80 transition-colors"
+                >
+                    Forgot password?
+                </a>
+            {/if}
+        </div>
         <Input
             bind:value={password}
             id="password"

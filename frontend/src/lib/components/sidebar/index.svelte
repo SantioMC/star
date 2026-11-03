@@ -1,5 +1,6 @@
 <script lang="ts">
   import { afterNavigate } from "$app/navigation";
+  import BrandMark from "@/components/brand-mark.svelte";
   import Icon from "@/components/icon.svelte";
   import type { Snippet } from "svelte";
   import type { ClassValue } from "svelte/elements";
@@ -43,9 +44,7 @@
     >
       <Icon icon="menu-2" class="text-lg" />
     </button>
-    <span class="font-semibold tracking-tight font-serif select-none">
-      Star Authorization
-    </span>
+    <BrandMark class="min-w-0" />
   </div>
 
   {#if mobileOpen}
@@ -64,11 +63,7 @@
       data-open={mobileOpen}
       class="w-60 min-w-60 h-dvh sticky top-0 border-r border-background-200 flex flex-col py-4 px-3 gap-1 bg-background-100 overflow-y-auto max-md:fixed max-md:left-0 max-md:z-50 max-md:-translate-x-full max-md:transition-transform max-md:data-[open=true]:translate-x-0"
     >
-      <div class="flex items-center gap-2 mb-4">
-        <span class="font-semibold text-foreground tracking-tight font-serif">
-          Star Authorization
-        </span>
-      </div>
+      <BrandMark class="mb-4 px-1 text-foreground" />
 
       <div class="flex flex-col gap-4">
         <div class="flex flex-col gap-0.5">
@@ -111,6 +106,7 @@
               <NavItem href="/admin/settings/access">Access</NavItem>
               <NavItem href="/admin/settings/email">Email</NavItem>
               <NavItem href="/admin/settings/passwords">Passwords</NavItem>
+              <NavItem href="/admin/settings/branding">Branding</NavItem>
             {/if}
           {/if}
         </div>

@@ -2,7 +2,7 @@
     import { page } from "$app/state";
     import * as star from "$lib/star";
     import Button from "@/components/button.svelte";
-    import Card from "@/components/card.svelte";
+    import AuthShell from "@/components/auth-shell.svelte";
     import GrantedScopes from "@/components/granted-scopes.svelte";
     import Icon from "@/components/icon.svelte";
     import { isLoggedIn, requestLogin } from "@/index";
@@ -162,88 +162,86 @@
     </div>
 {/snippet}
 
-<div class="h-full w-full flex items-center justify-center px-4">
-    <form onsubmit={handleSubmit} class="w-full sm:w-fit">
-        <Card class="-my-4 w-full sm:w-sm">
-            {#if error}
-                <div class="flex flex-col">
-                    <h1 class="text-lg">An error has occurred</h1>
-                    <p class="text-muted text-sm">
-                        Failed to authorize your request, please try again or
-                        contact the site administrator if the problem persists.
-                    </p>
-                </div>
-                <p
-                    class="my-6 rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300 break-words"
-                >
-                    {error}
+<AuthShell>
+    <form onsubmit={handleSubmit}>
+        {#if error}
+            <div class="flex flex-col">
+                <h1 class="text-lg">An error has occurred</h1>
+                <p class="text-muted text-sm">
+                    Failed to authorize your request, please try again or
+                    contact the site administrator if the problem persists.
                 </p>
-                <Button type="submit" class="w-full">Go back</Button>
-            {:else if loading}
-                <div class="flex flex-col">
-                    <h1 class="text-lg">One moment...</h1>
-                    <p class="text-muted text-sm">
-                        Loading application information, please wait...
-                    </p>
-                </div>
-                {@render spinner()}
-            {:else if !application}
-                <div class="flex flex-col">
-                    <h1 class="text-lg">Failed to get application</h1>
-                    <p class="text-muted text-sm">
-                        Failed to get the application information, please try
-                        again or contact the site administrator if the problem
-                        persists.
-                    </p>
-                </div>
-                <Button type="submit" class="w-full mt-6">Go back</Button>
-            {:else if loggingIn}
-                <div class="flex flex-col">
-                    <h1 class="text-lg">One moment...</h1>
-                    <p class="text-muted text-sm">
-                        You are being logged in, please wait...
-                    </p>
-                </div>
-                {@render spinner()}
-            {:else}
-                <div class="flex flex-col gap-1">
-                    <h1 class="text-lg">Authorize {application.name}</h1>
-                    <p class="text-muted text-sm">
-                        <span class="text-foreground">{application.name}</span>
-                        is asking for access to your account, review what it will
-                        be able to do before continuing.
-                    </p>
-                    {#if host}
-                        <p
-                            class="mt-1 flex items-center gap-1.5 text-xs text-muted"
-                        >
-                            <Icon icon="world" />
-                            <span class="font-mono truncate">{host}</span>
-                        </p>
-                    {/if}
-                </div>
-
-                <GrantedScopes scopes={application.scopes} class="my-6" />
-
-                <div class="flex-col gap-2 flex">
-                    <Button type="submit" class="w-full">Allow access</Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        class="w-full"
-                        onclick={deny}
+            </div>
+            <p
+                class="my-6 rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300 break-words"
+            >
+                {error}
+            </p>
+            <Button type="submit" class="w-full">Go back</Button>
+        {:else if loading}
+            <div class="flex flex-col">
+                <h1 class="text-lg">One moment...</h1>
+                <p class="text-muted text-sm">
+                    Loading application information, please wait...
+                </p>
+            </div>
+            {@render spinner()}
+        {:else if !application}
+            <div class="flex flex-col">
+                <h1 class="text-lg">Failed to get application</h1>
+                <p class="text-muted text-sm">
+                    Failed to get the application information, please try
+                    again or contact the site administrator if the problem
+                    persists.
+                </p>
+            </div>
+            <Button type="submit" class="w-full mt-6">Go back</Button>
+        {:else if loggingIn}
+            <div class="flex flex-col">
+                <h1 class="text-lg">One moment...</h1>
+                <p class="text-muted text-sm">
+                    You are being logged in, please wait...
+                </p>
+            </div>
+            {@render spinner()}
+        {:else}
+            <div class="flex flex-col gap-1">
+                <h1 class="text-lg">Authorize {application.name}</h1>
+                <p class="text-muted text-sm">
+                    <span class="text-foreground">{application.name}</span>
+                    is asking for access to your account, review what it will
+                    be able to do before continuing.
+                </p>
+                {#if host}
+                    <p
+                        class="mt-1 flex items-center gap-1.5 text-xs text-muted"
                     >
-                        Cancel
-                    </Button>
-                </div>
+                        <Icon icon="world" />
+                        <span class="font-mono truncate">{host}</span>
+                    </p>
+                {/if}
+            </div>
 
-                <p class="mt-4 text-center text-xs text-muted select-none">
-                    You can revoke this access at any time from your
-                    <a href="/applications" class="text-foreground underline">
-                        authorized applications
-                    </a>.
-                </p>
-            {/if}
-        </Card>
+            <GrantedScopes scopes={application.scopes} class="my-6" />
+
+            <div class="flex-col gap-2 flex">
+                <Button type="submit" class="w-full">Allow access</Button>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    class="w-full"
+                    onclick={deny}
+                >
+                    Cancel
+                </Button>
+            </div>
+
+            <p class="mt-4 text-center text-xs text-muted select-none">
+                You can revoke this access at any time from your
+                <a href="/applications" class="text-foreground underline">
+                    authorized applications
+                </a>.
+            </p>
+        {/if}
     </form>
-</div>
+</AuthShell>

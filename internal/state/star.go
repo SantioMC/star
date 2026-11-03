@@ -27,6 +27,7 @@ type StarServer struct {
 
 	// Cached data
 	Settings    atomic.Pointer[database.Settings]
+	Branding    atomic.Pointer[database.Branding]
 	DefaultApp  atomic.Pointer[database.Application]
 	SigningKeys atomic.Pointer[[]database.SigningKey]
 	Revocations *revocation.List

@@ -84,5 +84,10 @@ func PrepareServer() *state.StarServer {
 		return nil
 	}
 
+	if star.Branding.Load() == nil {
+		slog.Error("failed to load the server branding")
+		return nil
+	}
+
 	return &star
 }

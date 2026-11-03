@@ -7,7 +7,7 @@ type PermissionDefinition struct {
 }
 
 var BuiltinPermissions = []PermissionDefinition{
-	PermissionModifySelf, PermissionChangePassword, PermissionCreateAuthorization, PermissionRevokeAuthorization,
+	PermissionModifySelf, PermissionChangePassword, PermissionResetPassword, PermissionCreateAuthorization, PermissionRevokeAuthorization,
 	PermissionReadEmails, PermissionAddEmails, PermissionDeleteEmails, PermissionUpdatePrimaryEmail,
 	PermissionCreateApplications, PermissionDeleteApplications, PermissionReadApplications, PermissionWriteApplications,
 	PermissionEnrollMFA, PermissionDeleteMFA,

@@ -14,7 +14,7 @@ var contentSecurityPolicy = strings.TrimSpace(`
 default-src 'self';
 script-src 'self' https://challenges.cloudflare.com/turnstile/v0/api.js 'nonce-{nonce}';
 connect-src 'self';
-frame-src https://challenges.cloudflare.com;
+frame-src 'self' https://challenges.cloudflare.com;
 frame-ancestors 'none';
 form-action 'self';
 object-src 'none';

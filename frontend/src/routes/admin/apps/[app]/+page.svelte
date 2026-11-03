@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { branding } from "@/branding";
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import * as star from "$lib/star";
@@ -305,7 +306,7 @@
 
     {#if app.internal}
         <Notice icon="lock" title="Built-in application.">
-            This application is managed by Star and can not be modified or
+            This application is managed by {$branding.name} and can not be modified or
             deleted.
         </Notice>
     {/if}
@@ -313,7 +314,7 @@
     <Card
         title="OAuth 2.0 Credentials"
         icon="key"
-        description="The credentials this application uses to identify itself against Star's OAuth 2.0 endpoints."
+        description="The credentials this application uses to identify itself against {$branding.name}'s OAuth 2.0 endpoints."
         class="flex flex-col gap-5"
     >
         {#snippet actions()}
@@ -388,7 +389,7 @@
     <Card
         title="Application Scopes"
         icon="shield-lock"
-        description="Scopes this application can request on top of Star's built-in ones. Descriptions are shown to users on the consent page."
+        description="Scopes this application can request on top of {$branding.name}'s built-in ones. Descriptions are shown to users on the consent page."
         class="flex flex-col gap-3"
     >
         {#snippet actions()}
@@ -411,7 +412,7 @@
             {:else}
                 <p class="py-6 text-center text-sm text-muted">
                     This application has no scopes of its own. It can still
-                    request Star's built-in scopes.
+                    request {$branding.name}'s built-in scopes.
                 </p>
             {/each}
         </div>
@@ -598,7 +599,7 @@
                                 Allow privileged scopes
                             </span>
                             <span class="text-sm text-muted select-none">
-                                Lets this application request Star scopes that
+                                Lets this application request {$branding.name} scopes that
                                 modify accounts, such as changing usernames, emails,
                                 and sessions. Only enable this for applications you
                                 fully trust.
