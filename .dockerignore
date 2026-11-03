@@ -1,0 +1,14 @@
+.git
+.claude
+.env
+.env.*
+!.env.example
+*.md
+Dockerfile
+.dockerignore
+docker-compose.yaml
+
+frontend/node_modules
+frontend/build
+frontend/.svelte-kit
+frontend/.vscode
