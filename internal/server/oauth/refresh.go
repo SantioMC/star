@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"errors"
 	"log/slog"
 	"net/url"
 	"slices"
@@ -28,15 +29,6 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired refresh token")
 	}
 
-	if current.Status != database.SessionStateActive {
-		slog.Warn("refresh token replay detected", "session", current.ID, "user", current.UserID)
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This refresh token has been rotated")
-	}
-
-	if current.ExpiresAt.Before(time.Now()) {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired refresh token")
-	}
-
 	sessionApp := star.Database.GetApplicationByID(ctx, current.ApplicationID)
 	if sessionApp == nil {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The application this refresh token was issued to no longer exists")
@@ -48,6 +40,17 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 
 	if application == nil && sessionApp.Kind == database.ApplicationKindConfidential {
 		return invalidClient(ctx, false, "Confidential clients must authenticate")
+	}
+
+	if current.Status != database.SessionStateActive {
+		slog.Warn("refresh token replay detected", "session", current.ID, "user", current.UserID)
+		session.RevokeReplayedSession(ctx, star, current)
+
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This refresh token has been rotated")
+	}
+
+	if current.ExpiresAt.Before(time.Now()) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired refresh token")
 	}
 
 	scope := []string(current.Scopes)
@@ -75,16 +78,17 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for no longer exists")
 	}
 
-	refreshed, err := session.RefreshSession(ctx, star, current, sessionApp.SessionDuration.Duration())
-	if err != nil {
-		return err
+	if star.Revocations.Revoked(time.Now().Unix(), current.FamilyID) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This refresh token has been revoked")
 	}
 
-	var permissions []string
-	if sessionApp.ID == star.DefaultApp.ID && len(current.Scopes) == 0 {
-		for _, userPermission := range star.Database.GetUserPermissions(ctx, current.UserID) {
-			permissions = append(permissions, userPermission.Name)
-		}
+	refreshed, err := session.RefreshSession(ctx, star, current, sessionApp.SessionDuration.Duration())
+	if errors.Is(err, session.ErrSessionRotated) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This refresh token has been rotated")
+	} else if errors.Is(err, session.ErrSessionExpired) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired refresh token")
+	} else if err != nil {
+		return err
 	}
 
 	claims := openid.UserClaims(ctx, star.Database, user, scope)
@@ -92,12 +96,13 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		Application: sessionApp,
 		Duration:    sessionApp.TokenDuration.Duration(),
 		Scope:       scope,
-		Audience:    resolution.Audiences(sessionApp.ID, star.DefaultApp.ID),
-		Permissions: permissions,
+		Audience:    resolution.Audiences(sessionApp.ID, star.DefaultApp.Load().ID),
 		Claims:      claims,
 	})
 
-	if err != nil {
+	if errors.Is(err, token.ErrSessionRevoked) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This refresh token has been revoked")
+	} else if err != nil {
 		return err
 	}
 

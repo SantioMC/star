@@ -9,6 +9,7 @@ import (
 )
 
 const RolesClaim = "urn:star:iam:roles"
+const PermissionsClaim = "urn:star:iam:permissions"
 
 func UserClaims(
 	ctx context.Context,
@@ -16,9 +17,7 @@ func UserClaims(
 	user *database.User,
 	scopes []string,
 ) map[string]any {
-	claims := map[string]any{
-		"sub": user.ID,
-	}
+	claims := map[string]any{}
 
 	wantsProfile := HasScope(scopes, ScopeUserRead)
 	wantsEmail := HasScope(scopes, ScopeUserEmailRead)
@@ -48,7 +47,7 @@ func UserClaims(
 			claims["family_name"] = lastName
 		}
 
-		if profilePicture := picture.GetProfilePicture(user, address); profilePicture != "" {
+		if profilePicture := picture.GetProfilePicture(user, &address); profilePicture != "" {
 			claims["picture"] = profilePicture
 		}
 	}
@@ -62,6 +61,17 @@ func UserClaims(
 		}
 
 		claims[RolesClaim] = names
+	}
+
+	if HasScope(scopes, ScopeUserPermissionRead) {
+		permissions := db.GetUserPermissions(ctx, user.ID)
+		names := make([]string, len(permissions))
+
+		for index, role := range permissions {
+			names[index] = role.Name
+		}
+
+		claims[PermissionsClaim] = strings.Join(names, " ")
 	}
 
 	return claims

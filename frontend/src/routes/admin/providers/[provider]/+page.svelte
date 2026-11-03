@@ -1,345 +1,404 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import * as star from '$lib/star';
-	import Categorizied from '@/components/categorizied.svelte';
-	import Copy from '@/components/copy.svelte';
-	import Hidden from '@/components/hidden.svelte';
-	import Icon from '@/components/icon.svelte';
-	import Modal from '@/components/modal.svelte';
-	import Sidebar from '@/components/sidebar.svelte';
-	import { Badge } from '@/components/ui/badge';
-	import { Button } from '@/components/ui/button';
-	import * as Card from '@/components/ui/card';
-	import * as DropdownMenu from '@/components/ui/dropdown-menu';
-	import { Input } from '@/components/ui/input';
-	import { Label } from '@/components/ui/label';
-	import { Spinner } from '@/components/ui/spinner';
-	import { hasPermission } from '@/index';
-	import { formatTime, titleCase } from '@/utils';
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
+    import { goto } from "$app/navigation";
+    import { page } from "$app/state";
+    import * as star from "$lib/star";
+    import Badge from "@/components/badge.svelte";
+    import Button from "@/components/button.svelte";
+    import Card from "@/components/card.svelte";
+    import ConfirmModal from "@/components/confirm-modal.svelte";
+    import Checkbox from "@/components/checkbox.svelte";
+    import Copy from "@/components/copy.svelte";
+    import Icon from "@/components/icon.svelte";
+    import Input from "@/components/input.svelte";
+    import Menu, { type MenuItem } from "@/components/menu.svelte";
+    import Modal from "@/components/modal.svelte";
+    import { Label } from "@/components/ui/label";
+    import { hasPermission } from "@/index";
+    import { formatTime, titleCase } from "@/utils";
+    import { onMount } from "svelte";
+    import { toast } from "svelte-sonner";
 
-	let loading = $state<boolean>(false);
-	let provider = $state<star.SocialProviderConfig | null>(null);
+    const canWrite = hasPermission("admin:provider:write");
+    const canDelete = hasPermission("admin:provider:delete");
 
-	let clientId = $state<string>('');
-	let clientSecret = $state<string>('');
-	let order = $state<number>(0);
-	let icon = $state<string>('');
+    let provider = $state<star.SocialProviderConfig | null>(null);
 
-	let deleteModal = $state<Modal>();
-	let credentialsModal = $state<Modal>();
+    let icon = $state("");
+    let order = $state("");
+    let trustEmail = $state(false);
+    let saving = $state(false);
 
-	let canModify = $derived(hasPermission('admin:provider:write'));
+    let clientId = $state("");
+    let clientSecret = $state("");
+    let savingCredentials = $state(false);
 
-	onMount(async () => {
-		if (!browser) return;
-		if (!hasPermission('admin:provider:read')) return goto('/');
+    let credentialsModal = $state<Modal>();
+    let deleteModal = $state<ConfirmModal>();
 
-		provider = await star.getSocialProvider(page.params.provider!);
-		if (provider == null) return goto('/admin/providers');
+    const endpoints = $derived.by(() => {
+        if (!provider) return [];
 
-		order = provider.order;
-		icon = provider.icon;
-	});
+        return [
+            { label: "Discovery URL", value: provider.oidc_url },
+            { label: "Authorization URL", value: provider.authorization_url },
+            { label: "Token URL", value: provider.token_url },
+            { label: "Userinfo URL", value: provider.userinfo_url },
+        ].filter(
+            (it): it is { label: string; value: string } => !!it.value,
+        );
+    });
 
-	const updateProvider = async () => {
-		loading = true;
-		const result = await star.updateSocialProvider(provider!.id, {
-			order,
-			icon: icon || undefined
-		});
-		loading = false;
+    const menuItems = $derived.by(() => {
+        const items: MenuItem[] = [];
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			provider = result;
-			toast.success('Successfully updated provider');
-		}
-	};
+        if (canWrite) {
+            items.push({
+                label: "Update credentials",
+                icon: "key",
+                onclick: openCredentialsModal,
+            });
+        }
 
-	const updateCredentials = async () => {
-		loading = true;
+        if (canDelete) {
+            items.push({
+                label: "Delete provider",
+                icon: "trash",
+                danger: true,
+                onclick: () => deleteModal?.open(),
+            });
+        }
 
-		const changes: star.UpdateSocialProviderRequest = {};
-		if (clientId) changes.client_id = clientId;
-		if (clientSecret) changes.client_secret = clientSecret;
+        return items;
+    });
 
-		const result = await star.updateSocialProvider(provider!.id, changes);
-		loading = false;
+    const resetForm = (data: star.SocialProviderConfig) => {
+        icon = data.icon;
+        order = String(data.order);
+        trustEmail = data.trust_email;
+    };
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			provider = result;
-			clientId = '';
-			clientSecret = '';
-			credentialsModal?.close();
-			toast.success('Successfully updated credentials');
-		}
-	};
+    onMount(async () => {
+        if (!hasPermission("admin:provider:read")) return goto("/");
 
-	const deleteProvider = async () => {
-		loading = true;
-		const result = await star.deleteSocialProvider(provider!.id);
-		loading = false;
-		deleteModal?.close();
+        const data = await star.getSocialProvider(page.params.provider!);
+        if (!data) return goto("/admin/providers");
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			goto('/admin/providers');
-		}
-	};
+        provider = data;
+        resetForm(data);
+    });
+
+    const updateDisplay = async (event: Event) => {
+        event.preventDefault();
+        if (!provider || saving) return;
+
+        saving = true;
+        const result = await star.updateSocialProvider(provider.id, {
+            icon: icon.trim() || undefined,
+            order: Number(order),
+            trust_email: trustEmail,
+        });
+        saving = false;
+
+        if ("error" in result) {
+            resetForm(provider);
+            return toast.error(result.message);
+        }
+
+        provider = result;
+        toast.success("Successfully updated provider");
+    };
+
+    const openCredentialsModal = () => {
+        clientId = "";
+        clientSecret = "";
+        credentialsModal?.open();
+    };
+
+    const updateCredentials = async (event: Event) => {
+        event.preventDefault();
+        if (!provider || savingCredentials) return;
+
+        const changes: star.UpdateSocialProviderRequest = {};
+        if (clientId.trim()) changes.client_id = clientId.trim();
+        if (clientSecret) changes.client_secret = clientSecret;
+
+        if (Object.keys(changes).length === 0) {
+            credentialsModal?.close();
+            return;
+        }
+
+        savingCredentials = true;
+        const result = await star.updateSocialProvider(provider.id, changes);
+        savingCredentials = false;
+
+        if ("error" in result) {
+            return toast.error(result.message);
+        }
+
+        provider = result;
+        credentialsModal?.close();
+        toast.success("Successfully updated credentials");
+    };
+
+    const deleteProvider = async () => {
+        if (!provider) return;
+
+        const result = await star.deleteSocialProvider(provider.id);
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        toast.success(`Deleted the ${titleCase(provider.name)} provider`);
+        goto("/admin/providers");
+    };
 </script>
 
-<Sidebar class="md:p-8 max-w-6xl mx-auto">
-	{#if provider}
-		<div class="flex flex-row items-center">
-			<div>
-				<h1 class="text-2xl font-semibold">Manage Provider</h1>
-				<h2 class="text-lg text-primary/60">
-					Viewing {titleCase(provider.name)} social login provider
-				</h2>
-			</div>
+{#if provider}
+    <div class="flex flex-row items-center gap-4">
+        <div
+            class="flex size-14 shrink-0 items-center justify-center rounded-lg bg-background-200/80"
+        >
+            <Icon icon={provider.icon || "plug-connected"} class="text-3xl" />
+        </div>
 
-			<Button
-				variant="ghost"
-				class="ml-auto"
-				onclick={() => goto('/admin/providers')}
-			>
-				<Icon icon="chevron-left" />Go back
-			</Button>
-		</div>
+        <div class="min-w-0 flex-1">
+            <h1 class="leading-8 text-2xl font-semibold truncate">
+                {titleCase(provider.name)} Login Provider
+            </h1>
+            <div
+                class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted mt-0.5"
+            >
+                <span class="font-mono text-xs">{provider.id}</span>
+                {#if provider.oidc_url}
+                    <Badge tone="info">oidc discovery</Badge>
+                {/if}
+                <span>Created {formatTime(new Date(provider.created_at))}</span>
+            </div>
+        </div>
 
-		<div class="mt-16 flex flex-col gap-8">
-			<div class="flex flex-col xl:flex-row items-center gap-4">
-				<Icon class="text-3xl" icon={provider.icon || 'plug-connected'} />
-				<div class="flex flex-col items-center xl:items-start justify-center gap-2">
-					<h3 class="text-lg leading-4 flex items-center gap-2">
-						{titleCase(provider.name)}
-						{#if provider.oidc_url}
-							<Badge variant="secondary">OIDC Discovery</Badge>
-						{/if}
-					</h3>
-					<div class="flex flex-col xl:flex-row items-center xl:gap-3 text-sm text-primary/60 flex-wrap">
-						<span>
-							<Icon icon="id" />
-							{provider.id}
-						</span>
-						<span>
-							<Icon icon="calendar-event" />
-							Created {formatTime(new Date(provider.created_at))}
-						</span>
-						<span>
-							<Icon icon="sort-ascending" />
-							Order: {provider.order}
-						</span>
-					</div>
-				</div>
+        <Menu items={menuItems} label="Provider actions" />
+    </div>
 
-				{#if canModify}
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class="ml-auto">
-							<Button variant="ghost" size="icon">
-								<Icon icon="dots" class="text-2xl" />
-							</Button>
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content>
-							<DropdownMenu.Group>
-								<DropdownMenu.Item onclick={() => credentialsModal?.open()}>
-									<Icon icon="key" />
-									Update Credentials
-								</DropdownMenu.Item>
-							</DropdownMenu.Group>
-							{#if hasPermission('admin:provider:delete')}
-								<DropdownMenu.Separator />
-								<DropdownMenu.Group>
-									<DropdownMenu.Item
-										variant="destructive"
-										onclick={() => deleteModal?.open()}
-									>
-										<Icon icon="trash" />
-										Delete
-									</DropdownMenu.Item>
-								</DropdownMenu.Group>
-							{/if}
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				{/if}
-			</div>
+    <Card
+        title="Credentials"
+        icon="key"
+        description="The OAuth client issued to Star by this provider."
+        class="flex flex-col gap-4"
+    >
+        {#snippet actions()}
+            {#if canWrite}
+                <Button variant="secondary" onclick={openCredentialsModal}>
+                    Update
+                </Button>
+            {/if}
+        {/snippet}
 
-			<Card.Root class="min-w-1/3 w-full md:w-auto">
-				<Card.CardHeader>
-					<Card.Title class="flex items-center gap-1">
-						<Icon icon="plug-connected" class="text-2xl" /> Provider Information
-					</Card.Title>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-row justify-between">
-					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
-						<Categorizied title='Name'>
-							<p class="text-md">{titleCase(provider.name)}</p>
-						</Categorizied>
-						<Categorizied title='Client ID'>
-							<code class="text-md mt-1 flex items-center gap-1">
-								{provider.client_id}
-								<Copy content={provider.client_id} />
-							</code>
-						</Categorizied>
-						<Categorizied title='Client Secret'>
-							<Hidden content={provider.client_secret} />
-						</Categorizied>
-					</div>
-					<div class="flex flex-col gap-4 justify-center items-baseline flex-1">
-						<Categorizied title='Created At'>
-							<p class="text-md">
-								<Icon icon="clock" />
-								{formatTime(new Date(provider.created_at))}
-							</p>
-						</Categorizied>
-						{#if provider.scopes && provider.scopes.length > 0}
-							<Categorizied title='Scopes'>
-								<div class="flex gap-1 flex-wrap">
-									{#each provider.scopes as scope}
-										<Badge variant="secondary">{scope}</Badge>
-									{/each}
-								</div>
-							</Categorizied>
-						{/if}
-					</div>
-				</Card.Content>
-			</Card.Root>
+        <dl class="grid gap-4 sm:grid-cols-2">
+            <div class="min-w-0">
+                <dt class="text-xs text-muted select-none">Client ID</dt>
+                <dd
+                    class="mt-1 flex items-center gap-2 font-mono text-sm break-all"
+                >
+                    {provider.client_id}
+                    <Copy content={provider.client_id} class="text-muted" />
+                </dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs text-muted select-none">Client Secret</dt>
+                <dd class="mt-1">
+                    {#if provider.has_client_secret}
+                        <Badge tone="success">configured</Badge>
+                    {:else}
+                        <Badge tone="warning">missing</Badge>
+                    {/if}
+                </dd>
+            </div>
+            <div class="min-w-0 sm:col-span-2">
+                <dt class="text-xs text-muted select-none">Callback URL</dt>
+                <dd
+                    class="mt-1 flex items-center gap-2 font-mono text-sm break-all"
+                >
+                    {star.getProviderCallbackUrl(provider.id)}
+                    <Copy
+                        content={star.getProviderCallbackUrl(provider.id)}
+                        class="text-muted"
+                    />
+                </dd>
+            </div>
+            {#if provider.scopes?.length}
+                <div class="min-w-0 sm:col-span-2">
+                    <dt class="text-xs text-muted select-none">Scopes</dt>
+                    <dd class="mt-1.5 flex flex-wrap gap-1">
+                        {#each provider.scopes as scope (scope)}
+                            <Badge>{scope}</Badge>
+                        {/each}
+                    </dd>
+                </div>
+            {/if}
+        </dl>
+    </Card>
 
-			<Card.Root class="min-w-1/3 w-full md:w-auto">
-				<Card.CardHeader>
-					<Card.Title class="flex items-center gap-1">
-						<Icon icon="link" class="text-2xl" /> Endpoints
-					</Card.Title>
-					<Card.Description>The OAuth/OIDC endpoints used for this provider</Card.Description>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-4">
-					{#if provider.oidc_url}
-						<Categorizied title='Discovery URL'>
-							<code class="text-md mt-1 flex items-center gap-1">
-								{provider.oidc_url}
-								<Copy content={provider.oidc_url} />
-							</code>
-						</Categorizied>
-					{/if}
-					{#if provider.authorization_url}
-						<Categorizied title='Authorization URL'>
-							<code class="text-md mt-1 flex items-center gap-1">
-								{provider.authorization_url}
-								<Copy content={provider.authorization_url} />
-							</code>
-						</Categorizied>
-					{/if}
-					{#if provider.token_url}
-						<Categorizied title='Token URL'>
-							<code class="text-md mt-1 flex items-center gap-1">
-								{provider.token_url}
-								<Copy content={provider.token_url} />
-							</code>
-						</Categorizied>
-					{/if}
-					{#if provider.userinfo_url}
-						<Categorizied title='User Info URL'>
-							<code class="text-md mt-1 flex items-center gap-1">
-								{provider.userinfo_url}
-								<Copy content={provider.userinfo_url} />
-							</code>
-						</Categorizied>
-					{/if}
-				</Card.Content>
-			</Card.Root>
+    {#if endpoints.length > 0}
+        <Card
+            title="Endpoints"
+            icon="link"
+            description="The OAuth and OpenID Connect endpoints Star calls for this provider."
+            class="flex flex-col gap-4"
+        >
+            <dl class="flex flex-col gap-4">
+                {#each endpoints as endpoint (endpoint.label)}
+                    <div class="min-w-0">
+                        <dt class="text-xs text-muted select-none">
+                            {endpoint.label}
+                        </dt>
+                        <dd
+                            class="mt-1 flex items-center gap-2 font-mono text-sm break-all"
+                        >
+                            {endpoint.value}
+                            <Copy
+                                content={endpoint.value}
+                                class="text-muted"
+                            />
+                        </dd>
+                    </div>
+                {/each}
+            </dl>
+        </Card>
+    {/if}
 
-			<Card.Root class="min-w-1/3 w-full md:w-auto">
-				<Card.CardHeader>
-					<Card.Title class="flex items-center gap-1">
-						<Icon icon="settings" class="text-2xl" /> Display Settings
-					</Card.Title>
-					<Card.Description>Configure how this provider appears on the login page</Card.Description>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-6">
-					<div class="grid gap-2">
-						<Label for="icon">Icon</Label>
-						<div class="flex items-center gap-2">
-							<Icon icon={icon || 'plug-connected'} class="text-2xl" />
-							<Input id="icon" type="text" placeholder="brand-discord" bind:value={icon} disabled={!canModify} />
-						</div>
-						<p class="text-sm text-primary/50">Uses Tabler icon names</p>
-					</div>
-					<div class="grid gap-2">
-						<Label for="order">Display Order</Label>
-						<Input id="order" type="number" bind:value={order} disabled={!canModify} />
-						<p class="text-sm text-primary/50">Lower numbers appear first on the login page</p>
-					</div>
-				</Card.Content>
-				{#if canModify}
-					<Card.Footer>
-						<Button class="ml-auto" onclick={updateProvider} disabled={loading}>
-							{#if loading}
-								<Spinner />
-							{/if}
-							Update
-						</Button>
-					</Card.Footer>
-				{/if}
-			</Card.Root>
-		</div>
-	{/if}
-</Sidebar>
+    <Card
+        title="Provider Settings"
+        icon="settings"
+        description="How this provider appears on the login page and how its accounts are trusted."
+    >
+        <form onsubmit={updateDisplay} class="mt-6">
+            <div class="flex flex-col gap-5">
+                <div class="grid gap-2">
+                    <Label for="icon">Icon</Label>
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="flex size-9 shrink-0 items-center justify-center rounded-md border border-background-200"
+                        >
+                            <Icon
+                                icon={icon || "plug-connected"}
+                                class="text-lg"
+                            />
+                        </div>
+                        <Input
+                            bind:value={icon}
+                            id="icon"
+                            class="font-mono"
+                            placeholder="brand-discord"
+                            disabled={!canWrite}
+                        />
+                    </div>
+                    <p class="text-xs text-muted select-none">
+                        Any Tabler icon name
+                    </p>
+                </div>
 
-<Modal bind:this={deleteModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Are you sure?</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		This will remove the {titleCase(provider?.name ?? '')} social login provider. Users who signed up exclusively through this provider will no longer be able to log in.
-	</h2>
+                <div class="grid gap-2">
+                    <Label for="order">Display order</Label>
+                    <Input
+                        bind:value={order}
+                        id="order"
+                        type="number"
+                        min="0"
+                        class="font-mono"
+                        disabled={!canWrite}
+                    />
+                    <p class="text-xs text-muted select-none">
+                        Lower numbers appear first
+                    </p>
+                </div>
 
-	<div class="flex items-center gap-2 justify-end mt-4">
-		<Button variant="secondary" onclick={() => deleteModal?.close()}>
-			Cancel
-		</Button>
-		<Button variant="destructive" onclick={deleteProvider} disabled={loading}>
-			{#if loading}
-				<Spinner />
-			{/if}
-			Delete Provider
-		</Button>
-	</div>
-</Modal>
+                <label
+                    class="flex items-start gap-3 rounded-lg border border-background-200 p-3 transition-colors has-checked:border-red-400/40 has-checked:bg-red-400/5 has-enabled:cursor-pointer has-enabled:hover:bg-hover"
+                >
+                    <Checkbox
+                        class="mt-0.5"
+                        bind:checked={trustEmail}
+                        disabled={!canWrite}
+                    />
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm select-none">
+                            Trust verified emails
+                        </span>
+                        <span class="text-sm text-muted select-none">
+                            New accounts created through this provider keep the
+                            email it reports as verified. Applications may link
+                            accounts by verified email, so only enable this for
+                            providers that confirm email ownership themselves.
+                        </span>
+                    </div>
+                </label>
+            </div>
 
-<Modal bind:this={credentialsModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Update Credentials</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		Update the OAuth client credentials for this provider. Leave a field empty to keep the current value.
-	</h2>
+            {#if canWrite}
+                <div class="mt-4 flex items-center gap-2 justify-end">
+                    <Button type="submit" loading={saving}>Update</Button>
+                </div>
+            {/if}
+        </form>
+    </Card>
 
-	<form onsubmit={updateCredentials} class="mt-6">
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="newClientId">Client ID</Label>
-				<Input id="newClientId" type="text" placeholder="Leave empty to keep current" bind:value={clientId} />
-			</div>
-			<div class="grid gap-2">
-				<Label for="newClientSecret">Client Secret</Label>
-				<Input id="newClientSecret" type="password" placeholder="Leave empty to keep current" bind:value={clientSecret} />
-			</div>
-		</div>
+    <Modal bind:this={credentialsModal} button>
+        <form class="flex flex-col gap-6" onsubmit={updateCredentials}>
+            <div class="flex flex-col gap-1 pr-8">
+                <h1 class="text-xl font-semibold">Update credentials</h1>
+                <h2 class="text-sm text-muted">
+                    Leave a field empty to keep its current value.
+                </h2>
+            </div>
 
-		<div class="flex items-center gap-2 justify-end mt-6">
-			<Button variant="secondary" onclick={() => credentialsModal?.close()}>
-				Cancel
-			</Button>
-			<Button disabled={loading} type="submit">
-				{#if loading}
-					<Spinner />
-				{/if}
-				Update Credentials
-			</Button>
-		</div>
-	</form>
-</Modal>
+            <div class="flex flex-col gap-5">
+                <div class="grid gap-2">
+                    <Label for="newClientId">Client ID</Label>
+                    <Input
+                        bind:value={clientId}
+                        id="newClientId"
+                        class="font-mono"
+                        autocomplete="off"
+                        placeholder={provider.client_id}
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="newClientSecret">Client secret</Label>
+                    <Input
+                        bind:value={clientSecret}
+                        id="newClientSecret"
+                        type="password"
+                        autocomplete="off"
+                    />
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 justify-end">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={() => credentialsModal?.close()}
+                >
+                    Cancel
+                </Button>
+                <Button type="submit" loading={savingCredentials}>
+                    Update credentials
+                </Button>
+            </div>
+        </form>
+    </Modal>
+
+    <ConfirmModal
+        bind:this={deleteModal}
+        title="Delete provider"
+        confirmLabel="Delete provider"
+        confirmText={provider.name}
+        onconfirm={deleteProvider}
+    >
+        Social login through
+        <span class="text-foreground">{titleCase(provider.name)}</span> will
+        stop working. Users who only sign in with this provider will lose access
+        to their accounts.
+    </ConfirmModal>
+{/if}

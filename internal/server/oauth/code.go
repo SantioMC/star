@@ -1,14 +1,17 @@
 package oauth
 
 import (
+	"errors"
 	"log/slog"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
+	"github.com/tubblelive/star/internal/security"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/session"
 	"github.com/tubblelive/star/internal/state"
@@ -36,12 +39,12 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This authorization code was not issued to this client")
 	}
 
-	if authCode.ExpiresAt.Before(time.Now()) {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired authorization code")
-	}
-
 	if authCode.RedeemedAt != nil {
 		return revokeReplayedCode(ctx, star, authCode)
+	}
+
+	if authCode.ExpiresAt.Before(time.Now()) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired authorization code")
 	}
 
 	redirectURI := form.Get("redirect_uri")
@@ -77,7 +80,7 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		return err
 	}
 
-	redeemed, err := star.Database.RedeemAuthorizationCode(ctx, authCode.ID, newSession.ID)
+	redeemed, err := star.Database.RedeemAuthorizationCode(ctx, authCode.ID, newSession.FamilyID)
 	if err != nil {
 		return err
 	}
@@ -95,11 +98,13 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		Application: application,
 		Duration:    application.TokenDuration.Duration(),
 		Scope:       granted,
-		Audience:    resolution.Audiences(application.ID, star.DefaultApp.ID),
+		Audience:    resolution.Audiences(application.ID, star.DefaultApp.Load().ID),
 		Claims:      claims,
 	})
 
-	if err != nil {
+	if errors.Is(err, token.ErrSessionRevoked) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This authorization code has been revoked")
+	} else if err != nil {
 		return err
 	}
 
@@ -161,11 +166,28 @@ func revokeReplayedCode(ctx fiber.Ctx, star *state.StarServer, authCode *databas
 
 	slog.Warn("authorization code replay detected, revoking the previously issued session", "code", authCode.ID, "application", authCode.ApplicationID)
 
-	if authCode.SessionID != nil {
-		if err := star.Database.DeleteSessionByID(ctx, *authCode.SessionID); err != nil {
-			slog.Error("failed to revoke session for replayed authorization code", "err", err, "session", *authCode.SessionID)
+	if authCode.FamilyID != nil {
+		err := star.Database.RevokeSessionFamily(ctx, authCode.UserID, *authCode.FamilyID, database.RevocationReasonCodeReplayed)
+		if err != nil {
+			slog.Error("failed to revoke session for replayed authorization code", "err", err, "session", *authCode.FamilyID)
 		}
+
+		cache.UpdateRevocations(ctx, star)
 	}
+
+	security.Report(star, ctx, &database.SecurityAlert{
+		Kind:        database.SecurityAlertAuthorizationCodeUsed,
+		Severity:    database.SecurityAlertSeverityHigh,
+		Message:     "An authorization code was redeemed more than once, the session issued from it has been revoked",
+		UserID:      &authCode.UserID,
+		Application: &authCode.ApplicationID,
+		Data: map[string]any{
+			"code":       authCode.ID,
+			"session":    authCode.FamilyID,
+			"ip_address": star.ClientIP(ctx),
+			"user_agent": ctx.UserAgent(),
+		},
+	})
 
 	return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This authorization code has already been redeemed")
 }

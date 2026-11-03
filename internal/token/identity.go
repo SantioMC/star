@@ -20,7 +20,7 @@ func CreateIDToken(
 	}
 
 	fields["sub"] = session.UserID
-	fields["sid"] = session.ID
+	fields["sid"] = session.FamilyID
 	fields["aud"] = application.ClientID
 	fields["azp"] = application.ClientID
 	fields["auth_time"] = session.AuthenticatedAt.Unix()
@@ -30,8 +30,9 @@ func CreateIDToken(
 	}
 
 	return createJWT(server, JWTOptions{
-		Type:     TypeJWT,
-		Duration: application.TokenDuration.Duration(),
-		Fields:   fields,
+		Type:      TypeJWT,
+		Algorithm: application.SigningAlgorithm,
+		Duration:  application.TokenDuration.Duration(),
+		Fields:    fields,
 	})
 }

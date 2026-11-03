@@ -10,8 +10,6 @@ type Options struct {
 	Application *database.Application
 	Duration    time.Duration
 	Audience    []string
-	Permissions []string
 	Scope       []string
 	Claims      map[string]any
-	SuperUser   bool
 }

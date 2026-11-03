@@ -2,6 +2,13 @@
 
 import { env } from "$env/dynamic/public";
 import { getJWT, refreshAccessToken, token } from "@/index";
+import type { UsernameRules } from "@/username";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/browser";
 import ky, { HTTPError, type KyRequest } from "ky";
 import { get } from "svelte/store";
 
@@ -12,6 +19,7 @@ export type StarPermission =
   | "*"
   | "user:password:write"
   | "user:application:authorize"
+  | "user:application:revoke"
   | "user:email:read"
   | "user:email:create"
   | "user:email:delete"
@@ -19,6 +27,7 @@ export type StarPermission =
   | "user:mfa:enroll"
   | "user:mfa:delete"
   | "user:session:delete"
+  | "user:data:export"
   | "application:create"
   | "application:read"
   | "application:write"
@@ -26,6 +35,7 @@ export type StarPermission =
   | "admin:user:read"
   | "admin:user:write"
   | "admin:user:delete"
+  | "admin:user:export"
   | "admin:role:read"
   | "admin:role:create"
   | "admin:role:write"
@@ -35,7 +45,15 @@ export type StarPermission =
   | "admin:provider:write"
   | "admin:provider:delete"
   | "admin:settings:read"
-  | "admin:settings:write";
+  | "admin:settings:write"
+  | "admin:key:read"
+  | "admin:key:rotate"
+  | "admin:key:delete"
+  | "admin:token:read"
+  | "admin:token:revoke"
+  | "admin:metrics:read"
+  | "admin:alert:read"
+  | "admin:alert:resolve";
 
 // Scopes issued by star itself, purely for typescript typings
 export type StarScope =
@@ -56,6 +74,8 @@ export type StarScope =
   | "star:user:mfa:read"
   | "star:user:mfa:write"
   | "star:user:applications:authorize"
+  | "star:user:applications:read"
+  | "star:user:applications:revoke"
   | "star:applications:read"
   | "star:applications:write"
   | "star:applications:delete"
@@ -67,7 +87,14 @@ export type StarScope =
   | "star:admin:providers:read"
   | "star:admin:providers:write"
   | "star:admin:settings:read"
-  | "star:admin:settings:write";
+  | "star:admin:settings:write"
+  | "star:admin:keys:read"
+  | "star:admin:keys:write"
+  | "star:admin:tokens:read"
+  | "star:admin:tokens:write"
+  | "star:admin:metrics:read"
+  | "star:admin:alerts:read"
+  | "star:admin:alerts:write";
 
 export const api = ky.extend({
   prefixUrl: API_URL,
@@ -85,8 +112,27 @@ export const api = ky.extend({
         }
       },
     ],
+    afterResponse: [
+      async (request, _options, response) => {
+        const rejected =
+          response.status === 401 &&
+          request.headers.has("Authorization") &&
+          response.headers.has("WWW-Authenticate");
+
+        if (!rejected) return response;
+
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) return response;
+
+        return ky(request, {
+          headers: { Authorization: `Bearer ${refreshed}` },
+        });
+      },
+    ],
   },
 });
+
+const credentialed = api.extend({ credentials: "include" });
 
 const getAuth = async () => {
   const value = get(token);
@@ -119,29 +165,36 @@ export const getUserinfoUrl = () => `${API_URL}/oidc/userinfo`;
 export const getDiscoveryURL = () =>
   `${API_URL}/.well-known/openid-configuration`;
 
-// Stubbed — social login flow not yet implemented in the new API
-export const getLoginUrl = (provider: string) => {
-  return `${API_URL}/api/login/${encodeURIComponent(provider)}`;
-};
+export const getProviderLoginUrl = (provider: string) =>
+  `${API_URL}/api/user/login/provider/${encodeURIComponent(provider)}`;
 
-// Stubbed - login methods discovery not yet implemented in the new API
-export interface SocialProvider {
+export const getProviderCallbackUrl = (provider: string) =>
+  `${getProviderLoginUrl(provider)}/callback`;
+
+export interface LoginProvider {
   id: string;
   name: string;
   icon: string;
 }
 
-export interface AppLogins {
-  user_pass_login: boolean;
-  providers: SocialProvider[];
-}
+export const getLoginProviders = async () => {
+  return api
+    .get(`api/user/login/providers`)
+    .json<LoginProvider[]>()
+    .catch(() => [] as LoginProvider[]);
+};
 
-export const getLogins = async (): Promise<AppLogins | null> => {
-  return { user_pass_login: true, providers: [] };
+export const completeProviderLogin = async (flow: string) => {
+  return credentialed
+    .post(`api/user/login/provider/complete`, {
+      json: { flow },
+    })
+    .json<LoginResponse>()
+    .catch(orError);
 };
 
 export const login = async (data: LoginRequest) => {
-  return api
+  return credentialed
     .post(`api/user/login`, {
       json: {
         username: data.username,
@@ -158,12 +211,50 @@ export const login = async (data: LoginRequest) => {
 };
 
 export const loginTotp = async (flow: string, code: string) => {
-  return api
+  return credentialed
     .post(`api/user/login/totp`, {
       json: { flow, code },
     })
-    .json<LoginSuccessResponse>()
+    .json<LoginResponse>()
     .catch(orError);
+};
+
+export const loginBackupCode = async (flow: string, code: string) => {
+  return credentialed
+    .post(`api/user/login/backup`, {
+      json: { flow, code },
+    })
+    .json<LoginResponse>()
+    .catch(orError);
+};
+
+export const getPasskeyLoginOptions = async (flow?: string) => {
+  return api
+    .post(`api/user/login/passkey/options`, {
+      json: { flow },
+    })
+    .json<PasskeyChallenge<PublicKeyCredentialRequestOptionsJSON>>()
+    .catch(orError);
+};
+
+export const loginPasskey = async (
+  challenge: string,
+  credential: AuthenticationResponseJSON,
+  flow?: string,
+) => {
+  return credentialed
+    .post(`api/user/login/passkey`, {
+      json: { challenge, credential, flow },
+    })
+    .json<LoginResponse>()
+    .catch(orError);
+};
+
+export const getRegisterRequirements = async () => {
+  return api
+    .get(`api/user/register`)
+    .json<RegisterRequirements>()
+    .catch((_) => null);
 };
 
 export const register = async (data: RegisterRequest) => {
@@ -186,36 +277,35 @@ export const register = async (data: RegisterRequest) => {
     .catch(orError);
 };
 
-export const refreshToken = async (refreshToken: string) => {
-  const searchParams = new URLSearchParams();
-  searchParams.set("grant_type", `refresh_token`);
-  searchParams.set("refresh_token", refreshToken);
-  searchParams.set("client_id", "star");
-
+export const refreshSession = async () => {
   return ky
-    .post(`${API_URL}/oauth/token`, {
-      body: searchParams,
-    })
-    .json<OAuthTokenResponse>()
-    .catch((e) => orTypedError<OAuthTokenError>(e));
+    .post("api/user/session", { prefixUrl: API_URL, credentials: "include" })
+    .json<SessionRefreshResponse>()
+    .catch(orError);
+};
+
+export const endSession = async () => {
+  return ky
+    .delete("api/user/session", { prefixUrl: API_URL, credentials: "include" })
+    .catch(() => null);
 };
 
 export const getOAuthApplication = (
   clientId: string,
+  redirectUri: string,
   scope: string | null = null,
 ) => {
   const searchParams = new URLSearchParams();
+  searchParams.set("redirect_uri", redirectUri);
+
   if (scope) {
     searchParams.set("scope", scope);
   }
 
-  const query = searchParams.toString();
-  const suffix = query ? `?${query}` : "";
-
   return api
-    .get(`oauth/application/${encodeURIComponent(clientId)}${suffix}`)
+    .get(`oauth/application/${encodeURIComponent(clientId)}?${searchParams}`)
     .json<PublicApplication>()
-    .catch((_) => null);
+    .catch(orError);
 };
 
 export const getOAuthAuthCode = async (
@@ -226,6 +316,7 @@ export const getOAuthAuthCode = async (
   codeChallenge: string | null = null,
   codeChallengeMethod: string | null = null,
   nonce: string | null = null,
+  consent: boolean = false,
 ) => {
   return api
     .post(`api/app/authorization`, {
@@ -237,6 +328,7 @@ export const getOAuthAuthCode = async (
         code_challenge: codeChallenge ?? undefined,
         code_challenge_method: codeChallengeMethod ?? undefined,
         nonce: nonce ?? undefined,
+        consent,
       },
     })
     .json<AuthorizationCodeResponse>()
@@ -253,25 +345,10 @@ export const getUserinfo = async (): Promise<UserinfoResponse | null> => {
 
 // Stubbed - endpoint not yet implemented in the new API
 export const getSelf = async (): Promise<User | null> => {
-  // Use the OIDC userinfo endpoint as a base, then fill in stubs for missing fields
-  const info = await getUserinfo();
-  if (!info) return null;
-
-  return {
-    id: info.sub,
-    created_at: 0,
-    updated_at: 0,
-    username: info.preferred_username ?? info.nickname ?? info.name ?? "",
-    first_name: info.given_name ?? "",
-    last_name: info.family_name ?? "",
-    email: info.email ?? "",
-    email_verified: info.email_verified ?? false,
-    profile_picture: info.picture ?? "",
-    metadata: { public: {}, private: null },
-    roles: [],
-    accounts: [],
-    sessions: [],
-  };
+  return api
+    .get("api/user/me")
+    .json<User>()
+    .catch((_) => null);
 };
 
 export const changePassword = async (
@@ -288,7 +365,7 @@ export const changePassword = async (
 
 export const resendVerification = async (email: string) => {
   return api
-    .post(`api/user/me/resend`, {
+    .post(`api/email/resend`, {
       json: { email },
     })
     .json<{ success: boolean }>()
@@ -338,6 +415,20 @@ export const invalidateAllSessions = async () => {
   return api.delete(`api/session`).json<{ success: boolean }>().catch(orError);
 };
 
+export const getAuthorizedApps = async () => {
+  return api
+    .get("api/grant")
+    .json<AuthorizedApplication[]>()
+    .catch((_) => null);
+};
+
+export const revokeAuthorizedApp = async (app: string) => {
+  return api
+    .delete(`api/grant/${encodeURIComponent(app)}`)
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
 export const getEmails = async () => {
   return api
     .get("api/email")
@@ -380,13 +471,96 @@ export const enrollTotp = async () => {
 export const verifyTotp = async (code: string) => {
   return api
     .post("api/mfa/totp/verify", { json: { code } })
-    .json<{ success: boolean }>()
+    .json<{ success: boolean; backup_codes: string[] | null }>()
     .catch(orError);
 };
 
 export const deleteTotp = async () => {
   return api.delete("api/mfa/totp").json<{ success: boolean }>().catch(orError);
 };
+
+export const getPasskeys = async () => {
+  return api
+    .get("api/mfa/passkeys")
+    .json<Passkey[]>()
+    .catch(() => [] as Passkey[]);
+};
+
+export const getPasskeySignal = async () => {
+  return api
+    .get("api/mfa/passkeys/signal")
+    .json<PasskeySignal>()
+    .catch(() => null);
+};
+
+export const enrollPasskey = async () => {
+  return api
+    .post("api/mfa/passkeys/enroll")
+    .json<PasskeyChallenge<PublicKeyCredentialCreationOptionsJSON>>()
+    .catch(orError);
+};
+
+export const verifyPasskey = async (
+  challenge: string,
+  name: string,
+  credential: RegistrationResponseJSON,
+) => {
+  return api
+    .post("api/mfa/passkeys/verify", {
+      json: { challenge, name, credential },
+    })
+    .json<{ passkey: Passkey; backup_codes: string[] | null }>()
+    .catch(orError);
+};
+
+export const renamePasskey = async (id: string, name: string) => {
+  return api
+    .patch(`api/mfa/passkeys/${encodeURIComponent(id)}`, { json: { name } })
+    .json<Passkey>()
+    .catch(orError);
+};
+
+export const deletePasskey = async (id: string) => {
+  return api
+    .delete(`api/mfa/passkeys/${encodeURIComponent(id)}`)
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
+export const getBackupCodeCount = async () => {
+  return api
+    .get("api/mfa/backup")
+    .json<{ remaining: number }>()
+    .catch((_) => null);
+};
+
+export const regenerateBackupCodes = async () => {
+  return api
+    .post("api/mfa/backup")
+    .json<{ backup_codes: string[] }>()
+    .catch(orError);
+};
+
+const attachmentName = (response: Response): string => {
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+
+  return match?.[1] ?? "star-export.json";
+};
+
+const toDownload = async (response: Response) => {
+  const blob = await response.blob();
+  return { blob, filename: attachmentName(response) };
+};
+
+const exportData = async (path: string) => {
+  return api.get(path).then(toDownload).catch(orError);
+};
+
+export const exportSelf = async () => exportData("api/user/me/export");
+
+export const exportUser = async (userId: string) =>
+  exportData(`api/user/${encodeURIComponent(userId)}/export`);
 
 export const invalidateUserSessions = async (userId: string) => {
   return api
@@ -430,6 +604,13 @@ export const deleteUser = async (id: string) => {
     .catch(orError);
 };
 
+export const clearLockout = async (user: string) => {
+  return api
+    .delete(`api/user/${encodeURIComponent(user)}/lockout`)
+    .json<AdminUser>()
+    .catch(orError);
+};
+
 export const adminSetPassword = async (user: string, password: string) => {
   return api
     .post(`api/user/${encodeURIComponent(user)}/password`, {
@@ -465,7 +646,7 @@ export const getApplication = async (id: string) => {
 export const createApplication = async (data: CreateAppRequest) => {
   return api
     .post(`api/app`, { json: data })
-    .json<{ success: boolean }>()
+    .json<ApplicationSecretResponse>()
     .catch(orError);
 };
 
@@ -479,7 +660,7 @@ export const deleteApplication = async (app: string) => {
 export const updateApplication = async (app: string, changes: AppChanges) => {
   return api
     .patch(`api/app/${encodeURIComponent(app)}`, { json: changes })
-    .json<{ success: boolean }>()
+    .json<ApplicationSecretResponse>()
     .catch(orError);
 };
 
@@ -616,28 +797,59 @@ export const deleteSocialProvider = async (id: string) => {
     .catch(orError);
 };
 
-export const getAllKeys = async () => {
+export const getSigningKeys = async () => {
   return api
     .get("api/key")
     .json<SigningKey[]>()
     .catch(() => [] as SigningKey[]);
 };
 
-export const getKey = async (id: string) => {
-  return api
-    .get(`api/key/${encodeURIComponent(id)}`)
-    .json<SigningKey>()
-    .catch((_) => null);
+export const rotateSigningKeys = async () => {
+  return api.post("api/key/rotate").json<SigningKey[]>().catch(orError);
 };
 
-export const rotateSigningKey = async () => {
-  return api.post("api/key/rotate").json<SigningKey>().catch(orError);
-};
-
-export const deleteKey = async (id: string) => {
+export const deleteSigningKey = async (id: string) => {
   return api
     .delete(`api/key/${encodeURIComponent(id)}`)
-    .json<{ success: boolean }>()
+    .json<SigningKey[]>()
+    .catch(orError);
+};
+
+export const getTokenRevocations = async (page: number = 1) => {
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", page.toString());
+
+  return api
+    .get(`api/revocation?${searchParams.toString()}`)
+    .json<TokenRevocation[]>()
+    .catch(() => [] as TokenRevocation[]);
+};
+
+export const revokeTokens = async (request: CreateRevocationRequest) => {
+  return api
+    .post("api/revocation", { json: request })
+    .json<TokenRevocation[]>()
+    .catch(orError);
+};
+
+export const getSecurityAlerts = async (
+  page: number = 1,
+  status: "open" | "all" = "open",
+) => {
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", page.toString());
+  searchParams.set("status", status);
+
+  return api
+    .get(`api/alert?${searchParams.toString()}`)
+    .json<SecurityAlert[]>()
+    .catch(() => [] as SecurityAlert[]);
+};
+
+export const resolveSecurityAlert = async (id: string) => {
+  return api
+    .post(`api/alert/${encodeURIComponent(id)}/resolve`)
+    .json<SecurityAlert>()
     .catch(orError);
 };
 
@@ -678,6 +890,10 @@ export interface RegisterRequest {
   captcha?: string;
 }
 
+export interface RegisterRequirements {
+  username: UsernameRules;
+}
+
 export interface RegisterResponse {
   success: boolean;
 }
@@ -685,7 +901,7 @@ export interface RegisterResponse {
 export interface PublicApplication {
   id: string;
   name: string;
-  implicit: boolean;
+  url: string;
   scopes: PublicScope[];
   invalid_scopes: string[];
 }
@@ -694,6 +910,21 @@ export interface PublicScope {
   scope: string;
   description: string;
   application: string;
+}
+
+export interface GrantedScope {
+  scope: string;
+  description: string;
+}
+
+export interface AuthorizedApplication {
+  id: string;
+  name: string;
+  url: string;
+  scopes: GrantedScope[];
+  authorized_at: string;
+  updated_at: string;
+  last_used_at: string | null;
 }
 
 export interface ApplicationScope {
@@ -722,6 +953,7 @@ export interface BuiltinScope {
   description: string;
   aliases?: string[];
   restricted: boolean;
+  privileged: boolean;
 }
 
 export interface PasswordSettings {
@@ -753,12 +985,16 @@ export interface AuthorizationCodeResponse {
   scoped_modified: boolean;
 }
 
-export type MFAMethod = "totp";
+export type MFAMethod = "totp" | "passkey" | "backup_code";
 
 export interface LoginSuccessResponse {
   next: "complete";
   access_token: string;
-  refresh_token: string;
+}
+
+export interface SessionRefreshResponse {
+  access_token: string;
+  expires_in: number;
 }
 
 export interface LoginMfaResponse {
@@ -773,8 +1009,32 @@ export interface MfaFactorsResponse {
   factors: MFAMethod[];
 }
 
+export interface PasskeyChallenge<T> {
+  challenge: string;
+  options: T;
+}
+
+export interface Passkey {
+  id: string;
+  name: string;
+  aaguid: string | null;
+  backup_eligible: boolean;
+  synced: boolean;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface PasskeySignal {
+  rp_id: string;
+  user_id: string;
+  name: string;
+  display_name: string;
+  credential_ids: string[];
+}
+
 export interface TotpEnrollment {
   secret: string;
+  uri: string;
 }
 
 export interface UserinfoResponse {
@@ -814,6 +1074,7 @@ export interface Role {
   name: string;
   description: string;
   internal: boolean;
+  default: boolean;
   permissions: string[];
   created_at: string;
 }
@@ -837,6 +1098,7 @@ export interface Metadata {
 export interface AppChanges {
   name?: string;
   kind?: "public" | "confidential";
+  consent?: ApplicationConsent;
   url?: string;
   client_id?: string;
   namespace?: string;
@@ -844,6 +1106,13 @@ export interface AppChanges {
   session_duration?: number;
   redirect_uris?: string[];
   development_mode?: boolean;
+  privileged_scopes?: boolean;
+  signing_algorithm?: SigningAlgorithm;
+}
+
+export interface ApplicationSecretResponse {
+  id: string;
+  client_secret?: string;
 }
 
 export interface UserChanges {
@@ -858,18 +1127,18 @@ export interface AdminUserChanges extends UserChanges {
 
 export interface User {
   id: string;
-  created_at: number;
-  updated_at: number;
   username: string;
   first_name: string;
   last_name: string;
+  picture: string;
   email: string;
   email_verified: boolean;
-  profile_picture: string;
-  metadata: Metadata;
-  roles: Role[];
-  accounts: Account[];
+  roles: string[];
+  permissions: StarPermission[];
   sessions: Session[];
+  accounts: Account[];
+  emails: Email[];
+  created_at: string;
 }
 
 export interface AdminUser {
@@ -881,7 +1150,15 @@ export interface AdminUser {
   email: string | null;
   email_verified: boolean;
   roles: Role[];
+  lockout: Lockout | null;
   created_at: string;
+}
+
+export interface Lockout {
+  locked: boolean;
+  attempts: number;
+  last_attempt_at: string;
+  locked_until: string | null;
 }
 
 export interface Account {
@@ -896,11 +1173,12 @@ export interface Account {
 }
 
 export interface Metrics {
-  total_users: number;
-  total_sessions: number;
-  started_at: number;
+  users: number;
+  active_sessions: number;
+  applications: number;
+  open_alerts: number;
   version: string;
-  node_id: string;
+  started_at: string;
 }
 
 export interface Session {
@@ -923,6 +1201,10 @@ export interface Email {
   created_at: string;
 }
 
+export type ApplicationConsent = "default" | "explicit" | "implicit";
+
+export type SigningAlgorithm = "ES512" | "RS256";
+
 export interface AdminApplication {
   id: string;
   kind: "public" | "confidential";
@@ -930,30 +1212,18 @@ export interface AdminApplication {
   namespace: string;
   application_url: string;
   client_id: string;
-  client_secret: string | null;
+  has_client_secret: boolean;
   internal: boolean;
+  consent: ApplicationConsent;
   token_duration: number;
   session_duration: number;
   redirect_uris: string[];
   development_mode: boolean;
+  privileged_scopes: boolean;
+  signing_algorithm: SigningAlgorithm;
   scopes: ApplicationScope[];
   builtin_scopes?: BuiltinScope[];
   created_at: string;
-}
-
-export interface OAuthTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  refresh_token?: string;
-  scope?: string;
-  id_token?: string;
-}
-
-export interface OAuthTokenError {
-  error: string;
-  error_description?: string;
-  error_uri?: string;
 }
 
 export interface SocialProviderConfig {
@@ -962,12 +1232,13 @@ export interface SocialProviderConfig {
   icon: string;
   order: number;
   client_id: string;
-  client_secret: string;
+  has_client_secret: boolean;
   scopes: string[];
   oidc_url: string | null;
   authorization_url: string | null;
   token_url: string | null;
   userinfo_url: string | null;
+  trust_email: boolean;
   created_at: string;
 }
 
@@ -979,6 +1250,7 @@ export interface SocialProviderPreset {
   authorization_url?: string;
   token_url?: string;
   userinfo_url?: string;
+  trust_email: boolean;
 }
 
 export interface CreateSocialProviderRequest {
@@ -992,6 +1264,7 @@ export interface CreateSocialProviderRequest {
   authorization_url?: string;
   token_url?: string;
   userinfo_url?: string;
+  trust_email?: boolean;
 }
 
 export interface UpdateSocialProviderRequest {
@@ -1005,14 +1278,56 @@ export interface UpdateSocialProviderRequest {
   authorization_url?: string;
   token_url?: string;
   userinfo_url?: string;
+  trust_email?: boolean;
 }
 
 export interface SigningKey {
   id: string;
-  created_at: number;
-  updated_at: number;
-  name: string;
-  kind: "signing" | "next" | "retired";
-  expires_at: number | null;
+  status: "active" | "next" | "retiring";
+  algorithm: string;
   fingerprint: string;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export type SecurityAlertSeverity = "high" | "medium" | "low";
+
+export type RevocationKind = "session" | "user" | "global";
+
+export type RevocationReason =
+  | "signed_out"
+  | "sessions_cleared"
+  | "grant_revoked"
+  | "token_replayed"
+  | "code_replayed"
+  | "roles_changed"
+  | "password_reset"
+  | "user_deleted"
+  | "application_deleted"
+  | "manual";
+
+export interface TokenRevocation {
+  subject: string;
+  kind: RevocationKind;
+  user_id: string | null;
+  user_name: string | null;
+  reason: RevocationReason;
+  revoked_at: string;
+  expires_at: string;
+}
+
+export type CreateRevocationRequest =
+  { kind: "user"; user: string } | { kind: "global" };
+
+export interface SecurityAlert {
+  id: string;
+  kind: string;
+  severity: SecurityAlertSeverity;
+  message: string;
+  data: Record<string, unknown> | null;
+  user_id: string | null;
+  application: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
 }

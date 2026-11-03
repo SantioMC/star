@@ -20,17 +20,18 @@ type Provider struct {
 	Icon             string         `json:"icon"`
 	Order            int            `json:"order" db:"display_order"`
 	ClientID         string         `json:"client_id" db:"client_id"`
-	ClientSecret     string         `json:"client_secret" db:"client_secret"`
+	ClientSecret     string         `json:"-" db:"client_secret"`
 	Scopes           pq.StringArray `json:"scopes"`
 	OIDCUrl          *string        `json:"oidc_url" db:"oidc_url"`
 	AuthorizationURL *string        `json:"authorization_url" db:"authorization_url"`
 	TokenURL         *string        `json:"token_url" db:"token_url"`
 	UserinfoURL      *string        `json:"userinfo_url" db:"userinfo_url"`
+	TrustEmail       bool           `json:"trust_email" db:"trust_email"`
 	CreatedAt        time.Time      `json:"created_at" db:"created_at"`
 }
 
 func (db *Database) GetProviders(ctx context.Context) []Provider {
-	providers, err := sqlx.ListContext[Provider](
+	providers, err := list[Provider](
 		ctx,
 		db.DB(),
 		`SELECT * FROM providers ORDER BY display_order, created_at`,
@@ -111,8 +112,8 @@ func (db *Database) CreateProvider(ctx context.Context, provider *Provider) erro
 		INSERT INTO providers (
 			id, name, icon, display_order, client_id, client_secret,
 			scopes, oidc_url, authorization_url, token_url, userinfo_url,
-			created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			trust_email, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`,
 		provider.ID,
 		provider.Name,
@@ -125,6 +126,7 @@ func (db *Database) CreateProvider(ctx context.Context, provider *Provider) erro
 		provider.AuthorizationURL,
 		provider.TokenURL,
 		provider.UserinfoURL,
+		provider.TrustEmail,
 		provider.CreatedAt,
 	)
 
@@ -143,7 +145,8 @@ func (db *Database) UpdateProvider(ctx context.Context, provider *Provider) erro
 		UPDATE providers
 		SET name = $2, icon = $3, display_order = $4, client_id = $5,
 		client_secret = $6, scopes = $7, oidc_url = $8,
-		authorization_url = $9, token_url = $10, userinfo_url = $11
+		authorization_url = $9, token_url = $10, userinfo_url = $11,
+		trust_email = $12
 		WHERE id = $1
 		`,
 		provider.ID,
@@ -157,6 +160,7 @@ func (db *Database) UpdateProvider(ctx context.Context, provider *Provider) erro
 		provider.AuthorizationURL,
 		provider.TokenURL,
 		provider.UserinfoURL,
+		provider.TrustEmail,
 	)
 
 	return err

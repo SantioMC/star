@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
@@ -19,14 +20,14 @@ func roleRouter(router fiber.Router) {
 	readRoles := middleware.RequireScope(openid.ScopeAdminRolesRead)
 	writeRoles := middleware.RequireScope(openid.ScopeAdminRolesWrite)
 
-	router.Get("/", readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getRoles)
-	router.Post("/", writeRoles, middleware.RequirePermission(permission.PermissionAdminCreateRoles), createRole)
+	router.Get("/", middleware.RequireAuth, readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getRoles)
+	router.Post("/", middleware.RequireAuth, writeRoles, middleware.RequirePermission(permission.PermissionAdminCreateRoles), createRole)
 
-	router.Get("/permissions", readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getAvailablePermissions)
+	router.Get("/permissions", middleware.RequireAuth, readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getAvailablePermissions)
 
-	router.Get("/:role", readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getRole)
-	router.Patch("/:role", writeRoles, middleware.RequirePermission(permission.PermissionAdminWriteRoles), updateRole)
-	router.Delete("/:role", writeRoles, middleware.RequirePermission(permission.PermissionAdminDeleteRoles), deleteRole)
+	router.Get("/:role", middleware.RequireAuth, readRoles, middleware.RequirePermission(permission.PermissionAdminReadRoles), getRole)
+	router.Patch("/:role", middleware.RequireAuth, writeRoles, middleware.RequirePermission(permission.PermissionAdminWriteRoles), updateRole)
+	router.Delete("/:role", middleware.RequireAuth, writeRoles, middleware.RequirePermission(permission.PermissionAdminDeleteRoles), deleteRole)
 }
 
 func getAvailablePermissions(ctx fiber.Ctx) error {
@@ -85,11 +86,7 @@ func createRole(ctx fiber.Ctx) error {
 		CreatedAt:   time.Now(),
 	}
 
-	if err := star.Database.CreateRole(ctx, role); err != nil {
-		return err
-	}
-
-	if err := bindPermissions(ctx, star, role.ID, permissions); err != nil {
+	if err := star.Database.CreateRoleWithPermissions(ctx, role, permissions); err != nil {
 		return err
 	}
 
@@ -109,11 +106,16 @@ func updateRole(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "Role not found")
 	}
 
-	if role.Internal {
+	nameChanged := request.Name != nil && *request.Name != role.Name
+	descriptionChanged := request.Description != nil && *request.Description != role.Description
+
+	if role.IsDefault() && (nameChanged || descriptionChanged) {
+		return fiber.NewError(403, "Only the permissions of the default role can be modified")
+	} else if role.Internal && !role.IsDefault() {
 		return fiber.NewError(403, "You are not permitted to modify this role")
 	}
 
-	if request.Name != nil && *request.Name != role.Name {
+	if nameChanged {
 		if star.Database.GetRoleByName(ctx, *request.Name) != nil {
 			return fiber.NewError(400, "A role with this name already exists")
 		}
@@ -125,23 +127,21 @@ func updateRole(ctx fiber.Ctx) error {
 		role.Description = *request.Description
 	}
 
-	if err := star.Database.UpdateRole(ctx, role); err != nil {
-		return err
-	}
-
-	if request.Permissions != nil {
+	if request.Permissions == nil {
+		if err := star.Database.UpdateRole(ctx, role); err != nil {
+			return err
+		}
+	} else {
 		permissions, err := resolvePermissions(ctx, star, *request.Permissions)
 		if err != nil {
 			return err
 		}
 
-		if err := star.Database.DeletePermissionBindingsByRoleID(ctx, role.ID); err != nil {
+		if err := star.Database.UpdateRoleWithPermissions(ctx, role, permissions); err != nil {
 			return err
 		}
 
-		if err := bindPermissions(ctx, star, role.ID, permissions); err != nil {
-			return err
-		}
+		cache.UpdateRevocations(ctx, star)
 	}
 
 	permissions := star.Database.GetRolePermissions(ctx, role.ID)
@@ -160,9 +160,11 @@ func deleteRole(ctx fiber.Ctx) error {
 		return fiber.NewError(403, "You are not permitted to delete this role")
 	}
 
-	if err := star.Database.DeleteRoleByID(ctx, role.ID); err != nil {
+	if err := star.Database.DeleteRoleWithRevocation(ctx, role); err != nil {
 		return err
 	}
+
+	cache.UpdateRevocations(ctx, star)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -182,21 +184,4 @@ func resolvePermissions(ctx fiber.Ctx, star *state.StarServer, names []string) (
 	}
 
 	return permissions, nil
-}
-
-func bindPermissions(ctx fiber.Ctx, star *state.StarServer, roleID string, permissions []database.Permission) error {
-	for _, resolved := range permissions {
-		binding := &database.PermissionBinding{
-			ID:           database.CreateID(database.PermissionBindingKey),
-			PermissionID: resolved.ID,
-			RoleID:       roleID,
-			CreatedAt:    time.Now(),
-		}
-
-		if err := star.Database.CreatePermissionBinding(ctx, binding); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

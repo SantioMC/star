@@ -2,6 +2,7 @@ package seed
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -11,59 +12,40 @@ import (
 )
 
 func seedRBAC(ctx context.Context, star *state.StarServer) error {
-	role := star.Database.GetRoleByName(ctx, "superadmin")
-	if role == nil {
-		role = &database.Role{
-			ID:          database.CreateID(database.RoleKey),
-			Name:        "superadmin",
-			Description: "The default super admin role",
-			Internal:    true,
-			CreatedAt:   time.Now(),
-		}
+	superadmin, superadminCreated, err := seedRole(ctx, star, database.SuperadminRoleName, "The default super admin role")
+	if err != nil {
+		return err
+	}
 
-		if err := star.Database.CreateRole(ctx, role); err != nil {
-			return err
-		}
+	defaultRole, defaultCreated, err := seedRole(ctx, star, database.DefaultRoleName, "Permissions granted to every user")
+	if err != nil {
+		return err
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(len(permission.BuiltinPermissions))
-
 	errors := make(chan error, len(permission.BuiltinPermissions))
 
-	for _, permission := range permission.BuiltinPermissions {
-		go func() {
-			defer wg.Done()
-
-			existing := star.Database.GetPermissionByName(ctx, permission.Name)
-			if existing != nil {
-				return
-			}
-
-			permission := &database.Permission{
-				ID:          database.CreateID(database.PermissionKey),
-				Name:        permission.Name,
-				Description: permission.Description,
-				CreatedAt:   time.Now(),
-			}
-
-			if err := star.Database.CreatePermission(ctx, permission); err != nil {
+	for _, definition := range permission.BuiltinPermissions {
+		wg.Go(func() {
+			permission, created, err := seedPermission(ctx, star, definition)
+			if err != nil {
 				errors <- err
 				return
 			}
 
-			binding := &database.PermissionBinding{
-				ID:           database.CreateID(database.PermissionBindingKey),
-				PermissionID: permission.ID,
-				RoleID:       role.ID,
-				CreatedAt:    time.Now(),
+			if superadmin != nil && (created || superadminCreated) {
+				if err := bindPermission(ctx, star, superadmin, permission); err != nil {
+					errors <- err
+					return
+				}
 			}
 
-			if err := star.Database.CreatePermissionBinding(ctx, binding); err != nil {
-				errors <- err
-				return
+			if defaultRole != nil && definition.Default && (created || defaultCreated) {
+				if err := bindPermission(ctx, star, defaultRole, permission); err != nil {
+					errors <- err
+				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -76,4 +58,57 @@ func seedRBAC(ctx context.Context, star *state.StarServer) error {
 	}
 
 	return nil
+}
+
+func seedRole(ctx context.Context, star *state.StarServer, name string, description string) (*database.Role, bool, error) {
+	existing := star.Database.GetRoleByName(ctx, name)
+	if existing != nil && !existing.Internal {
+		slog.Warn("a non built-in role is using a reserved name, it will not be managed by star", "role", existing.ID, "name", name)
+		return nil, false, nil
+	} else if existing != nil {
+		return existing, false, nil
+	}
+
+	role := &database.Role{
+		ID:          database.CreateID(database.RoleKey),
+		Name:        name,
+		Description: description,
+		Internal:    true,
+		CreatedAt:   time.Now(),
+	}
+
+	if err := star.Database.CreateRole(ctx, role); err != nil {
+		return nil, false, err
+	}
+
+	return role, true, nil
+}
+
+func seedPermission(ctx context.Context, star *state.StarServer, definition permission.PermissionDefinition) (*database.Permission, bool, error) {
+	existing := star.Database.GetPermissionByName(ctx, definition.Name)
+	if existing != nil {
+		return existing, false, nil
+	}
+
+	permission := &database.Permission{
+		ID:          database.CreateID(database.PermissionKey),
+		Name:        definition.Name,
+		Description: definition.Description,
+		CreatedAt:   time.Now(),
+	}
+
+	if err := star.Database.CreatePermission(ctx, permission); err != nil {
+		return nil, false, err
+	}
+
+	return permission, true, nil
+}
+
+func bindPermission(ctx context.Context, star *state.StarServer, role *database.Role, permission *database.Permission) error {
+	return star.Database.CreatePermissionBinding(ctx, &database.PermissionBinding{
+		ID:           database.CreateID(database.PermissionBindingKey),
+		PermissionID: permission.ID,
+		RoleID:       role.ID,
+		CreatedAt:    time.Now(),
+	})
 }

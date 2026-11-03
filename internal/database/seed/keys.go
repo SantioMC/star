@@ -11,7 +11,17 @@ import (
 
 // Create an active signing key and prepare the next one for rotation
 func seedKeys(ctx context.Context, star *state.StarServer) error {
-	keys, err := star.Database.GetSigningKeysCount(ctx)
+	for _, algorithm := range database.KeyAlgorithms {
+		if err := seedAlgorithmKeys(ctx, star, algorithm); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func seedAlgorithmKeys(ctx context.Context, star *state.StarServer, algorithm database.KeyAlgorithm) error {
+	keys, err := star.Database.GetSigningKeysCount(ctx, algorithm)
 	if err != nil {
 		return err
 	}
@@ -22,7 +32,8 @@ func seedKeys(ctx context.Context, star *state.StarServer) error {
 
 	defaultKeyDuration := time.Hour * 24 * 7
 
-	current, err := keypair.NewECDSAKeypair(
+	current, err := keypair.NewKeypair(
+		algorithm,
 		database.SigningKeyStatusActive,
 		&defaultKeyDuration,
 	)
@@ -35,7 +46,8 @@ func seedKeys(ctx context.Context, star *state.StarServer) error {
 		return err
 	}
 
-	next, err := keypair.NewECDSAKeypair(
+	next, err := keypair.NewKeypair(
+		algorithm,
 		database.SigningKeyStatusNext,
 		nil,
 	)
@@ -44,9 +56,5 @@ func seedKeys(ctx context.Context, star *state.StarServer) error {
 		return err
 	}
 
-	if err := star.Database.CreateSigningKey(ctx, next); err != nil {
-		return err
-	}
-
-	return nil
+	return star.Database.CreateSigningKey(ctx, next)
 }

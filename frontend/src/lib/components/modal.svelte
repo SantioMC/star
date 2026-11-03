@@ -1,97 +1,107 @@
 <script lang="ts">
-	import { Button } from '@/components/ui/button';
-	import type { ClassValue } from 'svelte/elements';
-	import Icon from './icon.svelte';
+    import { cn } from "@/utils";
+    import type { Snippet } from "svelte";
+    import type { ClassValue } from "svelte/elements";
+    import Button from "./button.svelte";
+    import Icon from "./icon.svelte";
 
-	let {
-		showModal = $bindable(false),
-		closable = true,
-		button = false,
-		class: className,
-		children
-	}: {
-		showModal?: boolean;
-		children?: any;
-		closable?: boolean;
-		button?: boolean;
-		class?: ClassValue;
-	} = $props();
+    let {
+        showModal = $bindable(false),
+        closable = true,
+        button = false,
+        class: className,
+        children,
+    }: {
+        showModal?: boolean;
+        children?: Snippet;
+        closable?: boolean;
+        button?: boolean;
+        class?: ClassValue;
+    } = $props();
 
-	let dialog: HTMLDialogElement = $state()!;
+    let dialog: HTMLDialogElement = $state()!;
+    let panel: HTMLDivElement = $state()!;
 
-	$effect(() => {
-		if (showModal) dialog.showModal();
-	});
+    $effect(() => {
+        if (showModal && !dialog.open) {
+            dialog.showModal();
+            panel.focus();
+        } else if (!showModal && dialog.open) {
+            dialog.close();
+        }
+    });
 
-	export const close = () => {
-		dialog.close();
-		showModal = false;
-	};
+    export const close = () => {
+        showModal = false;
+    };
 
-	export const open = () => {
-		dialog.showModal();
-		showModal = true;
-	};
+    export const open = () => {
+        showModal = true;
+    };
 
-	const handleClick = (e: MouseEvent) => {
-		if (e.target != dialog || !closable) return;
-		dialog.close();
-	};
+    const handleClick = (e: MouseEvent) => {
+        if (e.target != dialog || !closable) return;
+        close();
+    };
+
+    const handleCancel = (e: Event) => {
+        if (closable) return;
+        e.preventDefault();
+    };
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <dialog
-	bind:this={dialog}
-	onclose={() => (showModal = false)}
-	onclick={handleClick}
-	class="fixed top-1/2 left-1/2 w-full -translate-1/2 rounded-lg border-none bg-card p-0 text-card-foreground backdrop:bg-black/70 sm:max-w-1/3 sm:min-w-96 md:overflow-hidden {className}"
+    bind:this={dialog}
+    onclose={() => (showModal = false)}
+    oncancel={handleCancel}
+    onclick={handleClick}
+    class={cn(
+        "fixed inset-0 m-auto h-fit max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] rounded-lg border border-background-200 bg-background-100 p-0 text-foreground backdrop:bg-black/70 sm:w-lg",
+        className,
+    )}
 >
-	<div class="rounded-lg bg-card p-4 text-card-foreground">
-		{#if button}
-			<Button
-				type="button"
-				variant='ghost'
-				class="absolute top-0 right-0 h-10 w-10 rounded p-[0.5px]"
-				onclick={close}
-			>
-				<Icon icon="x" class='text-lg' />
-			</Button>
-		{/if}
+    <div bind:this={panel} tabindex="-1" class="relative p-6 outline-none">
+        {#if button}
+            <Button
+                type="button"
+                variant="icon"
+                aria-label="Close"
+                class="absolute top-4 right-4 text-muted hover:text-foreground"
+                onclick={close}
+            >
+                <Icon icon="x" />
+            </Button>
+        {/if}
 
-		{@render children?.()}
-	</div>
+        {@render children?.()}
+    </div>
 </dialog>
 
 <style>
-	@keyframes zoom {
-		from {
-			transform: scale(0.95);
-		}
-		to {
-			transform: scale(1);
-		}
-	}
+    @keyframes zoom {
+        from {
+            scale: 0.95;
+        }
+        to {
+            scale: 1;
+        }
+    }
 
-	@keyframes fade {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
+    @keyframes fade {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
 
-	@media screen and (width >= 48rem) {
-		dialog {
-			width: var(--width) !important;
-		}
-	}
+    dialog[open] {
+        animation: zoom 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
 
-	dialog[open] {
-		animation: zoom 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-	}
-
-	dialog[open]::backdrop {
-		animation: fade 0.2s ease-out;
-	}
+    dialog[open]::backdrop {
+        animation: fade 0.2s ease-out;
+    }
 </style>

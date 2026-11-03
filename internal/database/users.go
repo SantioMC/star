@@ -40,7 +40,7 @@ func (db *Database) GetUserByID(ctx context.Context, id string) *User {
 }
 
 func (db *Database) GetUsers(ctx context.Context, page int, limit int) []User {
-	users, err := sqlx.ListContext[User](
+	users, err := list[User](
 		ctx,
 		db.DB(),
 		`SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
@@ -58,7 +58,7 @@ func (db *Database) GetUsers(ctx context.Context, page int, limit int) []User {
 }
 
 func (db *Database) SearchUsers(ctx context.Context, query string, page int, limit int) []User {
-	users, err := sqlx.ListContext[User](
+	users, err := list[User](
 		ctx,
 		db.DB(),
 		`
@@ -84,7 +84,7 @@ func (db *Database) GetUserByName(ctx context.Context, name string) *User {
 	user, err := sqlx.OneContext[User](
 		ctx,
 		db.DB(),
-		`SELECT * FROM users WHERE name = $1 LIMIT 1`,
+		`SELECT * FROM users WHERE LOWER(name) = LOWER($1) LIMIT 1`,
 		name,
 	)
 
@@ -99,7 +99,7 @@ func (db *Database) GetUserByName(ctx context.Context, name string) *User {
 }
 
 func (db *Database) GetUsersByName(ctx context.Context, name string) []User {
-	users, err := sqlx.ListContext[User](
+	users, err := list[User](
 		ctx,
 		db.DB(),
 		`SELECT * FROM users WHERE LOWER(name) = LOWER($1)`,
@@ -117,7 +117,7 @@ func (db *Database) GetUsersByName(ctx context.Context, name string) []User {
 }
 
 func (db *Database) GetUsersByVerifiedEmail(ctx context.Context, email string) []User {
-	users, err := sqlx.ListContext[User](
+	users, err := list[User](
 		ctx,
 		db.DB(),
 		`
@@ -139,13 +139,22 @@ func (db *Database) GetUsersByVerifiedEmail(ctx context.Context, email string) [
 }
 
 func (db *Database) DeleteUser(ctx context.Context, id string) error {
-	_, err := db.DB().ExecContext(
-		ctx,
-		`DELETE FROM users WHERE id = $1`,
-		id,
-	)
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
 
-	return err
+	defer tx.Rollback()
+
+	if err := db.revokeUser(ctx, tx, id, RevocationReasonUserDeleted); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (db *Database) UpdateUser(ctx context.Context, user *User) error {
@@ -166,8 +175,33 @@ func (db *Database) UpdateUser(ctx context.Context, user *User) error {
 	return err
 }
 
-func (db *Database) CreateUser(ctx context.Context, user *User) error {
-	_, err := db.DB().ExecContext(
+func (db *Database) CreateUserIdentity(ctx context.Context, user *User, email *UserEmail, account *Account) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if err := db.insertUser(ctx, tx, user); err != nil {
+		return duplicate(err)
+	}
+
+	if email != nil {
+		if err := db.insertEmail(ctx, tx, email); err != nil {
+			return duplicate(err)
+		}
+	}
+
+	if err := db.insertAccount(ctx, tx, account); err != nil {
+		return duplicate(err)
+	}
+
+	return tx.Commit()
+}
+
+func (db *Database) insertUser(ctx context.Context, execer sqlx.ExecerContext, user *User) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
 		INSERT INTO users (id, name, first_name, last_name, profile_picture, created_at)

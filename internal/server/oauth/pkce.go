@@ -37,9 +37,12 @@ func ValidCodeVerifierFormat(verifier string) bool {
 	return pkcePattern.MatchString(verifier)
 }
 
-func VerifyCodeVerifier(verifier string, challenge string) bool {
+func CreateCodeChallenge(verifier string) string {
 	hash := sha256.Sum256([]byte(verifier))
-	computed := base64.RawURLEncoding.EncodeToString(hash[:])
+	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
 
+func VerifyCodeVerifier(verifier string, challenge string) bool {
+	computed := CreateCodeChallenge(verifier)
 	return subtle.ConstantTimeCompare([]byte(computed), []byte(challenge)) == 1
 }

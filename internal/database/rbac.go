@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/vinovest/sqlx"
@@ -15,12 +16,19 @@ const PermissionKey = "perm"
 const RoleBindingKey = "rb"
 const PermissionBindingKey = "pb"
 
+const SuperadminRoleName = "superadmin"
+const DefaultRoleName = "default"
+
 type Role struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Internal    bool      `json:"internal"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+}
+
+func (role *Role) IsDefault() bool {
+	return role.Internal && role.Name == DefaultRoleName
 }
 
 type Permission struct {
@@ -117,7 +125,11 @@ func (db *Database) GetPermissionByName(ctx context.Context, name string) *Permi
 }
 
 func (db *Database) CreateRole(ctx context.Context, role *Role) error {
-	_, err := db.DB().ExecContext(
+	return db.insertRole(ctx, db.DB(), role)
+}
+
+func (db *Database) insertRole(ctx context.Context, execer sqlx.ExecerContext, role *Role) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
 		INSERT INTO roles (
@@ -135,7 +147,11 @@ func (db *Database) CreateRole(ctx context.Context, role *Role) error {
 }
 
 func (db *Database) UpdateRole(ctx context.Context, role *Role) error {
-	_, err := db.DB().ExecContext(
+	return db.updateRole(ctx, db.DB(), role)
+}
+
+func (db *Database) updateRole(ctx context.Context, execer sqlx.ExecerContext, role *Role) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
 		UPDATE roles
@@ -188,7 +204,11 @@ func (db *Database) DeletePermissionByID(ctx context.Context, id string) error {
 }
 
 func (db *Database) CreateRoleBinding(ctx context.Context, binding *RoleBinding) error {
-	_, err := db.DB().ExecContext(
+	return db.insertRoleBinding(ctx, db.DB(), binding)
+}
+
+func (db *Database) insertRoleBinding(ctx context.Context, execer sqlx.ExecerContext, binding *RoleBinding) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
 		INSERT INTO role_bindings (
@@ -215,7 +235,11 @@ func (db *Database) DeleteRoleBindingByID(ctx context.Context, id string) error 
 }
 
 func (db *Database) CreatePermissionBinding(ctx context.Context, binding *PermissionBinding) error {
-	_, err := db.DB().ExecContext(
+	return db.insertPermissionBinding(ctx, db.DB(), binding)
+}
+
+func (db *Database) insertPermissionBinding(ctx context.Context, execer sqlx.ExecerContext, binding *PermissionBinding) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
 		INSERT INTO permission_bindings (
@@ -242,16 +266,20 @@ func (db *Database) DeletePermissionBindingByID(ctx context.Context, id string) 
 }
 
 func (db *Database) GetUserPermissions(ctx context.Context, userId string) []Permission {
-	permissions, err := sqlx.ListContext[Permission](
+	permissions, err := list[Permission](
 		ctx,
 		db.DB(),
 		`
-		SELECT permissions.* FROM permissions
+		SELECT DISTINCT permissions.* FROM permissions
 		INNER JOIN permission_bindings ON permissions.id = permission_bindings.permission_id
-		INNER JOIN role_bindings ON permission_bindings.role_id = role_bindings.role_id
-		WHERE role_bindings.user_id = $1
+		WHERE permission_bindings.role_id IN (
+			SELECT role_id FROM role_bindings WHERE user_id = $1
+			UNION
+			SELECT id FROM roles WHERE name = $2 AND internal
+		)
 		`,
 		userId,
+		DefaultRoleName,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -272,12 +300,16 @@ func (db *Database) UserHasPermission(ctx context.Context, userId string, permis
 		SELECT EXISTS (
 			SELECT 1 FROM permissions
 			INNER JOIN permission_bindings ON permissions.id = permission_bindings.permission_id
-			INNER JOIN role_bindings ON permission_bindings.role_id = role_bindings.role_id
-			WHERE role_bindings.user_id = $1 AND permissions.name = $2
+			WHERE permissions.name = $2 AND permission_bindings.role_id IN (
+				SELECT role_id FROM role_bindings WHERE user_id = $1
+				UNION
+				SELECT id FROM roles WHERE name = $3 AND internal
+			)
 		)
 		`,
 		userId,
 		permission,
+		DefaultRoleName,
 	)
 
 	if err != nil {
@@ -290,7 +322,7 @@ func (db *Database) UserHasPermission(ctx context.Context, userId string, permis
 }
 
 func (db *Database) GetUserRoles(ctx context.Context, userId string) []Role {
-	roles, err := sqlx.ListContext[Role](
+	roles, err := list[Role](
 		ctx,
 		db.DB(),
 		`
@@ -312,7 +344,7 @@ func (db *Database) GetUserRoles(ctx context.Context, userId string) []Role {
 }
 
 func (db *Database) GetRoles(ctx context.Context) []Role {
-	roles, err := sqlx.ListContext[Role](
+	roles, err := list[Role](
 		ctx,
 		db.DB(),
 		`SELECT * FROM roles ORDER BY created_at DESC`,
@@ -329,7 +361,7 @@ func (db *Database) GetRoles(ctx context.Context) []Role {
 }
 
 func (db *Database) GetPermissions(ctx context.Context) []Permission {
-	permissions, err := sqlx.ListContext[Permission](
+	permissions, err := list[Permission](
 		ctx,
 		db.DB(),
 		`SELECT * FROM permissions ORDER BY created_at DESC`,
@@ -346,7 +378,7 @@ func (db *Database) GetPermissions(ctx context.Context) []Permission {
 }
 
 func (db *Database) GetRolePermissions(ctx context.Context, roleID string) []Permission {
-	permissions, err := sqlx.ListContext[Permission](
+	permissions, err := list[Permission](
 		ctx,
 		db.DB(),
 		`
@@ -379,7 +411,7 @@ func (db *Database) DeletePermissionBindingsByRoleID(ctx context.Context, roleID
 }
 
 func (db *Database) GetUserRoleBindings(ctx context.Context, userID string) []RoleBinding {
-	bindings, err := sqlx.ListContext[RoleBinding](
+	bindings, err := list[RoleBinding](
 		ctx,
 		db.DB(),
 		`SELECT * FROM role_bindings WHERE user_id = $1`,
@@ -429,4 +461,158 @@ func (db *Database) CountPermissions(ctx context.Context) (int, error) {
 	}
 
 	return count, nil
+}
+
+func (db *Database) insertPermissionBindings(ctx context.Context, execer sqlx.ExecerContext, roleID string, permissions []Permission) error {
+	for _, permission := range permissions {
+		binding := &PermissionBinding{
+			ID:           CreateID(PermissionBindingKey),
+			PermissionID: permission.ID,
+			RoleID:       roleID,
+			CreatedAt:    time.Now(),
+		}
+
+		if err := db.insertPermissionBinding(ctx, execer, binding); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (db *Database) CreateRoleWithPermissions(ctx context.Context, role *Role, permissions []Permission) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if err := db.insertRole(ctx, tx, role); err != nil {
+		return err
+	}
+
+	if err := db.insertPermissionBindings(ctx, tx, role.ID, permissions); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (db *Database) UpdateRoleWithPermissions(ctx context.Context, role *Role, permissions []Permission) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if err := db.updateRole(ctx, tx, role); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM permission_bindings WHERE role_id = $1`, role.ID); err != nil {
+		return err
+	}
+
+	if err := db.insertPermissionBindings(ctx, tx, role.ID, permissions); err != nil {
+		return err
+	}
+
+	if role.IsDefault() {
+		err = db.revokeAll(ctx, tx, RevocationReasonRolesChanged)
+	} else {
+		err = db.revokeRole(ctx, tx, role.ID, RevocationReasonRolesChanged)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (db *Database) DeleteRoleWithRevocation(ctx context.Context, role *Role) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if err := db.revokeRole(ctx, tx, role.ID, RevocationReasonRolesChanged); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM roles WHERE id = $1`, role.ID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (db *Database) SetUserRoles(ctx context.Context, userID string, roleIDs []string) (bool, error) {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+
+	defer tx.Rollback()
+
+	current, err := list[RoleBinding](
+		ctx,
+		tx,
+		`SELECT * FROM role_bindings WHERE user_id = $1 FOR UPDATE`,
+		userID,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	changed := false
+	for _, binding := range current {
+		if slices.Contains(roleIDs, binding.RoleID) {
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, `DELETE FROM role_bindings WHERE id = $1`, binding.ID); err != nil {
+			return false, err
+		}
+
+		changed = true
+	}
+
+	for _, roleID := range roleIDs {
+		exists := slices.ContainsFunc(current, func(binding RoleBinding) bool {
+			return binding.RoleID == roleID
+		})
+
+		if exists {
+			continue
+		}
+
+		binding := &RoleBinding{
+			ID:        CreateID(RoleBindingKey),
+			RoleID:    roleID,
+			UserID:    userID,
+			CreatedAt: time.Now(),
+		}
+
+		if err := db.insertRoleBinding(ctx, tx, binding); err != nil {
+			return false, err
+		}
+
+		changed = true
+	}
+
+	if !changed {
+		return false, nil
+	}
+
+	if err := db.revokeUser(ctx, tx, userID, RevocationReasonRolesChanged); err != nil {
+		return false, err
+	}
+
+	return true, tx.Commit()
 }

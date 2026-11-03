@@ -3,8 +3,11 @@ package username
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+var allowedCharacters = regexp.MustCompile(`^[A-Za-z0-9._\- ]+$`)
 
 func ValidateUsername(username string, settings *Settings) (string, error) {
 	username = strings.TrimSpace(username)
@@ -15,6 +18,10 @@ func ValidateUsername(username string, settings *Settings) (string, error) {
 
 	if len(username) > settings.MaxLength {
 		return "", fmt.Errorf("username must be at most %d characters", settings.MaxLength)
+	}
+
+	if !allowedCharacters.MatchString(username) {
+		return "", errors.New("username may only contain english letters, numbers, dots, dashes, underscores and spaces")
 	}
 
 	if !settings.AllowSpaces && strings.Contains(username, " ") {

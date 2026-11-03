@@ -28,6 +28,12 @@ CREATE TABLE permission_bindings (
     created_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE UNIQUE INDEX roles_name_unique ON roles (name);
+CREATE UNIQUE INDEX role_bindings_unique ON role_bindings (role_id, user_id);
+CREATE INDEX role_bindings_user_lookup ON role_bindings (user_id);
+CREATE UNIQUE INDEX permissions_name_unique ON permissions (name);
+CREATE UNIQUE INDEX permission_bindings_unique ON permission_bindings (role_id, permission_id);
+
 -- +goose Down
 DROP TABLE IF EXISTS permissions;
 DROP TABLE IF EXISTS permission_bindings;

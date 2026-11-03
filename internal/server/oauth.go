@@ -1,26 +1,19 @@
 package server
 
 import (
-	"time"
-
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/limiter"
+	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/oauth"
 )
 
 func oauthRouter(router fiber.Router) {
-	tokenLimiter := limiter.New(limiter.Config{
-		Max:        60,
-		Expiration: time.Minute,
-		LimitReached: func(ctx fiber.Ctx) error {
-			return fiber.ErrTooManyRequests
-		},
-	})
+	tokenLimiter := middleware.RateLimit(60)
 
 	router.Get("/authorize", authorizeHandler)
 	router.Get("/application/:client_id", tokenLimiter, applicationHandler)
 	router.Post("/token", tokenLimiter, tokenHandler)
 	router.Post("/revoke", tokenLimiter, revokeHandler)
+	router.Post("/introspect", middleware.RateLimit(300), introspectHandler)
 }
 
 func authorizeHandler(ctx fiber.Ctx) error {
@@ -37,4 +30,8 @@ func tokenHandler(ctx fiber.Ctx) error {
 
 func revokeHandler(ctx fiber.Ctx) error {
 	return oauth.Revoke(ctx)
+}
+
+func introspectHandler(ctx fiber.Ctx) error {
+	return oauth.Introspect(ctx)
 }

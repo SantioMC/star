@@ -11,6 +11,7 @@ type AdminRole struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Internal    bool      `json:"internal"`
+	Default     bool      `json:"default"`
 	Permissions []string  `json:"permissions"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -26,6 +27,7 @@ func TransformRole(role database.Role, permissions []database.Permission) AdminR
 		Name:        role.Name,
 		Description: role.Description,
 		Internal:    role.Internal,
+		Default:     role.IsDefault(),
 		Permissions: names,
 		CreatedAt:   role.CreatedAt,
 	}

@@ -1,98 +1,189 @@
 <script lang="ts">
-	import { browser } from "$app/environment";
-	import { goto } from "$app/navigation";
-	import * as star from '$lib/star';
-	import Icon from "@/components/icon.svelte";
-	import Sidebar from "@/components/sidebar.svelte";
-	import { Badge } from "@/components/ui/badge";
-	import { Button } from "@/components/ui/button";
-	import * as InputGroup from '@/components/ui/input-group';
-	import { Spinner } from "@/components/ui/spinner";
-	import * as Table from '@/components/ui/table';
-	import { hasPermission } from "@/index";
-	import { debounced, relativeTime } from "@/utils";
-	import { onMount } from "svelte";
+    import { goto } from "$app/navigation";
+    import { resolve } from "$app/paths";
+    import Badge from "@/components/badge.svelte";
+    import Button from "@/components/button.svelte";
+    import Card from "@/components/card.svelte";
+    import Icon from "@/components/icon.svelte";
+    import PageHeader from "@/components/page-header.svelte";
+    import SearchInput from "@/components/search-input.svelte";
+    import * as Avatar from "@/components/ui/avatar";
+    import { hasPermission } from "@/index";
+    import * as star from "@/star";
+    import { simpleDate, titleCase } from "@/utils";
+    import { onMount } from "svelte";
 
-	let users = $state<star.AdminUser[]>([])
-	let loading = $state<boolean>(true)
-	let query = $state<string>('')
+    const PAGE_SIZE = 25;
 
-	const onSearch = async () => {
-		loading = true;
-		users = await star.getAllUsers(1, query)
-		loading = false;
-	}
+    let users = $state<star.AdminUser[]>([]);
+    let loaded = $state(false);
+    let query = $state("");
+    let page = $state(1);
+    let searchTask: ReturnType<typeof setTimeout> | null = null;
 
-	onMount(async () => {
-		if (!browser) return
-		if (!hasPermission('admin:user:read')) return location.href = '/'
-		users = await star.getAllUsers()
-		loading = false
-	})
+    const hasNextPage = $derived(users.length >= PAGE_SIZE);
+
+    const load = async () => {
+        loaded = false;
+        users = await star.getAllUsers(page, query.trim());
+        loaded = true;
+    };
+
+    onMount(() => {
+        if (!hasPermission("admin:user:read")) return goto("/");
+        load();
+    });
+
+    const handleSearch = () => {
+        if (searchTask) clearTimeout(searchTask);
+
+        searchTask = setTimeout(() => {
+            page = 1;
+            load();
+        }, 250);
+    };
+
+    const changePage = (delta: number) => {
+        page = Math.max(1, page + delta);
+        load();
+    };
+
+    const displayName = (user: star.AdminUser): string => {
+        const fullName = [user.first_name, user.last_name]
+            .filter(Boolean)
+            .join(" ");
+
+        return fullName || user.username;
+    };
 </script>
 
-<Sidebar class='lg:p-8 max-w-6xl mx-auto'>
-	<h1 class='text-2xl font-semibold'>User Management</h1>
-	<h2 class='text-lg text-primary/60'>View and manage users</h2>
+<PageHeader
+    title="User Directory"
+    description="View and manage every user registered with Star"
+/>
 
-	<div class='mt-24'>
-		<div class="flex flex-row items-center gap-2">
-			<InputGroup.Root class='w-full xl:max-w-1/3 my-4'>
-				<InputGroup.Input onkeyup={debounced(onSearch)} bind:value={query} placeholder="Search..." />
-				<InputGroup.Addon>
-					{#if loading}
-					<Spinner />
-					{:else}
-					<Icon icon='search' />
-					{/if}
-				</InputGroup.Addon>
-			</InputGroup.Root>
-		</div>
+<SearchInput
+    bind:value={query}
+    oninput={handleSearch}
+    placeholder="Search by username or email"
+/>
 
-		<Table.Root>
-			<Table.Caption>Found {users.length} user{users.length == 1 ? '' : 's'}</Table.Caption>
-			<Table.Header>
-				<Table.Row>
-				<Table.Head class='w-1/4'>User</Table.Head>
-				<Table.Head>Email</Table.Head>
-				<Table.Head>Roles</Table.Head>
-				<Table.Head>Created</Table.Head>
-				<Table.Head class='text-end'>Actions</Table.Head>
-				</Table.Row>
-			</Table.Header>
-			<Table.Body>
-				{#each users as user (user.id)}
-				<Table.Row>
-					<Table.Cell class='flex flex-row gap-3 items-center'>
-						<img src={user.profile_picture ?? ""} alt="{user.username}'s profile picture" class='w-10 h-10 rounded-full' />
-						<div class="flex flex-col items-start">
-							<span>{user.username}</span>
-							<span class='text-primary/70 text-ellipsis overflow-hidden w-56'>{user.email ?? 'No email'}</span>
-						</div>
-					</Table.Cell>
-					<Table.Cell>
-						{#if user.email_verified}
-							<Badge variant='outline' class='border-emerald-600/60 text-emerald-500'>Verified</Badge>
-						{:else}
-							<Badge variant='outline' class='border-gray-400/60 text-gray-400'>Unverified</Badge>
-						{/if}
-					</Table.Cell>
-					<Table.Cell>
-						{#if user.roles.length == 0}
-							<span class='text-primary/50'>None</span>
-						{:else}
-							<div class='flex flex-row flex-wrap gap-1'>
-								{#each user.roles as role (role.id)}
-									<Badge variant='outline'>{role.name}</Badge>
-								{/each}
-							</div>
-						{/if}
-					</Table.Cell>
-					<Table.Cell>{relativeTime(user.created_at)} ago</Table.Cell>
-					<Table.Cell class='w-0'><Button variant='secondary' class='ml-auto' size='sm' onclick={() => goto(`/admin/users/${user.id}`)}>Manage</Button></Table.Cell>
-				</Table.Row>
-				{/each}
-			</Table.Body>
-		</Table.Root>
-	</div>
-</Sidebar>
+<Card class="p-2 sm:p-3">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="hover:bg-transparent">
+                <th class="px-3 text-xs font-medium text-muted select-none">
+                    User
+                </th>
+                <th
+                    class="px-3 text-xs font-medium text-muted select-none max-sm:hidden"
+                >
+                    Roles
+                </th>
+                <th
+                    class="px-3 text-xs font-medium text-muted select-none text-right max-sm:hidden"
+                >
+                    Joined
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {#each users as user (user.id)}
+                <tr
+                    class="cursor-pointer hover:bg-hover"
+                    onclick={() =>
+                        goto(resolve("/admin/users/[user]", { user: user.id }))}
+                >
+                    <td class="px-3 py-2.5">
+                        <div class="flex items-center gap-3">
+                            <Avatar.Root class="size-8">
+                                <Avatar.Image
+                                    src={user.profile_picture}
+                                    alt="{user.username}'s profile picture"
+                                />
+                                <Avatar.Fallback>
+                                    {user.username.charAt(0).toUpperCase()}
+                                </Avatar.Fallback>
+                            </Avatar.Root>
+                            <div class="min-w-0">
+                                <a
+                                    href={resolve("/admin/users/[user]", {
+                                        user: user.id,
+                                    })}
+                                    class="block truncate font-medium"
+                                    onclick={(event) => event.stopPropagation()}
+                                >
+                                    {displayName(user)}
+                                </a>
+                                <p class="truncate text-xs text-muted">
+                                    <span class="font-mono">
+                                        {user.username}
+                                    </span>
+                                    {#if user.email}
+                                        &middot; {user.email}
+                                    {/if}
+                                </p>
+                            </div>
+                            {#if !user.email_verified}
+                                <Badge tone="warning" class="ml-1">
+                                    unverified
+                                </Badge>
+                            {/if}
+                            {#if user.lockout?.locked}
+                                <Badge tone="danger" class="ml-1">locked</Badge>
+                            {/if}
+                        </div>
+                    </td>
+                    <td class="px-3 max-sm:hidden">
+                        <div class="flex flex-wrap gap-1">
+                            {#each user.roles as role (role.id)}
+                                <Badge>{titleCase(role.name)}</Badge>
+                            {:else}
+                                <span class="text-xs text-muted">None</span>
+                            {/each}
+                        </div>
+                    </td>
+                    <td
+                        class="px-3 text-right text-muted whitespace-nowrap max-sm:hidden"
+                    >
+                        {simpleDate(new Date(user.created_at))}
+                    </td>
+                </tr>
+            {:else}
+                <tr class="hover:bg-transparent">
+                    <td colspan="3" class="py-10 text-center text-muted">
+                        {#if !loaded}
+                            Loading users...
+                        {:else if query}
+                            No users match "{query}".
+                        {:else}
+                            No users found.
+                        {/if}
+                    </td>
+                </tr>
+            {/each}
+        </tbody>
+    </table>
+</Card>
+
+{#if page > 1 || hasNextPage}
+    <div class="flex items-center justify-end gap-2 -mt-4">
+        <span class="mr-2 text-sm text-muted select-none">Page {page}</span>
+        <Button
+            variant="secondary"
+            disabled={page <= 1 || !loaded}
+            onclick={() => changePage(-1)}
+            aria-label="Previous page"
+        >
+            <Icon icon="chevron-left" />
+        </Button>
+        <Button
+            variant="secondary"
+            disabled={!hasNextPage || !loaded}
+            onclick={() => changePage(1)}
+            aria-label="Next page"
+        >
+            <Icon icon="chevron-right" />
+        </Button>
+    </div>
+{/if}

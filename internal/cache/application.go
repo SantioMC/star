@@ -14,5 +14,5 @@ func UpdateApplication(ctx context.Context, state *state.StarServer) {
 		return
 	}
 
-	state.DefaultApp = app
+	state.DefaultApp.Store(app)
 }

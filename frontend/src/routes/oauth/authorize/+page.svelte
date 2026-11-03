@@ -1,176 +1,249 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import * as star from '$lib/star';
-	import Icon from '@/components/icon.svelte';
-	import { Button } from '@/components/ui/button';
-	import * as Card from '@/components/ui/card';
-	import { Spinner } from '@/components/ui/spinner';
-	import { isLoggedIn } from '@/index';
-	import { onMount } from 'svelte';
+    import { page } from "$app/state";
+    import * as star from "$lib/star";
+    import Button from "@/components/button.svelte";
+    import Card from "@/components/card.svelte";
+    import GrantedScopes from "@/components/granted-scopes.svelte";
+    import Icon from "@/components/icon.svelte";
+    import { isLoggedIn, requestLogin } from "@/index";
+    import { onMount } from "svelte";
 
-	let error = $state<string | null>(null);
-	let loading = $state<boolean>(true);
-	let loggingIn = $state<boolean>(false);
-	let application = $state<star.PublicApplication | null>(null);
+    let error = $state<string | null>(null);
+    let loading = $state<boolean>(true);
+    let loggingIn = $state<boolean>(false);
+    let application = $state<star.PublicApplication | null>(null);
 
-	onMount(async () => {
-		error = page.url.searchParams.get('error');
+    const host = $derived.by(() => {
+        if (!application) return null;
+        if (!URL.canParse(application.url)) return application.url;
 
-		const clientId = page.url.searchParams.get('client_id');
-		if (!clientId) return;
+        return new URL(application.url).host;
+    });
 
-		if (!isLoggedIn()) return requestLogin();
+    const prompted = (value: string) => {
+        const prompt = page.url.searchParams.get("prompt") ?? "";
+        return prompt.split(" ").includes(value);
+    };
 
-		const scope = page.url.searchParams.get('scope') ?? 'openid';
+    onMount(async () => {
+        error = page.url.searchParams.get("error");
+        if (error) return;
 
-		application = await star.getOAuthApplication(clientId, scope);
-		if (application?.implicit) {
-			return submit();
-		}
+        const clientId = page.url.searchParams.get("client_id");
+        const redirectUri = page.url.searchParams.get("redirect_uri");
 
-		loading = false;
-	});
+        if (!clientId || !redirectUri) {
+            return fail("Missing client_id or redirect_uri parameter");
+        }
 
-	const requestLogin = async () => {
-		localStorage.setItem(
-			'star-auth-redirect',
-			page.url.searchParams.toString()
-		);
+        const scope = page.url.searchParams.get("scope") ?? "openid";
+        const result = await star.getOAuthApplication(
+            clientId,
+            redirectUri,
+            scope,
+        );
 
-		return goto('/login');
-	};
+        if ("error" in result) {
+            return fail(result.message);
+        }
 
-	const submit = async () => {
-		if (!!error || !application) {
-			history.back();
-			return;
-		}
+        application = result;
 
-		loading = false;
-		loggingIn = true;
+        if (!isLoggedIn()) {
+            if (prompted("none")) return redirect({ error: "login_required" });
+            return signIn();
+        }
 
-		const redirectUri = page.url.searchParams.get('redirect_uri');
-		const scope = page.url.searchParams.get('scope') ?? 'openid';
+        if (prompted("consent")) {
+            loading = false;
+            return;
+        }
 
-		if (!redirectUri) {
-			error = 'Missing redirect_uri parameter';
-			loggingIn = false;
-			return;
-		}
+        submit(false);
+    });
 
-		const authCode = await star.getOAuthAuthCode(
-			application.id,
-			scope,
-			redirectUri,
-			page.url.searchParams.get('state'),
-			page.url.searchParams.get('code_challenge'),
-			page.url.searchParams.get('code_challenge_method'),
-			page.url.searchParams.get('nonce'),
-		);
+    const signIn = () =>
+        requestLogin({
+            returnTo: page.url.pathname + page.url.search,
+            reason: "authorize",
+            label: application?.name,
+        });
 
-		if ('error' in authCode) {
-			if (authCode.message === 'Forbidden') {
-				return requestLogin();
-			}
+    const fail = (message: string) => {
+        error = message;
+        loading = false;
+        loggingIn = false;
+    };
 
-			error = authCode.message;
-			loading = false;
-			loggingIn = false;
-			return;
-		}
+    const redirect = (values: Record<string, string>) => {
+        const redirectUri = page.url.searchParams.get("redirect_uri");
+        if (!application || !redirectUri) {
+            return fail(
+                "The redirect_uri could not be verified for this application",
+            );
+        }
 
-		const url = new URL(redirectUri);
-		url.searchParams.set('code', authCode.code);
+        const url = new URL(redirectUri);
+        if (["javascript:", "data:", "vbscript:"].includes(url.protocol)) {
+            return fail("The redirect_uri uses a scheme that is not allowed");
+        }
 
-		if (authCode.state) {
-			url.searchParams.set('state', authCode.state);
-		}
+        for (const [key, value] of Object.entries(values)) {
+            url.searchParams.set(key, value);
+        }
 
-		window.location.href = url.toString();
-	};
+        const state = page.url.searchParams.get("state");
+        if (state) {
+            url.searchParams.set("state", state);
+        }
+
+        window.location.href = url.toString();
+    };
+
+    const handleSubmit = (event: Event) => {
+        event.preventDefault();
+
+        if (!!error || !application) {
+            history.back();
+            return;
+        }
+
+        submit(true);
+    };
+
+    const deny = () => redirect({ error: "access_denied" });
+
+    const submit = async (consent: boolean) => {
+        if (!application) return;
+
+        loggingIn = true;
+
+        const redirectUri = page.url.searchParams.get("redirect_uri");
+        const scope = page.url.searchParams.get("scope") ?? "openid";
+
+        if (!redirectUri) return fail("Missing redirect_uri parameter");
+
+        const authCode = await star.getOAuthAuthCode(
+            application.id,
+            scope,
+            redirectUri,
+            page.url.searchParams.get("state"),
+            page.url.searchParams.get("code_challenge"),
+            page.url.searchParams.get("code_challenge_method"),
+            page.url.searchParams.get("nonce"),
+            consent,
+        );
+
+        if ("error" in authCode) {
+            if (authCode.message === "Forbidden") {
+                return signIn();
+            }
+
+            if (authCode.message === "consent_required") {
+                if (prompted("none")) {
+                    return redirect({ error: "consent_required" });
+                }
+
+                loading = false;
+                loggingIn = false;
+                return;
+            }
+
+            return fail(authCode.message);
+        }
+
+        redirect({ code: authCode.code });
+    };
 </script>
 
-<div class="h-full w-full flex items-center justify-center">
-	<form onsubmit={submit} class="w-full sm:w-fit">
-		<Card.Root class="-my-4 w-full sm:w-sm">
-			{#if error}
-				<Card.Header>
-					<Card.Title>An error has occurred</Card.Title>
-					<Card.Description>
-						Failed to authorize your request, please try again or contact the
-						site administrator if the problem persists.
-					</Card.Description>
-				</Card.Header>
-				<Card.Content
-					class="w-96 flex items-center flex-col gap-2 text-red-300"
-				>
-					{error}
-				</Card.Content>
-				<Card.Footer class="flex-col gap-2">
-					<Button type="submit" class="w-full">Go back</Button>
-				</Card.Footer>
-			{:else if loading}
-				<Card.Header>
-					<Card.Title>One Moment...</Card.Title>
-					<Card.Description>
-						Loading application information, please wait...
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="w-96 flex items-center flex-col gap-2">
-					<Spinner class="my-8" />
-				</Card.Content>
-			{:else if !application}
-				<Card.Header>
-					<Card.Title>Failed to get application</Card.Title>
-					<Card.Description>
-						Failed to get the application information, please try again or
-						contact the site administrator if the problem persists.
-					</Card.Description>
-				</Card.Header>
-				<Card.Footer class="flex-col gap-2">
-					<Button type="submit" class="w-full">Go back</Button>
-				</Card.Footer>
-			{:else if loggingIn}
-				<Card.Header>
-					<Card.Title>One Moment...</Card.Title>
-					<Card.Description>
-						You are being logged in, please wait...
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="w-96 flex items-center flex-col gap-2">
-					<Spinner class="my-8" />
-				</Card.Content>
-			{:else}
-				<Card.Header>
-					<Card.Title>Login to {application.name}</Card.Title>
-					<Card.Description>
-						{application.name} is asking for access to your account, review what it
-						will be able to do before continuing.
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="flex flex-col gap-3">
-					{#each application.scopes as entry (entry.scope)}
-						<div class="flex items-start gap-2 text-sm">
-							<Icon icon="check" class="text-emerald-500 mt-0.5" />
-							<div class="flex flex-col">
-								<span>{entry.description}</span>
-							</div>
-						</div>
-					{/each}
-				</Card.Content>
-				<Card.Footer class="flex-col gap-2">
-					<Button class="w-full" onclick={submit}>Continue</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						class="w-full"
-						onclick={() => history.back()}
-					>
-						Cancel
-					</Button>
-				</Card.Footer>
-			{/if}
-		</Card.Root>
-	</form>
+{#snippet spinner()}
+    <div class="flex items-center justify-center h-40 w-full">
+        <Icon icon="loader-2" class="animate-spin text-3xl text-muted" />
+    </div>
+{/snippet}
+
+<div class="h-full w-full flex items-center justify-center px-4">
+    <form onsubmit={handleSubmit} class="w-full sm:w-fit">
+        <Card class="-my-4 w-full sm:w-sm">
+            {#if error}
+                <div class="flex flex-col">
+                    <h1 class="text-lg">An error has occurred</h1>
+                    <p class="text-muted text-sm">
+                        Failed to authorize your request, please try again or
+                        contact the site administrator if the problem persists.
+                    </p>
+                </div>
+                <p
+                    class="my-6 rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300 break-words"
+                >
+                    {error}
+                </p>
+                <Button type="submit" class="w-full">Go back</Button>
+            {:else if loading}
+                <div class="flex flex-col">
+                    <h1 class="text-lg">One moment...</h1>
+                    <p class="text-muted text-sm">
+                        Loading application information, please wait...
+                    </p>
+                </div>
+                {@render spinner()}
+            {:else if !application}
+                <div class="flex flex-col">
+                    <h1 class="text-lg">Failed to get application</h1>
+                    <p class="text-muted text-sm">
+                        Failed to get the application information, please try
+                        again or contact the site administrator if the problem
+                        persists.
+                    </p>
+                </div>
+                <Button type="submit" class="w-full mt-6">Go back</Button>
+            {:else if loggingIn}
+                <div class="flex flex-col">
+                    <h1 class="text-lg">One moment...</h1>
+                    <p class="text-muted text-sm">
+                        You are being logged in, please wait...
+                    </p>
+                </div>
+                {@render spinner()}
+            {:else}
+                <div class="flex flex-col gap-1">
+                    <h1 class="text-lg">Authorize {application.name}</h1>
+                    <p class="text-muted text-sm">
+                        <span class="text-foreground">{application.name}</span>
+                        is asking for access to your account, review what it will
+                        be able to do before continuing.
+                    </p>
+                    {#if host}
+                        <p
+                            class="mt-1 flex items-center gap-1.5 text-xs text-muted"
+                        >
+                            <Icon icon="world" />
+                            <span class="font-mono truncate">{host}</span>
+                        </p>
+                    {/if}
+                </div>
+
+                <GrantedScopes scopes={application.scopes} class="my-6" />
+
+                <div class="flex-col gap-2 flex">
+                    <Button type="submit" class="w-full">Allow access</Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        class="w-full"
+                        onclick={deny}
+                    >
+                        Cancel
+                    </Button>
+                </div>
+
+                <p class="mt-4 text-center text-xs text-muted select-none">
+                    You can revoke this access at any time from your
+                    <a href="/applications" class="text-foreground underline">
+                        authorized applications
+                    </a>.
+                </p>
+            {/if}
+        </Card>
+    </form>
 </div>

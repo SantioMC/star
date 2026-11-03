@@ -21,7 +21,7 @@ type UserSession struct {
 
 func TransformSession(session database.Session) UserSession {
 	return UserSession{
-		ID:          session.ID,
+		ID:          session.FamilyID,
 		Address:     session.Address,
 		UserAgent:   session.UserAgent,
 		Geolocation: session.Geolocation,

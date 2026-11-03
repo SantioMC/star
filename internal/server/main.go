@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/cors"
-	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/tubblelive/star/frontend"
@@ -23,17 +23,21 @@ import (
 	"github.com/tubblelive/star/internal/state"
 )
 
-func StartServer(star *state.StarServer) error {
+func CreateServer(star *state.StarServer) (*fiber.App, error) {
 	app := fiber.New(fiber.Config{
-		AppName:         "Star Authorization Server",
-		ServerHeader:    "Star",
-		BodyLimit:       1024 * 1024 * 10,
-		ProxyHeader:     star.Config.ProxyHeader,
-		TrustProxy:      star.Config.TrustProxy,
-		StructValidator: request.NewStructValidator(),
-		ReadTimeout:     time.Second * 10,
-		WriteTimeout:    time.Second * 10,
-		IdleTimeout:     time.Second * 15,
+		AppName:      "Star Authorization Server",
+		ServerHeader: "Star",
+		BodyLimit:    1024 * 1024 * 10,
+		ProxyHeader:  star.Config.Proxy.Header,
+		TrustProxy:   star.Config.Proxy.Enabled,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: star.Config.Proxy.Trusted,
+		},
+		EnableIPValidation: true,
+		StructValidator:    request.NewStructValidator(),
+		ReadTimeout:        time.Second * 10,
+		WriteTimeout:       time.Second * 10,
+		IdleTimeout:        time.Second * 15,
 	})
 
 	app.Hooks().OnPreStartupMessage(func(data *fiber.PreStartupMessageData) error {
@@ -41,13 +45,24 @@ func StartServer(star *state.StarServer) error {
 		return nil
 	})
 
+	public := []string{"/healthz", "/.well-known", "/oauth", "/oidc"}
+
 	app.Use(cors.New(cors.Config{
+		Next: func(ctx fiber.Ctx) bool {
+			return slices.ContainsFunc(public, func(prefix string) bool {
+				return ctx.Path() == prefix || strings.HasPrefix(ctx.Path(), prefix+"/")
+			})
+		},
 		AllowOrigins: star.Config.Origins,
 		AllowHeaders: []string{
 			fiber.HeaderAuthorization,
 			fiber.HeaderContentType,
 			fiber.HeaderAccept,
 			fiber.HeaderOrigin,
+			"x-captcha-token",
+		},
+		ExposeHeaders: []string{
+			fiber.HeaderWWWAuthenticate,
 		},
 		AllowCredentials: true,
 		AllowMethods: []string{
@@ -105,7 +120,7 @@ func StartServer(star *state.StarServer) error {
 				ctx.Status(500).JSON(fiber.Map{
 					"error":   true,
 					"status":  500,
-					"message": data.Error(),
+					"message": "An internal error has occurred, please try again later",
 				})
 			}
 		} else if strings.HasPrefix(uri, "/api") {
@@ -118,32 +133,31 @@ func StartServer(star *state.StarServer) error {
 	app.Use(compress.New())
 	app.Use(recover.New())
 
-	global := app.Group("/", cors.New(cors.Config{
+	app.Use(public, cors.New(cors.Config{
 		AllowCredentials: false,
 	}))
 
-	global.Route("/healthz", healthRouter)
-	global.Route("/.well-known", wellKnownRouter)
-	global.Route("/oauth", oauthRouter)
-	global.Route("/oidc", oidcRouter)
+	app.Route("/healthz", healthRouter)
+	app.Route("/.well-known", wellKnownRouter)
+	app.Route("/oauth", oauthRouter)
+	app.Route("/oidc", oidcRouter)
 
 	// API
-	api := app.Group("/api", limiter.New(limiter.Config{
-		Max:        100,
-		Expiration: 1 * time.Minute,
-		LimitReached: func(ctx fiber.Ctx) error {
-			return fiber.ErrTooManyRequests
-		},
-	}))
+	api := app.Group("/api", middleware.RateLimit(100))
 
 	api.Route("/email", emailRouter)
 	api.Route("/user", userRouter)
-	api.Use(middleware.RequireAuth).Route("/app", appRouter)
-	api.Use(middleware.RequireAuth).Route("/session", sessionRouter)
-	api.Use(middleware.RequireAuth).Route("/mfa", mfaRouter)
-	api.Use(middleware.RequireAuth).Route("/role", roleRouter)
-	api.Use(middleware.RequireAuth).Route("/provider", providerRouter)
-	api.Use(middleware.RequireAuth).Route("/settings", settingsRouter)
+	api.Route("/app", appRouter)
+	api.Route("/session", sessionRouter)
+	api.Route("/grant", grantRouter)
+	api.Route("/mfa", mfaRouter)
+	api.Route("/role", roleRouter)
+	api.Route("/provider", providerRouter)
+	api.Route("/settings", settingsRouter)
+	api.Route("/key", keyRouter)
+	api.Route("/revocation", revocationRouter)
+	api.Route("/metrics", metricsRouter)
+	api.Route("/alert", alertRouter)
 
 	api.All("*", func(ctx fiber.Ctx) error {
 		// We don't want API routes to fallback to the frontend and send a 200
@@ -163,7 +177,7 @@ func StartServer(star *state.StarServer) error {
 	})
 
 	if err != nil {
-		panic("failed to marshal frontend environment")
+		return nil, fmt.Errorf("failed to marshal frontend environment: %w", err)
 	}
 
 	app.Get("/_app/env.js", func(ctx fiber.Ctx) error {
@@ -175,7 +189,7 @@ func StartServer(star *state.StarServer) error {
 
 	build, err := fs.Sub(frontend.FrontendFS, "build")
 	if err != nil {
-		return fmt.Errorf("failed to get build directory: %w", err)
+		return nil, fmt.Errorf("failed to get build directory: %w", err)
 	}
 
 	app.Use(static.New("/_app/*", static.Config{
@@ -187,10 +201,5 @@ func StartServer(star *state.StarServer) error {
 		return request.ShowFrontend(ctx)
 	})
 
-	port := fmt.Sprintf("[::]:%d", star.Config.Port)
-	if err := app.Listen(port); err != nil {
-		return fmt.Errorf("failed to start server: %w", err)
-	}
-
-	return nil
+	return app, nil
 }

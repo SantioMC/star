@@ -21,17 +21,21 @@ const (
 	ScopeEmail   = "email"
 	ScopeRoles   = "roles"
 
-	ScopeUserRead          = "star:user:read"
-	ScopeUserWrite         = "star:user:write"
-	ScopeUserPasswordWrite = "star:user:password:write"
-	ScopeUserEmailRead     = "star:user:email:read"
-	ScopeUserEmailWrite    = "star:user:email:write"
-	ScopeUserRolesRead     = "star:user:roles:read"
-	ScopeUserSessionsRead  = "star:user:sessions:read"
-	ScopeUserSessionsWrite = "star:user:sessions:write"
-	ScopeUserMFARead       = "star:user:mfa:read"
-	ScopeUserMFAWrite      = "star:user:mfa:write"
-	ScopeUserAuthorizeApps = "star:user:applications:authorize"
+	ScopeUserRead           = "star:user:read"
+	ScopeUserWrite          = "star:user:write"
+	ScopeUserAccountRead    = "star:user:account:read"
+	ScopeUserPasswordWrite  = "star:user:password:write"
+	ScopeUserEmailRead      = "star:user:email:read"
+	ScopeUserEmailWrite     = "star:user:email:write"
+	ScopeUserRolesRead      = "star:user:roles:read"
+	ScopeUserSessionsRead   = "star:user:sessions:read"
+	ScopeUserSessionsWrite  = "star:user:sessions:write"
+	ScopeUserMFARead        = "star:user:mfa:read"
+	ScopeUserMFAWrite       = "star:user:mfa:write"
+	ScopeUserAuthorizeApps  = "star:user:applications:authorize"
+	ScopeUserAppsRead       = "star:user:applications:read"
+	ScopeUserAppsRevoke     = "star:user:applications:revoke"
+	ScopeUserPermissionRead = "star:user:permission:read"
 
 	ScopeApplicationsRead   = "star:applications:read"
 	ScopeApplicationsWrite  = "star:applications:write"
@@ -46,6 +50,13 @@ const (
 	ScopeAdminProvidersWrite = "star:admin:providers:write"
 	ScopeAdminSettingsRead   = "star:admin:settings:read"
 	ScopeAdminSettingsWrite  = "star:admin:settings:write"
+	ScopeAdminKeysRead       = "star:admin:keys:read"
+	ScopeAdminKeysWrite      = "star:admin:keys:write"
+	ScopeAdminTokensRead     = "star:admin:tokens:read"
+	ScopeAdminTokensWrite    = "star:admin:tokens:write"
+	ScopeAdminMetricsRead    = "star:admin:metrics:read"
+	ScopeAdminAlertsRead     = "star:admin:alerts:read"
+	ScopeAdminAlertsWrite    = "star:admin:alerts:write"
 )
 
 type ScopeDefinition struct {
@@ -53,6 +64,7 @@ type ScopeDefinition struct {
 	Description string   `json:"description"`
 	Aliases     []string `json:"aliases,omitempty"`
 	Restricted  bool     `json:"restricted"`
+	Privileged  bool     `json:"privileged"`
 }
 
 var BuiltinScopes = []ScopeDefinition{
@@ -70,8 +82,17 @@ var BuiltinScopes = []ScopeDefinition{
 		Aliases:     []string{ScopeProfile, ScopeOIDC},
 	},
 	{
+		Name:        ScopeUserAccountRead,
+		Description: "View your connected accounts",
+	},
+	{
+		Name:        ScopeUserPermissionRead,
+		Description: "View permissions granted to you",
+	},
+	{
 		Name:        ScopeUserWrite,
 		Description: "Update your username and display name",
+		Privileged:  true,
 	},
 	{
 		Name:        ScopeUserEmailRead,
@@ -81,6 +102,7 @@ var BuiltinScopes = []ScopeDefinition{
 	{
 		Name:        ScopeUserEmailWrite,
 		Description: "Add, remove, and change the primary of your email addresses",
+		Privileged:  true,
 	},
 	{
 		Name:        ScopeUserRolesRead,
@@ -94,6 +116,7 @@ var BuiltinScopes = []ScopeDefinition{
 	{
 		Name:        ScopeUserSessionsWrite,
 		Description: "Sign your account out of its active sessions",
+		Privileged:  true,
 	},
 	{
 		Name:        ScopeUserMFARead,
@@ -112,6 +135,15 @@ var BuiltinScopes = []ScopeDefinition{
 	{
 		Name:        ScopeUserAuthorizeApps,
 		Description: "Authorize other applications to access your account",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeUserAppsRead,
+		Description: "View the applications you have authorized and their access",
+	},
+	{
+		Name:        ScopeUserAppsRevoke,
+		Description: "Revoke the access of applications you have authorized",
 		Restricted:  true,
 	},
 	{
@@ -172,6 +204,41 @@ var BuiltinScopes = []ScopeDefinition{
 	{
 		Name:        ScopeAdminSettingsWrite,
 		Description: "Modify the server configuration",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminKeysRead,
+		Description: "View the token signing keys",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminKeysWrite,
+		Description: "Rotate and delete the token signing keys",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminTokensRead,
+		Description: "View revoked sessions and access tokens",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminTokensWrite,
+		Description: "Revoke the access tokens of any user",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminMetricsRead,
+		Description: "View server metrics",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminAlertsRead,
+		Description: "View security alerts",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminAlertsWrite,
+		Description: "Resolve security alerts",
 		Restricted:  true,
 	},
 }
@@ -264,6 +331,26 @@ func HasScope(granted []string, required string) bool {
 	return false
 }
 
+func DescribeScopes(ctx context.Context, db *database.Database, scopes []string) map[string]string {
+	descriptions := make(map[string]string, len(scopes))
+	custom := make([]string, 0, len(scopes))
+
+	for _, scope := range scopes {
+		if definition := Builtin(scope); definition != nil {
+			descriptions[scope] = definition.Description
+			continue
+		}
+
+		custom = append(custom, scope)
+	}
+
+	for _, owned := range db.GetApplicationScopesByNames(ctx, custom) {
+		descriptions[owned.Name] = owned.Description
+	}
+
+	return descriptions
+}
+
 func SupportedScopes() []string {
 	names := make([]string, 0, len(BuiltinScopes))
 
@@ -341,10 +428,11 @@ func ResolveScopes(
 	}
 
 	internal := application != nil && application.Internal
+	privileged := internal || (application != nil && application.PrivilegedScopes)
 
 	for _, scope := range ordered {
 		if definition := Builtin(scope); definition != nil {
-			if definition.Restricted && !internal {
+			if (definition.Restricted && !internal) || (definition.Privileged && !privileged) {
 				resolution.Invalid = append(resolution.Invalid, scope)
 				continue
 			}

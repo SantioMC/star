@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/lib/pq"
+	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/models"
@@ -27,26 +28,27 @@ func appRouter(router fiber.Router) {
 	writeApplications := middleware.RequireScope(openid.ScopeApplicationsWrite)
 	deleteApplications := middleware.RequireScope(openid.ScopeApplicationsDelete)
 
-	router.Get("/", readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplications)
-	router.Post("/", writeApplications, middleware.RequirePermission(permission.PermissionCreateApplications), createApplication)
+	router.Get("/", middleware.RequireAuth, readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplications)
+	router.Post("/", middleware.RequireAuth, writeApplications, middleware.RequirePermission(permission.PermissionCreateApplications), createApplication)
 
 	router.Post(
 		"/authorization",
+		middleware.RequireAuth,
 		middleware.RequireScope(openid.ScopeUserAuthorizeApps),
 		middleware.RequirePermission(permission.PermissionCreateAuthorization),
 		createAppAuthorization,
 	)
 
-	router.Get("/:application", readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplication)
-	router.Patch("/:application", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), updateApplication)
-	router.Delete("/:application", deleteApplications, middleware.RequirePermission(permission.PermissionDeleteApplications), deleteApplication)
+	router.Get("/:application", middleware.RequireAuth, readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplication)
+	router.Patch("/:application", middleware.RequireAuth, writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), updateApplication)
+	router.Delete("/:application", middleware.RequireAuth, deleteApplications, middleware.RequirePermission(permission.PermissionDeleteApplications), deleteApplication)
 
-	router.Post("/:application/rotate", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), rotateApplicationSecret)
+	router.Post("/:application/rotate", middleware.RequireAuth, writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), rotateApplicationSecret)
 
-	router.Get("/:application/scopes", readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplicationScopes)
-	router.Post("/:application/scopes", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), createApplicationScope)
-	router.Patch("/:application/scopes/:scope", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), updateApplicationScope)
-	router.Delete("/:application/scopes/:scope", writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), deleteApplicationScope)
+	router.Get("/:application/scopes", middleware.RequireAuth, readApplications, middleware.RequirePermission(permission.PermissionReadApplications), getApplicationScopes)
+	router.Post("/:application/scopes", middleware.RequireAuth, writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), createApplicationScope)
+	router.Patch("/:application/scopes/:scope", middleware.RequireAuth, writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), updateApplicationScope)
+	router.Delete("/:application/scopes/:scope", middleware.RequireAuth, writeApplications, middleware.RequirePermission(permission.PermissionWriteApplications), deleteApplicationScope)
 }
 
 func getApplications(ctx fiber.Ctx) error {
@@ -86,9 +88,7 @@ func rotateApplicationSecret(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "Only confidential applications have a client secret")
 	}
 
-	secret := database.CreateApplicationSecret()
-	application.ClientSecret = &secret
-
+	secret := assignClientSecret(star, application)
 	if err := star.Database.UpdateApplication(ctx, application); err != nil {
 		return err
 	}
@@ -96,6 +96,14 @@ func rotateApplicationSecret(ctx fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{
 		"client_secret": secret,
 	})
+}
+
+func assignClientSecret(star *state.StarServer, application *database.Application) string {
+	secret := database.CreateApplicationSecret()
+	hashed := star.Database.HashApplicationSecret(secret)
+	application.ClientSecret = &hashed
+
+	return secret
 }
 
 func resolveNamespace(ctx fiber.Ctx, star *state.StarServer, requested string, fallback string) (string, error) {
@@ -132,6 +140,10 @@ func createApplication(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "Invalid application kind")
 	}
 
+	if err := oauth.ValidateApplicationURL(request.ApplicationURL); err != nil {
+		return fiber.NewError(400, err.Error())
+	}
+
 	requestedNamespace := ""
 	if request.Namespace != nil {
 		requestedNamespace = *request.Namespace
@@ -144,6 +156,10 @@ func createApplication(ctx fiber.Ctx) error {
 
 	clientId := cryptography.CreateSecureString(24)
 	if request.ClientID != nil {
+		if err := oauth.ValidateClientID(*request.ClientID); err != nil {
+			return fiber.NewError(400, err.Error())
+		}
+
 		clientId = *request.ClientID
 	}
 
@@ -151,34 +167,35 @@ func createApplication(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "Another application already uses this client id")
 	}
 
-	var clientSecret *string = nil
-	if kind == database.ApplicationKindConfidential {
-		secret := database.CreateApplicationSecret()
-		clientSecret = &secret
+	application := &database.Application{
+		ID:               database.CreateID(database.ApplicationKey),
+		Name:             request.Name,
+		Namespace:        namespace,
+		ApplicationURL:   request.ApplicationURL,
+		Kind:             kind,
+		ClientID:         clientId,
+		Internal:         false,
+		Consent:          database.ApplicationConsentDefault,
+		TokenDuration:    models.Seconds(time.Hour),
+		SessionDuration:  models.Seconds(time.Hour * 24 * 7),
+		RedirectURIs:     pq.StringArray{},
+		DevelopmentMode:  false,
+		SigningAlgorithm: database.KeyAlgorithmES512,
+		CreatedAt:        time.Now(),
 	}
 
-	application := &database.Application{
-		ID:              database.CreateID(database.ApplicationKey),
-		Name:            request.Name,
-		Namespace:       namespace,
-		ApplicationURL:  request.ApplicationURL,
-		Kind:            kind,
-		ClientID:        clientId,
-		ClientSecret:    clientSecret,
-		Internal:        false,
-		TokenDuration:   models.Seconds(time.Hour),
-		SessionDuration: models.Seconds(time.Hour * 24 * 7),
-		RedirectURIs:    pq.StringArray{},
-		DevelopmentMode: false,
-		CreatedAt:       time.Now(),
+	var clientSecret *string
+	if kind == database.ApplicationKindConfidential {
+		clientSecret = new(assignClientSecret(star, application))
 	}
 
 	if err := star.Database.CreateApplication(ctx, application); err != nil {
 		return err
 	}
 
-	return ctx.JSON(fiber.Map{
-		"success": true,
+	return ctx.JSON(types.ApplicationSecretResponse{
+		ID:           application.ID,
+		ClientSecret: clientSecret,
 	})
 }
 
@@ -198,6 +215,8 @@ func deleteApplication(ctx fiber.Ctx) error {
 	if err := star.Database.DeleteApplicationByID(ctx, applicationID); err != nil {
 		return err
 	}
+
+	cache.UpdateRevocations(ctx, star)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -221,6 +240,8 @@ func updateApplication(ctx fiber.Ctx) error {
 	if application.Internal {
 		return fiber.NewError(401, "You are not permitted to modify this application")
 	}
+
+	var clientSecret *string
 
 	if request.Name != nil {
 		application.Name = *request.Name
@@ -253,19 +274,35 @@ func updateApplication(ctx fiber.Ctx) error {
 			application.Kind = kind
 
 			if kind == database.ApplicationKindConfidential {
-				secret := database.CreateApplicationSecret()
-				application.ClientSecret = &secret
+				clientSecret = new(assignClientSecret(star, application))
 			} else {
 				application.ClientSecret = nil
 			}
 		}
 	}
 
+	if request.Consent != nil {
+		consent := database.ApplicationConsent(*request.Consent)
+		if !slices.Contains(database.ApplicationConsents, consent) {
+			return fiber.NewError(400, "Invalid consent mode")
+		}
+
+		application.Consent = consent
+	}
+
 	if request.ApplicationURL != nil {
+		if err := oauth.ValidateApplicationURL(*request.ApplicationURL); err != nil {
+			return fiber.NewError(400, err.Error())
+		}
+
 		application.ApplicationURL = *request.ApplicationURL
 	}
 
 	if request.ClientID != nil && *request.ClientID != application.ClientID {
+		if err := oauth.ValidateClientID(*request.ClientID); err != nil {
+			return fiber.NewError(400, err.Error())
+		}
+
 		if star.Database.GetApplicationByClientID(ctx, *request.ClientID) != nil {
 			return fiber.NewError(400, "Another application already uses this client id")
 		}
@@ -274,15 +311,16 @@ func updateApplication(ctx fiber.Ctx) error {
 	}
 
 	if request.TokenDuration != nil {
-		application.TokenDuration = models.Seconds(*request.TokenDuration)
+		application.TokenDuration = *request.TokenDuration
 	}
 
 	if request.SessionDuration != nil {
-		application.SessionDuration = models.Seconds(*request.SessionDuration)
+		application.SessionDuration = *request.SessionDuration
 	}
 
-	if application.TokenDuration.Duration() > time.Hour*24*3 {
-		return fiber.NewError(400, "Token duration may not exceed 3 days")
+	tokenDuration := application.TokenDuration.Duration()
+	if tokenDuration < time.Minute || tokenDuration > time.Hour {
+		return fiber.NewError(400, "Token duration must be between 1 minute and 1 hour")
 	}
 
 	if application.SessionDuration <= application.TokenDuration {
@@ -290,6 +328,12 @@ func updateApplication(ctx fiber.Ctx) error {
 	}
 
 	if request.RedirectURIs != nil {
+		for _, uri := range request.RedirectURIs {
+			if err := oauth.ValidateRedirectURI(uri); err != nil {
+				return fiber.NewError(400, err.Error())
+			}
+		}
+
 		application.RedirectURIs = pq.StringArray(slices.Compact(request.RedirectURIs))
 	}
 
@@ -297,12 +341,26 @@ func updateApplication(ctx fiber.Ctx) error {
 		application.DevelopmentMode = *request.DevelopmentMode
 	}
 
+	if request.PrivilegedScopes != nil {
+		application.PrivilegedScopes = *request.PrivilegedScopes
+	}
+
+	if request.SigningAlgorithm != nil {
+		algorithm := database.KeyAlgorithm(*request.SigningAlgorithm)
+		if !slices.Contains(database.KeyAlgorithms, algorithm) {
+			return fiber.NewError(400, "Invalid signing algorithm")
+		}
+
+		application.SigningAlgorithm = algorithm
+	}
+
 	if err := star.Database.UpdateApplication(ctx, application); err != nil {
 		return err
 	}
 
-	return ctx.JSON(fiber.Map{
-		"success": true,
+	return ctx.JSON(types.ApplicationSecretResponse{
+		ID:           application.ID,
+		ClientSecret: clientSecret,
 	})
 }
 
@@ -464,7 +522,7 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 	}
 
 	authenticatedAt := time.Now()
-	if current := star.Database.GetSessionByID(ctx, jwt.SessionID); current != nil {
+	if current := star.Database.GetSessionByFamily(ctx, jwt.SessionID); current != nil {
 		authenticatedAt = current.AuthenticatedAt
 	} else {
 		slog.Warn("issuing an authorization code for a session that no longer exists", "session", jwt.SessionID, "user", user.ID)
@@ -480,7 +538,7 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "Application not found")
 	}
 
-	if !slices.Contains(application.RedirectURIs, request.RedirectURI) {
+	if !oauth.AllowedRedirectURI(application, request.RedirectURI) {
 		return fiber.NewError(400, "Redirect URI is not allowed for this application")
 	}
 
@@ -506,6 +564,26 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 	}
 
 	validScopes := resolution.Names()
+	grant := star.Database.GetApplicationGrant(ctx, user.ID, application.ID)
+
+	if !request.Consent && oauth.RequiresConsent(application, grant, validScopes) {
+		return fiber.NewError(fiber.StatusPreconditionRequired, "consent_required")
+	}
+
+	if !application.Internal {
+		err := star.Database.SaveApplicationGrant(ctx, &database.ApplicationGrant{
+			ID:            database.CreateID(database.ApplicationGrantKey),
+			UserID:        user.ID,
+			ApplicationID: application.ID,
+			Scopes:        pq.StringArray(oauth.MergeGrantScopes(grant, validScopes)),
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		})
+
+		if err != nil {
+			return err
+		}
+	}
 
 	var codeChallenge *string = nil
 	var codeChallengeMethod *string = nil

@@ -15,6 +15,11 @@ var PermissionAdminDeleteUsers = PermissionDefinition{
 	Description: "Allows deleting users and their sessions",
 }
 
+var PermissionAdminExportUsers = PermissionDefinition{
+	Name:        "admin:user:export",
+	Description: "Allows exporting all personal data of any user",
+}
+
 var PermissionAdminReadRoles = PermissionDefinition{
 	Name:        "admin:role:read",
 	Description: "Allows viewing roles and their permissions",
@@ -53,4 +58,44 @@ var PermissionAdminWriteProviders = PermissionDefinition{
 var PermissionAdminDeleteProviders = PermissionDefinition{
 	Name:        "admin:provider:delete",
 	Description: "Allows deleting social login providers",
+}
+
+var PermissionAdminReadKeys = PermissionDefinition{
+	Name:        "admin:key:read",
+	Description: "Allows viewing the token signing keys",
+}
+
+var PermissionAdminRotateKeys = PermissionDefinition{
+	Name:        "admin:key:rotate",
+	Description: "Allows rotating the token signing keys",
+}
+
+var PermissionAdminDeleteKeys = PermissionDefinition{
+	Name:        "admin:key:delete",
+	Description: "Allows deleting retired token signing keys",
+}
+
+var PermissionAdminReadTokens = PermissionDefinition{
+	Name:        "admin:token:read",
+	Description: "Allows viewing revoked sessions and access tokens",
+}
+
+var PermissionAdminRevokeTokens = PermissionDefinition{
+	Name:        "admin:token:revoke",
+	Description: "Allows revoking the access tokens of a user or of every user",
+}
+
+var PermissionAdminReadMetrics = PermissionDefinition{
+	Name:        "admin:metrics:read",
+	Description: "Allows viewing server metrics",
+}
+
+var PermissionAdminReadAlerts = PermissionDefinition{
+	Name:        "admin:alert:read",
+	Description: "Allows viewing security alerts",
+}
+
+var PermissionAdminResolveAlerts = PermissionDefinition{
+	Name:        "admin:alert:resolve",
+	Description: "Allows resolving security alerts",
 }

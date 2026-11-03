@@ -1,27 +1,43 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { page } from '$app/state';
-	import favicon from '$lib/assets/favicon.svg';
-	import { Toaster } from '@/components/ui/sonner';
-	import { isLoggedIn } from '@/index';
-	import './layout.css';
+    import { page } from "$app/state";
+    import favicon from "$lib/assets/favicon.svg";
+    import { Toaster } from "@/components/ui/sonner";
+    import { isLoggedIn, restoreSession } from "@/index";
+    import { onMount } from "svelte";
+    import "./layout.css";
 
-	let { children } = $props();
+    let { children } = $props();
 
-	const PUBLIC_ROUTES = [
-		'/login',
-		'/register',
-		'/verify',
-		'/callback',
-		'/oauth/authorize'
-	];
+    const PUBLIC_ROUTES = [
+        "/login",
+        "/register",
+        "/verify",
+        "/oauth/authorize",
+    ];
 
-	if (browser && !PUBLIC_ROUTES.includes(page.url.pathname) && !isLoggedIn()) {
-		location.href = '/login';
-	}
+    let ready = $state(false);
+
+    onMount(async () => {
+        await restoreSession();
+
+        if (!PUBLIC_ROUTES.includes(page.url.pathname) && !isLoggedIn()) {
+            location.href = "/login";
+            return;
+        }
+
+        ready = true;
+    });
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
-<Toaster duration={2000} position="bottom-right" closeButton={true} />
+<Toaster
+    position="bottom-right"
+    duration={3000}
+    theme="dark"
+    richColors
+    style="--normal-bg: var(--color-background-100); --normal-text: var(--color-text); --normal-border: var(--border); --success-bg: var(--normal-bg); --success-border: var(--normal-border); --info-bg: var(--normal-bg); --info-border: var(--normal-border); --warning-bg: var(--normal-bg); --warning-border: var(--normal-border); --error-bg: var(--normal-bg); --error-border: var(--normal-border);"
+/>
 
-{@render children()}
+{#if ready}
+    {@render children?.()}
+{/if}

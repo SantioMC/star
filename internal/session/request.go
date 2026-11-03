@@ -23,14 +23,14 @@ func CreateSession(
 		return nil, ErrUserNotFound
 	}
 
-	var accountId *string
+	var accountID *string
 	if options.Account != nil {
-		accountId = &options.Account.ID
+		accountID = &options.Account.ID
 	}
 
-	applicationId := server.DefaultApp.ID
+	applicationID := server.DefaultApp.Load().ID
 	if options.Application != nil {
-		applicationId = options.Application.ID
+		applicationID = options.Application.ID
 	}
 
 	authenticatedAt := options.AuthenticatedAt
@@ -41,9 +41,10 @@ func CreateSession(
 	session := buildSession(
 		ctx,
 		server,
+		database.CreateID(database.SessionFamilyKey),
 		options.User.ID,
-		accountId,
-		applicationId,
+		accountID,
+		applicationID,
 		pq.StringArray(options.Scopes),
 		options.Duration,
 		authenticatedAt,
@@ -59,6 +60,7 @@ func CreateSession(
 func buildSession(
 	ctx fiber.Ctx,
 	server *state.StarServer,
+	familyID string,
 	userId string,
 	accountId *string,
 	applicationId string,
@@ -66,7 +68,7 @@ func buildSession(
 	duration time.Duration,
 	authenticatedAt time.Time,
 ) *database.Session {
-	address := ctx.IP()
+	address := server.ClientIP(ctx)
 	userAgent := ctx.Get(fiber.HeaderUserAgent)
 
 	location, err := server.GeoService.GetLocation(ctx, address)
@@ -76,6 +78,7 @@ func buildSession(
 
 	return &database.Session{
 		ID:              database.CreateID(database.SessionKey),
+		FamilyID:        familyID,
 		UserID:          userId,
 		AccountID:       accountId,
 		Address:         address,

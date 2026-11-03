@@ -1,131 +1,217 @@
 <script lang="ts">
-	import { browser } from "$app/environment";
-	import { goto } from "$app/navigation";
-	import * as star from '$lib/star';
-	import Icon from "@/components/icon.svelte";
-	import Modal from "@/components/modal.svelte";
-	import Sidebar from "@/components/sidebar.svelte";
-	import { Badge } from "@/components/ui/badge";
-	import { Button } from "@/components/ui/button";
-	import { Input } from "@/components/ui/input";
-	import { Label } from "@/components/ui/label";
-	import { Spinner } from "@/components/ui/spinner";
-	import * as Table from '@/components/ui/table';
-	import { hasPermission } from "@/index";
-	import { relativeTime, titleCase } from "@/utils";
-	import { onMount } from "svelte";
-	import { toast } from "svelte-sonner";
+    import { goto } from "$app/navigation";
+    import { resolve } from "$app/paths";
+    import * as star from "$lib/star";
+    import Badge from "@/components/badge.svelte";
+    import Button from "@/components/button.svelte";
+    import Card from "@/components/card.svelte";
+    import Icon from "@/components/icon.svelte";
+    import Input from "@/components/input.svelte";
+    import Modal from "@/components/modal.svelte";
+    import PageHeader from "@/components/page-header.svelte";
+    import SearchInput from "@/components/search-input.svelte";
+    import { Label } from "@/components/ui/label";
+    import { hasPermission } from "@/index";
+    import { simpleDate, titleCase } from "@/utils";
+    import { onMount } from "svelte";
+    import { toast } from "svelte-sonner";
 
-	let roles = $state<star.Role[]>([])
-	let loading = $state<boolean>(false)
+    const canCreate = hasPermission("admin:role:create");
 
-	let name = $state<string>('')
-	let description = $state<string>('')
+    let roles = $state<star.Role[]>([]);
+    let loaded = $state(false);
+    let query = $state("");
 
-	let createRoleModal = $state<Modal>()
+    let createRoleModal = $state<Modal>();
+    let name = $state("");
+    let description = $state("");
+    let creating = $state(false);
 
-	onMount(async () => {
-		if (!browser) return
-		if (!hasPermission('admin:role:read')) return location.href = '/'
-		roles = await star.getAllRoles()
-	})
+    const filteredRoles = $derived.by(() => {
+        const search = query.trim().toLowerCase();
+        if (!search) return roles;
 
-	const createRole = async (e: Event) => {
-		e.preventDefault()
-		loading = true
+        return roles.filter(
+            (role) =>
+                role.name.toLowerCase().includes(search) ||
+                role.description.toLowerCase().includes(search),
+        );
+    });
 
-		const result = await star.createRole({
-			name,
-			description: description || undefined
-		})
+    onMount(async () => {
+        if (!hasPermission("admin:role:read")) return goto("/");
 
-		if ('error' in result) {
-			loading = false
-			toast.error(result.message)
-		} else {
-			roles = await star.getAllRoles()
-			toast.success('Successfully created a new role')
-			createRoleModal?.close()
-			name = ''
-			description = ''
-			loading = false
-		}
-	}
+        roles = await star.getAllRoles();
+        loaded = true;
+    });
+
+    const openCreateModal = () => {
+        name = "";
+        description = "";
+        createRoleModal?.open();
+    };
+
+    const createRole = async (event: Event) => {
+        event.preventDefault();
+        if (creating) return;
+
+        creating = true;
+        const result = await star.createRole({
+            name: name.trim(),
+            description: description.trim() || undefined,
+        });
+        creating = false;
+
+        if ("error" in result) {
+            return toast.error(result.message);
+        }
+
+        createRoleModal?.close();
+        toast.success(`Created role ${result.name}`);
+        goto(resolve("/admin/roles/[role]", { role: result.id }));
+    };
+
+    const permissionCount = (role: star.Role): string => {
+        const count = role.permissions.length;
+        return `${count} permission${count === 1 ? "" : "s"}`;
+    };
 </script>
 
-<Sidebar class='md:p-8 max-w-6xl mx-auto'>
-	<h1 class='text-2xl font-semibold'>Roles</h1>
-	<h2 class='text-lg text-primary/60'>View and manage roles, star uses role-based access control.</h2>
+<PageHeader
+    title="Roles & Permissions"
+    description="Star uses role-based access control, grant permissions to users through roles"
+>
+    {#snippet actions()}
+        {#if canCreate}
+            <Button onclick={openCreateModal}>
+                <Icon icon="plus" />
+                Create role
+            </Button>
+        {/if}
+    {/snippet}
+</PageHeader>
 
-	<div class='mt-24'>
-		<div class="flex flex-row items-center gap-2 my-2">
-			{#if hasPermission('admin:role:create')}
-				<Button class='ml-auto' onclick={() => createRoleModal?.open()}>Create Role</Button>
-			{/if}
-		</div>
+<SearchInput bind:value={query} placeholder="Search roles" />
 
-		<Table.Root>
-			<Table.Caption>Found {roles.length} role{roles.length == 1 ? '' : 's'}</Table.Caption>
-			<Table.Header>
-				<Table.Row>
-				<Table.Head>Role</Table.Head>
-				<Table.Head>Permissions</Table.Head>
-				<Table.Head>Created</Table.Head>
-				<Table.Head class='text-end'>Actions</Table.Head>
-				</Table.Row>
-			</Table.Header>
-			<Table.Body>
-				{#each roles as role (role.id)}
-				<Table.Row>
-					<Table.Cell class='flex flex-row gap-2 items-center'>
-						<Icon class='text-3xl' icon='package' />
-						<div class="flex flex-col items-start">
-							<div class='flex items-center gap-2'>
-								<span>{titleCase(role.name)}</span>
-								{#if role.internal}
-									<Badge variant='secondary'>Built-in role</Badge>
-								{/if}
-							</div>
-							<span class='text-primary/70'>{role.description}</span>
-						</div>
-					</Table.Cell>
-					<Table.Cell>
-						<span>{role.permissions.length} permission{role.permissions.length == 1 ? '' : 's'}</span>
-					</Table.Cell>
-					<Table.Cell>{relativeTime(role.created_at)} ago</Table.Cell>
-					<Table.Cell class='w-0'><Button variant='secondary' class='ml-auto' size='sm' onclick={() => goto(`/admin/roles/${role.id}`)}>Manage</Button></Table.Cell>
-				</Table.Row>
-				{/each}
-			</Table.Body>
-		</Table.Root>
-	</div>
-</Sidebar>
+<Card class="p-2 sm:p-3">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="hover:bg-transparent">
+                <th class="px-3 text-xs font-medium text-muted select-none">
+                    Role
+                </th>
+                <th
+                    class="px-3 text-xs font-medium text-muted select-none max-sm:hidden"
+                >
+                    Permissions
+                </th>
+                <th
+                    class="px-3 text-xs font-medium text-muted select-none text-right max-sm:hidden"
+                >
+                    Created
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {#each filteredRoles as role (role.id)}
+                <tr
+                    class="cursor-pointer hover:bg-hover"
+                    onclick={() =>
+                        goto(resolve("/admin/roles/[role]", { role: role.id }))}
+                >
+                    <td class="px-3 py-2.5">
+                        <div class="flex items-center gap-2">
+                            <a
+                                href={resolve("/admin/roles/[role]", {
+                                    role: role.id,
+                                })}
+                                class="font-medium"
+                                onclick={(event) => event.stopPropagation()}
+                            >
+                                {titleCase(role.name)}
+                            </a>
+                            {#if role.internal}
+                                <Badge tone="primary">built-in</Badge>
+                            {/if}
+                        </div>
+                        {#if role.description}
+                            <p class="text-xs text-muted mt-0.5">
+                                {role.description}
+                            </p>
+                        {/if}
+                    </td>
+                    <td class="px-3 text-muted whitespace-nowrap max-sm:hidden">
+                        {permissionCount(role)}
+                    </td>
+                    <td
+                        class="px-3 text-right text-muted whitespace-nowrap max-sm:hidden"
+                    >
+                        {simpleDate(new Date(role.created_at))}
+                    </td>
+                </tr>
+            {:else}
+                <tr class="hover:bg-transparent">
+                    <td colspan="3" class="py-10 text-center text-muted">
+                        {#if !loaded}
+                            Loading roles...
+                        {:else if query}
+                            No roles match "{query}".
+                        {:else}
+                            No roles found.
+                        {/if}
+                    </td>
+                </tr>
+            {/each}
+        </tbody>
+    </table>
+</Card>
 
 <Modal bind:this={createRoleModal} button>
-	<h1 class='text-xl font-semibold'>Create Role</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Create a new role to manage permissions and access control for your users</h2>
+    <form class="flex flex-col gap-6" onsubmit={createRole}>
+        <div class="flex flex-col gap-1 pr-8">
+            <h1 class="text-xl font-semibold">Create a role</h1>
+            <h2 class="text-sm text-muted">
+                Roles group permissions together so they can be granted to
+                users.
+            </h2>
+        </div>
 
-	<form onsubmit={createRole} class='mt-6'>
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="name">Name</Label>
-				<Input id="name" type="text" placeholder='moderator' bind:value={name} required />
-			</div>
-			<div class="grid gap-2">
-				<Label for="description">Description</Label>
-				<Input id="description" type="text" placeholder='Moderators with limited admin access' bind:value={description} />
-			</div>
-		</div>
+        <div class="flex flex-col gap-5">
+            <div class="grid gap-2">
+                <Label for="roleName">Name</Label>
+                <Input
+                    bind:value={name}
+                    id="roleName"
+                    type="text"
+                    placeholder="moderator"
+                    autocomplete="off"
+                    required
+                />
+            </div>
 
-		<div class='flex items-center gap-2 justify-end mt-6'>
-			<Button variant='secondary' onclick={() => createRoleModal?.close()}>Cancel</Button>
-			<Button disabled={loading} type='submit'>
-				{#if loading}
-					<Spinner />
-				{/if}
+            <div class="grid gap-2">
+                <Label for="roleDescription">Description</Label>
+                <Input
+                    bind:value={description}
+                    id="roleDescription"
+                    type="text"
+                    placeholder="Moderators with limited admin access"
+                    autocomplete="off"
+                />
+            </div>
+        </div>
 
-				Create Role
-			</Button>
-		</div>
-	</form>
+        <div class="flex items-center gap-2 justify-end">
+            <Button
+                type="button"
+                variant="secondary"
+                onclick={() => createRoleModal?.close()}
+            >
+                Cancel
+            </Button>
+            <Button type="submit" loading={creating} disabled={!name.trim()}>
+                Create role
+            </Button>
+        </div>
+    </form>
 </Modal>

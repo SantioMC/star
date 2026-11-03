@@ -14,11 +14,14 @@ var contentSecurityPolicy = strings.TrimSpace(`
 default-src 'self';
 script-src 'self' https://challenges.cloudflare.com/turnstile/v0/api.js 'nonce-{nonce}';
 connect-src 'self';
+frame-src https://challenges.cloudflare.com;
+frame-ancestors 'none';
+form-action 'self';
 object-src 'none';
 base-uri 'self';
 img-src 'self' data: https://*.gravatar.com;
-style-src 'self' 'unsafe-hashes' 'sha256-tcbDxjMo+xKqM21aCGYbs/QAJqB7yUXC06oPWDapBgc=' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo=' https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.35.0/tabler-icons.min.css;
-font-src 'self' https://cdnjs.cloudflare.com
+style-src 'self' 'unsafe-hashes' 'sha256-tcbDxjMo+xKqM21aCGYbs/QAJqB7yUXC06oPWDapBgc=' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo=' https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.35.0/tabler-icons.min.css https://fonts.googleapis.com/css2;
+font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com
 `)
 
 func renderPage(nonce string) (string, error) {

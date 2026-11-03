@@ -1,40 +1,35 @@
 <script lang="ts">
-	import Icon from '@/components/icon.svelte';
-	import * as Item from '@/components/ui/item';
-	import type { Snippet } from 'svelte';
+    import Icon from "@/components/icon.svelte";
+    import type { Snippet } from "svelte";
 
-	const {
-		name,
-		description,
-		badges,
-		actions
-	}: {
-		name: string;
-		description: string;
-		badges?: Snippet;
-		actions?: Snippet;
-	} = $props();
+    const {
+        name,
+        description,
+        badges,
+        actions,
+    }: {
+        name: string;
+        description: string;
+        badges?: Snippet;
+        actions?: Snippet;
+    } = $props();
 </script>
 
-<Item.Root variant="outline">
-	<Item.Content class="flex flex-row items-center gap-4">
-		<Icon class="text-2xl" icon="lock-access" />
-		<div class="min-w-0">
-			<p class="text-base flex items-center gap-2 flex-wrap">
-				<code class="truncate">{name}</code>
+<div
+    class="flex items-center gap-3 px-1 py-2.5"
+>
+    <Icon class="shrink-0 text-lg text-muted" icon="lock-access" />
+    <div class="min-w-0">
+        <p class="flex flex-wrap items-center gap-2">
+            <code class="truncate font-mono text-sm">{name}</code>
+            {@render badges?.()}
+        </p>
+        <p class="text-xs text-muted mt-0.5">{description}</p>
+    </div>
 
-				{@render badges?.()}
-			</p>
-
-			<Item.Description class="text-xs">
-				{description}
-			</Item.Description>
-		</div>
-
-		{#if actions}
-			<div class="ml-auto flex items-center gap-1.5">
-				{@render actions()}
-			</div>
-		{/if}
-	</Item.Content>
-</Item.Root>
+    {#if actions}
+        <div class="ml-auto flex shrink-0 items-center gap-1">
+            {@render actions()}
+        </div>
+    {/if}
+</div>

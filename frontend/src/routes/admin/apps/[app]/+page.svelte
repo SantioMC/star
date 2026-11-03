@@ -1,693 +1,717 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import * as star from '$lib/star';
-	import ApplicationScope from '@/components/application-scope.svelte';
-	import Categorizied from '@/components/categorizied.svelte';
-	import Copy from '@/components/copy.svelte';
-	import Hidden from '@/components/hidden.svelte';
-	import Icon from '@/components/icon.svelte';
-	import Modal from '@/components/modal.svelte';
-	import RedirectUri from '@/components/provider/redirect-uri.svelte';
-	import ScopeFields from '@/components/scope-fields.svelte';
-	import ScopeItem from '@/components/scope-item.svelte';
-	import Sidebar from '@/components/sidebar.svelte';
-	import { Badge } from '@/components/ui/badge';
-	import { Button } from '@/components/ui/button';
-	import * as Card from '@/components/ui/card';
-	import * as DropdownMenu from '@/components/ui/dropdown-menu';
-	import { Input } from '@/components/ui/input';
-	import { Label } from '@/components/ui/label';
-	import { Separator } from '@/components/ui/separator';
-	import { Spinner } from '@/components/ui/spinner';
-	import { hasPermission } from '@/index';
-	import { formatTime } from '@/utils';
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
+    import { goto } from "$app/navigation";
+    import { page } from "$app/state";
+    import * as star from "$lib/star";
+    import {
+        CLIENT_KIND_DESCRIPTIONS,
+        CLIENT_KIND_OPTIONS,
+        CONSENT_DESCRIPTIONS,
+        CONSENT_OPTIONS,
+        SIGNING_ALGORITHM_DESCRIPTIONS,
+        SIGNING_ALGORITHM_OPTIONS,
+        type ClientKind,
+    } from "@/applications";
+    import ApplicationScope from "@/components/application-scope.svelte";
+    import Badge from "@/components/badge.svelte";
+    import Button from "@/components/button.svelte";
+    import Card from "@/components/card.svelte";
+    import Categorizied from "@/components/categorizied.svelte";
+    import Checkbox from "@/components/checkbox.svelte";
+    import ClientSecretModal from "@/components/client-secret-modal.svelte";
+    import ConfirmModal from "@/components/confirm-modal.svelte";
+    import Copy from "@/components/copy.svelte";
+    import Icon from "@/components/icon.svelte";
+    import Notice from "@/components/notice.svelte";
+    import Input from "@/components/input.svelte";
+    import Menu, { type MenuItem } from "@/components/menu.svelte";
+    import Modal from "@/components/modal.svelte";
+    import RedirectUri from "@/components/provider/redirect-uri.svelte";
+    import ScopeFields from "@/components/scope-fields.svelte";
+    import ScopeItem from "@/components/scope-item.svelte";
+    import Select from "@/components/select.svelte";
+    import { Label } from "@/components/ui/label";
+    import { hasPermission } from "@/index";
+    import { formatTime } from "@/utils";
+    import { onMount } from "svelte";
+    import { toast } from "svelte-sonner";
 
-	let app = $state<star.AdminApplication | null>(null);
+    const MIN_DURATION = 60;
 
-	let loading = $state<boolean>(false);
-	let name = $state<string>('');
-	let namespace = $state<string>('');
-	let url = $state<string>('');
-	let kind = $state<'public' | 'confidential'>('public');
-	let developmentMode = $state<boolean>(false);
-	let tokenDuration = $state<number>(3600);
-	let sessionDuration = $state<number>(604800);
-	let redirectUri = $state<string>('');
-	let scopeName = $state<string>('');
-	let scopeDescription = $state<string>('');
-	let scopeRequestable = $state<boolean>(false);
-	let builtinExpanded = $state<boolean>(false);
+    let app = $state<star.AdminApplication | null>(null);
 
-	let deleteAppModal = $state<Modal>();
-	let rotateSecretModal = $state<Modal>();
-	let addRedirectUriModal = $state<Modal>();
-	let addScopeModal = $state<Modal>();
+    let name = $state("");
+    let namespace = $state("");
+    let url = $state("");
+    let kind = $state<ClientKind>("public");
+    let consent = $state<star.ApplicationConsent>("default");
+    let developmentMode = $state(false);
+    let privilegedScopes = $state(false);
+    let signingAlgorithm = $state<star.SigningAlgorithm>("ES512");
+    let tokenDuration = $state("");
+    let sessionDuration = $state("");
+    let saving = $state(false);
 
-	let canModify = $derived(
-		app?.internal == false && hasPermission('application:write')
-	);
+    let redirectUri = $state("");
+    let addingRedirectUri = $state(false);
 
-	onMount(async () => {
-		if (!browser) return;
-		if (!hasPermission('application:read')) return goto('/');
+    let scopeName = $state("");
+    let scopeDescription = $state("");
+    let scopeRequestable = $state(false);
+    let addingScope = $state(false);
 
-		app = await star.getApplication(page.params.app!);
-		if (app == null) return goto('/admin/apps');
+    let builtinExpanded = $state(false);
 
-		name = app.name;
-		namespace = app.namespace;
-		url = app.application_url;
-		kind = app.kind;
-		developmentMode = app.development_mode;
-		tokenDuration = app.token_duration;
-		sessionDuration = app.session_duration;
-	});
+    let deleteAppModal = $state<ConfirmModal>();
+    let rotateSecretModal = $state<ConfirmModal>();
+    let addRedirectUriModal = $state<Modal>();
+    let addScopeModal = $state<Modal>();
+    let secretModal = $state<ClientSecretModal>();
 
-	const deleteApp = async () => {
-		loading = true;
-		const result = await star.deleteApplication(app!.id);
-		deleteAppModal?.close();
-		loading = false;
+    const canModify = $derived(
+        app?.internal === false && hasPermission("application:write"),
+    );
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			goto('/admin/apps');
-		}
-	};
+    const menuItems = $derived.by(() => {
+        const items: MenuItem[] = [];
 
-	const refresh = async () => {
-		app = await star.getApplication(app!.id);
-	};
+        if (app?.internal === false && hasPermission("application:delete")) {
+            items.push({
+                label: "Delete application",
+                icon: "trash",
+                danger: true,
+                onclick: () => deleteAppModal?.open(),
+            });
+        }
 
-	const updateApp = async () => {
-		loading = true;
-		const result = await star.updateApplication(app!.id, {
-			name,
-			namespace,
-			url,
-			kind,
-			development_mode: developmentMode,
-			token_duration: tokenDuration,
-			session_duration: sessionDuration
-		});
-		loading = false;
+        return items;
+    });
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			await refresh();
-			namespace = app!.namespace;
-			toast.success('Successfully updated application');
-		}
-	};
+    const resetForm = (data: star.AdminApplication) => {
+        name = data.name;
+        namespace = data.namespace;
+        url = data.application_url;
+        kind = data.kind;
+        consent = data.consent;
+        developmentMode = data.development_mode;
+        privilegedScopes = data.privileged_scopes;
+        signingAlgorithm = data.signing_algorithm;
+        tokenDuration = data.token_duration.toString();
+        sessionDuration = data.session_duration.toString();
+    };
 
-	const openAddScope = () => {
-		scopeName = `${app!.namespace}:`;
-		scopeDescription = '';
-		scopeRequestable = false;
-		addScopeModal?.open();
-	};
+    const refresh = async () => {
+        if (!app) return;
 
-	const addScope = async (e: Event) => {
-		e.preventDefault();
+        const data = await star.getApplication(app.id);
+        if (data) app = data;
+    };
 
-		loading = true;
-		const result = await star.createApplicationScope(app!.id, {
-			name: scopeName.trim(),
-			description: scopeDescription.trim(),
-			requestable: scopeRequestable
-		});
-		loading = false;
+    onMount(async () => {
+        if (!hasPermission("application:read")) return goto("/");
 
-		if ('error' in result) {
-			toast.error(result.message);
-			return;
-		}
+        const data = await star.getApplication(page.params.app!);
+        if (!data) return goto("/admin/apps");
 
-		await refresh();
-		addScopeModal?.close();
-		toast.success('Successfully added scope');
-	};
+        app = data;
+        resetForm(data);
+    });
 
-	const rotateSecret = async () => {
-		rotateSecretModal?.close();
-		const result = await star.rotateApplicationSecret(app!.id);
+    const parseDuration = (value: string, label: string): number | null => {
+        const parsed = Number(value);
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			await refresh();
-			toast.success('Successfully rotated the client secret');
-		}
-	};
+        if (!Number.isInteger(parsed) || parsed < MIN_DURATION) {
+            toast.error(`${label} must be a whole number of at least ${MIN_DURATION} seconds`);
+            return null;
+        }
 
-	const addRedirectUri = async (e: Event) => {
-		e.preventDefault();
+        return parsed;
+    };
 
-		const trimmed = redirectUri.trim();
-		if (!trimmed) return;
+    const updateApp = async (event: Event) => {
+        event.preventDefault();
+        if (!app || saving) return;
 
-		if (app!.redirect_uris.includes(trimmed)) {
-			toast.error('This redirect URI is already registered');
-			return;
-		}
+        const token = parseDuration(tokenDuration, "Token duration");
+        if (token == null) return;
 
-		loading = true;
-		const result = await star.updateApplication(app!.id, {
-			redirect_uris: [...app!.redirect_uris, trimmed]
-		});
-		loading = false;
+        if (token > 3600) {
+            return toast.error("Token duration may not exceed 3600 seconds (1 hour)");
+        }
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			await refresh();
-			redirectUri = '';
-			addRedirectUriModal?.close();
-			toast.success('Successfully added redirect URI');
-		}
-	};
+        const session = parseDuration(sessionDuration, "Session duration");
+        if (session == null) return;
 
-	const removeRedirectUri = async (uri: string) => {
-		const result = await star.updateApplication(app!.id, {
-			redirect_uris: app!.redirect_uris.filter((u) => u != uri)
-		});
+        saving = true;
+        const result = await star.updateApplication(app.id, {
+            name: name.trim(),
+            namespace: namespace.trim(),
+            url: url.trim(),
+            kind,
+            consent,
+            development_mode: developmentMode,
+            privileged_scopes: privilegedScopes,
+            signing_algorithm: signingAlgorithm,
+            token_duration: token,
+            session_duration: session,
+        });
+        saving = false;
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			await refresh();
-			toast.success('Removed redirect URI');
-		}
-	};
+        if ("error" in result) {
+            return toast.error(result.message);
+        }
+
+        await refresh();
+        if (app) resetForm(app);
+        if (result.client_secret) secretModal?.show(result.client_secret);
+
+        toast.success("Successfully updated application");
+    };
+
+    const deleteApp = async () => {
+        if (!app) return;
+
+        const result = await star.deleteApplication(app.id);
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        toast.success(`Deleted ${app.name}`);
+        goto("/admin/apps");
+    };
+
+    const rotateSecret = async () => {
+        if (!app) return;
+
+        const result = await star.rotateApplicationSecret(app.id);
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        await refresh();
+        if (result.client_secret) secretModal?.show(result.client_secret);
+
+        toast.success("Successfully rotated the client secret");
+    };
+
+    const openAddRedirectUri = () => {
+        redirectUri = "";
+        addRedirectUriModal?.open();
+    };
+
+    const addRedirectUri = async (event: Event) => {
+        event.preventDefault();
+        if (!app || addingRedirectUri) return;
+
+        const trimmed = redirectUri.trim();
+        if (!trimmed) return;
+
+        if (app.redirect_uris.includes(trimmed)) {
+            return toast.error("This redirect URI is already registered");
+        }
+
+        addingRedirectUri = true;
+        const result = await star.updateApplication(app.id, {
+            redirect_uris: [...app.redirect_uris, trimmed],
+        });
+        addingRedirectUri = false;
+
+        if ("error" in result) {
+            return toast.error(result.message);
+        }
+
+        await refresh();
+        addRedirectUriModal?.close();
+        toast.success("Successfully added redirect URI");
+    };
+
+    const removeRedirectUri = async (uri: string) => {
+        if (!app) return false;
+
+        const result = await star.updateApplication(app.id, {
+            redirect_uris: app.redirect_uris.filter((it) => it !== uri),
+        });
+
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        await refresh();
+        toast.success("Removed redirect URI");
+    };
+
+    const openAddScope = () => {
+        scopeName = `${app?.namespace ?? ""}:`;
+        scopeDescription = "";
+        scopeRequestable = false;
+        addScopeModal?.open();
+    };
+
+    const addScope = async (event: Event) => {
+        event.preventDefault();
+        if (!app || addingScope) return;
+
+        addingScope = true;
+        const result = await star.createApplicationScope(app.id, {
+            name: scopeName.trim(),
+            description: scopeDescription.trim(),
+            requestable: scopeRequestable,
+        });
+        addingScope = false;
+
+        if ("error" in result) {
+            return toast.error(result.message);
+        }
+
+        await refresh();
+        addScopeModal?.close();
+        toast.success("Successfully added scope");
+    };
 </script>
 
-<Sidebar class="md:p-8 max-w-6xl mx-auto">
-	{#if app}
-		<div class="flex flex-col gap-4">
-			<div class="flex flex-row items-center">
-				<div>
-					<h1 class="text-2xl font-semibold">Manage Application</h1>
-					<h2 class="text-lg text-primary/60">
-						Viewing application {app.name}
-					</h2>
-				</div>
+{#if app}
+    <div class="flex flex-row items-center gap-4">
+        <div
+            class="flex size-14 shrink-0 items-center justify-center rounded-full bg-background-200"
+        >
+            <Icon icon="package" class="text-2xl text-muted" />
+        </div>
 
-				<Button
-					variant="ghost"
-					class="ml-auto"
-					onclick={() => goto('/admin/apps')}
-				>
-					<Icon icon="chevron-left" />Go back
-				</Button>
-			</div>
+        <div class="min-w-0 flex-1">
+            <h1 class="leading-8 text-2xl font-semibold truncate">
+                {app.name}
+            </h1>
+            <div
+                class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted mt-0.5"
+            >
+                <span class="font-mono text-xs">{app.id}</span>
+                <Badge tone={app.kind === "confidential" ? "info" : "neutral"}>
+                    {app.kind}
+                </Badge>
+                {#if app.internal}
+                    <Badge tone="primary">built-in</Badge>
+                {/if}
+                {#if app.development_mode}
+                    <Badge tone="warning">development</Badge>
+                {/if}
+                <span>Created {formatTime(new Date(app.created_at))}</span>
+            </div>
+        </div>
 
-			<div class="mt-16 flex flex-col gap-8">
-				<div class="flex flex-col xl:flex-row items-center gap-4">
-					<Icon class="text-3xl" icon="package" />
-					<div
-						class="flex flex-col items-center xl:items-start justify-center gap-2"
-					>
-						<h3 class="text-lg leading-4 flex items-center gap-2">
-							{app.name}
-							{#if app.internal}
-								<Badge>Internal</Badge>
-							{/if}
-							<Badge variant="outline">{app.kind}</Badge>
-							{#if app.development_mode}
-								<Badge variant="outline" class="border-orange-400/60 text-orange-400">Development</Badge>
-							{/if}
-						</h3>
-						<div
-							class="flex flex-col xl:flex-row items-center xl:gap-3 text-sm text-primary/60 flex-wrap"
-						>
-							<span>
-								<Icon icon="id" />
-								{app.id}
-							</span>
-							<span>
-								<Icon icon="calendar-event" />
-								Created {formatTime(new Date(app.created_at))}
-							</span>
-						</div>
-					</div>
+        <Menu items={menuItems} label="Application actions" />
+    </div>
 
-					{#if canModify && hasPermission('application:delete')}
-						<DropdownMenu.Root>
-							<DropdownMenu.Trigger class="ml-auto">
-								<Button variant="ghost" size="icon">
-									<Icon icon="dots" class="text-2xl" />
-								</Button>
-							</DropdownMenu.Trigger>
-							<DropdownMenu.Content>
-								<DropdownMenu.Group>
-									<DropdownMenu.Item
-										variant="destructive"
-										onclick={() => deleteAppModal?.open()}
-									>
-										<Icon icon="trash" />
-										Delete
-									</DropdownMenu.Item>
-								</DropdownMenu.Group>
-							</DropdownMenu.Content>
-						</DropdownMenu.Root>
-					{/if}
-				</div>
+    {#if app.internal}
+        <Notice icon="lock" title="Built-in application.">
+            This application is managed by Star and can not be modified or
+            deleted.
+        </Notice>
+    {/if}
 
-				{#if app.internal}
-					<Card.Root class="w-full">
-						<Card.Content
-							class="flex flex-col overflow-hidden flex-wrap text-red-100"
-						>
-							<Card.Title class="text-red-200 mb-4">
-								<Icon icon="lock" /> Internal Application
-							</Card.Title>
-							<span>
-								This application is managed internally by star and can not be
-								modified manually
-							</span>
-						</Card.Content>
-					</Card.Root>
-				{/if}
+    <Card
+        title="OAuth 2.0 Credentials"
+        icon="key"
+        description="The credentials this application uses to identify itself against Star's OAuth 2.0 endpoints."
+        class="flex flex-col gap-5"
+    >
+        {#snippet actions()}
+            {#if canModify && app!.kind === "confidential"}
+                <Button
+                    variant="secondary"
+                    onclick={() => rotateSecretModal?.open()}
+                >
+                    <Icon icon="refresh" />
+                    Rotate secret
+                </Button>
+            {/if}
+        {/snippet}
 
-				<Card.Root class="min-w-1/3 w-full md:w-auto">
-					<Card.CardHeader>
-						<Card.Title class="flex items-center gap-1">
-							<Icon icon="key" class="text-2xl" /> OAuth 2.0 Credentials
-						</Card.Title>
-						<Card.Description class="md:max-w-2/3">
-							The credentials the application uses to identify itself against
-							star's OAuth 2.0 endpoints.
-						</Card.Description>
-					</Card.CardHeader>
-					<Card.Content class="flex flex-col gap-4">
-						<Categorizied title="Client ID">
-							<code class="text-md mt-1">
-								{app.client_id}
-								<Copy content={app.client_id} />
-							</code>
-						</Categorizied>
+        <div class="grid gap-4 sm:grid-cols-2">
+            <Categorizied title="Client ID">
+                <div class="flex min-w-0 items-center gap-1.5">
+                    <code class="truncate font-mono text-sm">
+                        {app.client_id}
+                    </code>
+                    <Copy content={app.client_id} />
+                </div>
+            </Categorizied>
 
-						{#if app.kind == 'confidential'}
-							<Categorizied title="Client Secret">
-								{#if app.client_secret}
-									<Hidden content={app.client_secret} />
-								{:else}
-									<code class="text-md mt-1">Unset</code>
-								{/if}
-							</Categorizied>
-						{:else}
-							<Categorizied title="Client Secret">
-								<p class="text-md text-primary/60">
-									Public clients have no client secret and must use PKCE
-								</p>
-							</Categorizied>
-						{/if}
-					</Card.Content>
-					{#if canModify && app.kind == 'confidential'}
-						<Card.Footer>
-							<Button
-								variant="outline"
-								class="ml-auto"
-								onclick={() => rotateSecretModal?.open()}
-							>
-								<Icon icon="refresh" />
-								Rotate Secret
-							</Button>
-						</Card.Footer>
-					{/if}
-				</Card.Root>
+            <Categorizied title="Client Secret">
+                {#if app.kind === "public"}
+                    <p class="text-sm text-muted">
+                        None, public clients must use PKCE
+                    </p>
+                {:else if app.has_client_secret}
+                    <p class="text-sm text-muted">
+                        Hidden, rotate the secret to issue a new one
+                    </p>
+                {:else}
+                    <p class="text-sm text-muted">Unset</p>
+                {/if}
+            </Categorizied>
+        </div>
+    </Card>
 
-				<Card.Root class="min-w-1/3 w-full md:w-auto">
-					<Card.CardHeader>
-						<Card.Title class="flex items-center gap-1">
-							<Icon icon="world" class="text-2xl" /> Redirect URIs
-						</Card.Title>
-						<Card.Description class="md:max-w-2/3">
-							The exact redirect URIs the application is allowed to use during
-							the authorization code flow. Redirects are matched exactly.
-						</Card.Description>
-					</Card.CardHeader>
-					<Card.Content class="flex flex-col gap-2">
-						{#if app.redirect_uris.length == 0}
-							<div class="flex flex-col gap-4 items-center w-full my-12">
-								<span class="text-xl font-semibold leading-2">
-									No Redirect URIs
-								</span>
-								<span
-									class="text-primary/60 leading-5 m-0 -translate-y-1.5 text-center max-w-3/4"
-								>
-									This application has no registered redirect URIs, the
-									authorization flow will fail until one is added.
-								</span>
-								{#if canModify}
-									<Button onclick={() => addRedirectUriModal?.open()}>
-										Add Redirect URI
-									</Button>
-								{/if}
-							</div>
-						{:else}
-							{#each app.redirect_uris as uri (uri)}
-								{#if canModify}
-									<RedirectUri
-										redirectUri={uri}
-										onremove={() => removeRedirectUri(uri)}
-									/>
-								{:else}
-									<code class="w-auto! flex! items-center gap-2 px-2">
-										<Icon icon="world" />
-										{uri}
-									</code>
-								{/if}
-							{/each}
-						{/if}
-					</Card.Content>
-					{#if canModify && app.redirect_uris.length > 0}
-						<Card.Footer>
-							<Button
-								class="ml-auto"
-								onclick={() => addRedirectUriModal?.open()}
-							>
-								Add Redirect URI
-							</Button>
-						</Card.Footer>
-					{/if}
-				</Card.Root>
+    <Card
+        title="Redirect URIs"
+        icon="world"
+        description="Exact URIs this application may redirect to during the authorization code flow."
+        class="flex flex-col gap-3"
+    >
+        {#snippet actions()}
+            {#if canModify}
+                <Button variant="secondary" onclick={openAddRedirectUri}>
+                    Add URI
+                </Button>
+            {/if}
+        {/snippet}
 
-				<Card.Root class="min-w-1/3 w-full md:w-auto">
-					<Card.CardHeader>
-						<Card.Title class="flex items-center gap-1">
-							<Icon icon="shield-lock" class="text-2xl" /> Application Scopes
-						</Card.Title>
-						<Card.Description class="md:max-w-2/3">
-							The scopes this application can ask for on top of star's built-in
-							ones. Descriptions are shown to users on the authorization page,
-							and only scopes marked requestable can be asked for by other
-							applications. Restricted built-ins are only ever granted to
-							internal applications.
-						</Card.Description>
-					</Card.CardHeader>
-					<Card.Content class="flex flex-col gap-2">
-						{#if app.scopes.length == 0}
-							<div class="flex flex-col gap-4 items-center w-full my-12">
-								<span class="text-xl font-semibold leading-2">
-									No Application Scopes
-								</span>
-								<span
-									class="text-primary/60 leading-5 m-0 -translate-y-1.5 text-center max-w-3/4"
-								>
-									This application has not registered any scopes of its own, it
-									can still request star's built-in scopes.
-								</span>
-								{#if canModify}
-									<Button onclick={openAddScope}>Add Scope</Button>
-								{/if}
-							</div>
-						{:else}
-							{#each app.scopes as scope (scope.id)}
-								<ApplicationScope
-									application={app.id}
-									namespace={app.namespace}
-									{scope}
-									{canModify}
-									onchange={refresh}
-								/>
-							{/each}
-						{/if}
+        <div class="flex flex-col [&>div~div]:border-t [&>div~div]:border-background-200">
+            {#each app.redirect_uris as uri (uri)}
+                <RedirectUri
+                    redirectUri={uri}
+                    onremove={canModify
+                        ? () => removeRedirectUri(uri)
+                        : undefined}
+                />
+            {:else}
+                <p class="py-6 text-center text-sm text-muted">
+                    No redirect URIs are registered, authorization will fail
+                    until one is added.
+                </p>
+            {/each}
+        </div>
+    </Card>
 
-						{#if app.builtin_scopes && app.builtin_scopes.length > 0}
-							<button
-								type="button"
-								aria-expanded={builtinExpanded}
-								class="group flex items-center gap-3 mt-2 mb-1 cursor-pointer active:scale-100!"
-								onclick={() => (builtinExpanded = !builtinExpanded)}
-							>
-								<span
-									class="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 group-hover:text-muted-foreground transition-colors"
-								>
-									<Icon
-										icon={builtinExpanded ? 'chevron-down' : 'chevron-right'}
-										class="text-sm"
-									/>
-									Built-in ({app.builtin_scopes.length})
-								</span>
-								<Separator class="flex-1" />
-							</button>
-						{/if}
+    <Card
+        title="Application Scopes"
+        icon="shield-lock"
+        description="Scopes this application can request on top of Star's built-in ones. Descriptions are shown to users on the consent page."
+        class="flex flex-col gap-3"
+    >
+        {#snippet actions()}
+            {#if canModify}
+                <Button variant="secondary" onclick={openAddScope}>
+                    Add scope
+                </Button>
+            {/if}
+        {/snippet}
 
-						{#if builtinExpanded}
-							{#each app.builtin_scopes ?? [] as scope (scope.name)}
-								<ScopeItem name={scope.name} description={scope.description}>
-									{#snippet badges()}
-										{#if scope.restricted}
-											<Badge
-												variant="outline"
-												class="border-red-500/60 text-red-400"
-											>
-												Restricted
-											</Badge>
-										{/if}
+        <div class="flex flex-col [&>div~div]:border-t [&>div~div]:border-background-200">
+            {#each app.scopes as scope (scope.id)}
+                <ApplicationScope
+                    application={app.id}
+                    namespace={app.namespace}
+                    {scope}
+                    {canModify}
+                    onchange={refresh}
+                />
+            {:else}
+                <p class="py-6 text-center text-sm text-muted">
+                    This application has no scopes of its own. It can still
+                    request Star's built-in scopes.
+                </p>
+            {/each}
+        </div>
 
-										{#each scope.aliases ?? [] as alias (alias)}
-											<Badge variant="secondary">{alias}</Badge>
-										{/each}
-									{/snippet}
-								</ScopeItem>
-							{/each}
-						{/if}
-					</Card.Content>
-					{#if canModify && app.scopes.length > 0}
-						<Card.Footer>
-							<Button class="ml-auto" onclick={openAddScope}>Add Scope</Button>
-						</Card.Footer>
-					{/if}
-				</Card.Root>
+        {#if app.builtin_scopes && app.builtin_scopes.length > 0}
+            <button
+                type="button"
+                aria-expanded={builtinExpanded}
+                onclick={() => (builtinExpanded = !builtinExpanded)}
+                class="flex w-fit items-center gap-1.5 rounded-md px-1 py-1 text-sm text-muted transition-colors hover:text-foreground"
+            >
+                <Icon
+                    icon="chevron-right"
+                    class="transition-transform {builtinExpanded
+                        ? 'rotate-90'
+                        : ''}"
+                />
+                {builtinExpanded ? "Hide" : "Show"} built-in scopes
+                <span class="font-mono text-xs">
+                    ({app.builtin_scopes.length})
+                </span>
+            </button>
 
-				<Card.Root class="min-w-1/3 w-full md:w-auto">
-					<Card.CardHeader>
-						<Card.Title class="flex items-center gap-1">
-							<Icon icon="package" class="text-2xl" /> Application Settings
-						</Card.Title>
-					</Card.CardHeader>
-					<Card.Content class="flex flex-col gap-6">
-						<form class="flex flex-col gap-6">
-							<div class="grid gap-2">
-								<Label for="name">Name</Label>
-								<Input
-									id="name"
-									type="text"
-									required
-									bind:value={name}
-									disabled={!canModify}
-								/>
-							</div>
+            {#if builtinExpanded}
+                <div
+                    class="flex flex-col [&>div~div]:border-t [&>div~div]:border-background-200 rounded-lg border border-background-200 px-3 animate-in fade-in-0"
+                >
+                    {#each app.builtin_scopes as scope (scope.name)}
+                        <ScopeItem
+                            name={scope.name}
+                            description={scope.description}
+                        >
+                            {#snippet badges()}
+                                {#if scope.restricted}
+                                    <Badge tone="danger">restricted</Badge>
+                                {/if}
+                                {#if scope.privileged}
+                                    <Badge tone="warning">privileged</Badge>
+                                {/if}
+                                {#each scope.aliases ?? [] as alias (alias)}
+                                    <Badge>{alias}</Badge>
+                                {/each}
+                            {/snippet}
+                        </ScopeItem>
+                    {/each}
+                </div>
+            {/if}
+        {/if}
+    </Card>
 
-							<div class="grid gap-2">
-								<Label for="namespace">Scope Namespace</Label>
-								<Input
-									id="namespace"
-									type="text"
-									required
-									bind:value={namespace}
-									disabled={!canModify}
-								/>
-								<p class="text-sm text-primary/60">
-									Every scope this application registers must start with
-									<code>{namespace || '<namespace>'}:</code>
-								</p>
-							</div>
+    <Card title="Application Settings" icon="settings">
+        <form onsubmit={updateApp} class="mt-6">
+            <fieldset disabled={!canModify} class="flex flex-col gap-5">
+                <div class="grid gap-2">
+                    <Label for="name">Name</Label>
+                    <Input bind:value={name} id="name" type="text" required />
+                </div>
 
-							<div class="grid gap-2">
-								<Label for="url">Application URL</Label>
-								<Input
-									id="url"
-									type="url"
-									required
-									bind:value={url}
-									disabled={!canModify}
-								/>
-							</div>
+                <div class="grid gap-2">
+                    <Label for="namespace">Scope namespace</Label>
+                    <Input
+                        bind:value={namespace}
+                        id="namespace"
+                        type="text"
+                        class="font-mono"
+                        required
+                    />
+                    <p class="text-xs text-muted">
+                        Every scope this application registers must start with
+                        <span class="font-mono text-foreground"
+                            >{namespace || "<namespace>"}:</span
+                        >
+                    </p>
+                </div>
 
-							<div class="grid gap-2">
-								<Label for="kind">Client Type</Label>
-								<select
-									id="kind"
-									bind:value={kind}
-									disabled={!canModify}
-									class="border rounded-md bg-transparent px-3 py-2 text-sm"
-								>
-									<option value="public">
-										Public (browser or native app, uses PKCE)
-									</option>
-									<option value="confidential">
-										Confidential (server-side, uses a client secret)
-									</option>
-								</select>
-							</div>
+                <div class="grid gap-2">
+                    <Label for="url">Application URL</Label>
+                    <Input
+                        bind:value={url}
+                        id="url"
+                        type="url"
+                        class="font-mono"
+                        required
+                    />
+                </div>
 
-							<div class="flex gap-2 sm:gap-8">
-								<div class="flex-1/2 gap-2 grid">
-									<Label for="tokenDuration">Token Duration (seconds)</Label>
-									<Input
-										id="tokenDuration"
-										type="number"
-										min="60"
-										bind:value={tokenDuration}
-										disabled={!canModify}
-									/>
-								</div>
+                <div class="grid gap-2">
+                    <Label for="kind">Client type</Label>
+                    <Select
+                        bind:value={kind}
+                        id="kind"
+                        options={CLIENT_KIND_OPTIONS}
+                        disabled={!canModify}
+                    />
+                    <p class="text-xs text-muted">
+                        {CLIENT_KIND_DESCRIPTIONS[kind]}
+                    </p>
+                </div>
 
-								<div class="flex-1/2 gap-2 grid">
-									<Label for="sessionDuration">
-										Session Duration (seconds)
-									</Label>
-									<Input
-										id="sessionDuration"
-										type="number"
-										min="60"
-										bind:value={sessionDuration}
-										disabled={!canModify}
-									/>
-								</div>
-							</div>
+                <div class="grid gap-2">
+                    <Label for="consent">Consent</Label>
+                    <Select
+                        bind:value={consent}
+                        id="consent"
+                        options={CONSENT_OPTIONS}
+                        disabled={!canModify}
+                    />
+                    <p class="text-xs text-muted">
+                        {CONSENT_DESCRIPTIONS[consent]}
+                    </p>
+                </div>
 
-							<Label class="flex items-center gap-2">
-								<input
-									type="checkbox"
-									bind:checked={developmentMode}
-									disabled={!canModify}
-								/>
-								Development mode
-							</Label>
-						</form>
-					</Card.Content>
-					{#if canModify}
-						<Card.Footer>
-							<Button class="ml-auto" onclick={updateApp} disabled={loading}>
-								{#if loading}
-									<Spinner />
-								{/if}
-								Update
-							</Button>
-						</Card.Footer>
-					{/if}
-				</Card.Root>
-			</div>
-		</div>
-	{/if}
-</Sidebar>
+                <div class="grid gap-2">
+                    <Label for="signingAlgorithm">Signing algorithm</Label>
+                    <Select
+                        bind:value={signingAlgorithm}
+                        id="signingAlgorithm"
+                        options={SIGNING_ALGORITHM_OPTIONS}
+                        disabled={!canModify}
+                    />
+                    <p class="text-xs text-muted">
+                        {SIGNING_ALGORITHM_DESCRIPTIONS[signingAlgorithm]}
+                    </p>
+                </div>
 
-<Modal bind:this={deleteAppModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Are you sure?</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		This action can not be reversed! Deleting this application will invalidate
-		all of its sessions and break any logins using it.
-	</h2>
+                <div class="flex flex-col gap-5 sm:flex-row sm:gap-6">
+                    <div class="flex-1/2 gap-2 grid">
+                        <Label for="tokenDuration">Token duration</Label>
+                        <div class="relative">
+                            <Input
+                                bind:value={tokenDuration}
+                                id="tokenDuration"
+                                type="number"
+                                min={MIN_DURATION}
+                                max={3600}
+                                class="pr-20 font-mono input-clean"
+                            />
+                            <span
+                                class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted select-none"
+                            >
+                                seconds
+                            </span>
+                        </div>
+                    </div>
 
-	<div class="flex items-center gap-2 justify-end mt-4">
-		<Button variant="secondary" onclick={() => deleteAppModal?.close()}>
-			Cancel
-		</Button>
-		<Button variant="destructive" onclick={deleteApp} disabled={loading}>
-			{#if loading}
-				<Spinner />
-			{/if}
+                    <div class="flex-1/2 gap-2 grid">
+                        <Label for="sessionDuration">Session duration</Label>
+                        <div class="relative">
+                            <Input
+                                bind:value={sessionDuration}
+                                id="sessionDuration"
+                                type="number"
+                                min={MIN_DURATION}
+                                class="pr-20 font-mono input-clean"
+                            />
+                            <span
+                                class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted select-none"
+                            >
+                                seconds
+                            </span>
+                        </div>
+                    </div>
+                </div>
 
-			Delete Application
-		</Button>
-	</div>
-</Modal>
+                <label
+                    class="flex items-start gap-3 rounded-lg border border-background-200 p-3 transition-colors has-checked:border-primary/40 has-checked:bg-hover has-enabled:cursor-pointer has-enabled:hover:bg-hover"
+                >
+                    <Checkbox class="mt-0.5" bind:checked={developmentMode} />
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm select-none">Development mode</span>
+                        <span class="text-sm text-muted select-none">
+                            Flags this application as under development.
+                        </span>
+                    </div>
+                </label>
 
-<Modal bind:this={rotateSecretModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Rotate Client Secret</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		Rotating the client secret immediately invalidates the current secret, the
-		application will fail to authenticate until it is updated with the new
-		secret.
-	</h2>
+                {#if !app.internal}
+                    <label
+                        class="flex items-start gap-3 rounded-lg border border-background-200 p-3 transition-colors has-checked:border-red-400/40 has-checked:bg-red-400/5 has-enabled:cursor-pointer has-enabled:hover:bg-hover"
+                    >
+                        <Checkbox class="mt-0.5" bind:checked={privilegedScopes} />
+                        <div class="flex flex-col gap-0.5">
+                            <span class="text-sm select-none">
+                                Allow privileged scopes
+                            </span>
+                            <span class="text-sm text-muted select-none">
+                                Lets this application request Star scopes that
+                                modify accounts, such as changing usernames, emails,
+                                and sessions. Only enable this for applications you
+                                fully trust.
+                            </span>
+                        </div>
+                    </label>
+                {/if}
+            </fieldset>
 
-	<div class="flex items-center gap-2 justify-end mt-4">
-		<Button variant="secondary" onclick={() => rotateSecretModal?.close()}>
-			Cancel
-		</Button>
-		<Button variant="destructive" onclick={rotateSecret}>Rotate Secret</Button>
-	</div>
-</Modal>
+            {#if canModify}
+                <div class="mt-4 flex items-center gap-2 justify-end">
+                    <Button type="submit" loading={saving}>Update</Button>
+                </div>
+            {/if}
+        </form>
+    </Card>
 
-<Modal bind:this={addScopeModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Add Scope</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		Register a scope this application can request. Scopes must start with
-		<code>{app?.namespace}:</code>
-		and the description is shown to users when they authorize the application.
-	</h2>
+    {#if canModify}
+        <Modal bind:this={addRedirectUriModal} button>
+            <form class="flex flex-col gap-6" onsubmit={addRedirectUri}>
+                <div class="flex flex-col gap-1 pr-8">
+                    <h1 class="text-xl font-semibold">Add redirect URI</h1>
+                    <h2 class="text-sm text-muted">
+                        Users may be redirected to this exact URI after they
+                        authorize the application.
+                    </h2>
+                </div>
 
-	<form onsubmit={addScope} class="mt-6">
-		<ScopeFields
-			id="add"
-			namespace={app?.namespace ?? ''}
-			bind:name={scopeName}
-			bind:description={scopeDescription}
-			bind:requestable={scopeRequestable}
-		/>
+                <div class="grid gap-2">
+                    <Label for="redirectUri">Redirect URI</Label>
+                    <Input
+                        bind:value={redirectUri}
+                        id="redirectUri"
+                        type="url"
+                        class="font-mono"
+                        placeholder="https://example.com/callback"
+                        required
+                    />
+                </div>
 
-		<div class="flex items-center gap-2 justify-end mt-6">
-			<Button
-				type="button"
-				variant="secondary"
-				onclick={() => addScopeModal?.close()}
-			>
-				Cancel
-			</Button>
-			<Button disabled={loading} type="submit">
-				{#if loading}
-					<Spinner />
-				{/if}
-				Add Scope
-			</Button>
-		</div>
-	</form>
-</Modal>
+                <div class="flex items-center gap-2 justify-end">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={() => addRedirectUriModal?.close()}
+                    >
+                        Cancel
+                    </Button>
+                    <Button type="submit" loading={addingRedirectUri}>
+                        Add URI
+                    </Button>
+                </div>
+            </form>
+        </Modal>
 
-<Modal bind:this={addRedirectUriModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Add Redirect URI</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		Add an exact redirect URI the application may redirect users to after
-		authorization.
-	</h2>
+        <Modal bind:this={addScopeModal} button>
+            <form class="flex flex-col gap-6" onsubmit={addScope}>
+                <div class="flex flex-col gap-1 pr-8">
+                    <h1 class="text-xl font-semibold">Add scope</h1>
+                    <h2 class="text-sm text-muted">
+                        Scopes must start with
+                        <span class="font-mono text-foreground"
+                            >{app.namespace}:</span
+                        >. The description is shown to users when they
+                        authorize the application.
+                    </h2>
+                </div>
 
-	<form onsubmit={addRedirectUri} class="mt-6">
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="redirect_uri">Redirect URI</Label>
-				<Input
-					id="redirect_uri"
-					type="url"
-					placeholder="https://example.com/callback"
-					bind:value={redirectUri}
-					required
-				/>
-			</div>
-		</div>
+                <ScopeFields
+                    id="add"
+                    namespace={app.namespace}
+                    bind:name={scopeName}
+                    bind:description={scopeDescription}
+                    bind:requestable={scopeRequestable}
+                />
 
-		<div class="flex items-center gap-2 justify-end mt-6">
-			<Button
-				variant="secondary"
-				onclick={() => addRedirectUriModal?.close()}
-			>
-				Cancel
-			</Button>
-			<Button disabled={loading} type="submit">
-				{#if loading}
-					<Spinner />
-				{/if}
-				Add Redirect URI
-			</Button>
-		</div>
-	</form>
-</Modal>
+                <div class="flex items-center gap-2 justify-end">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={() => addScopeModal?.close()}
+                    >
+                        Cancel
+                    </Button>
+                    <Button type="submit" loading={addingScope}>
+                        Add scope
+                    </Button>
+                </div>
+            </form>
+        </Modal>
+
+        <ConfirmModal
+            bind:this={rotateSecretModal}
+            title="Rotate client secret"
+            confirmLabel="Rotate secret"
+            onconfirm={rotateSecret}
+        >
+            The current secret stops working immediately.
+            <span class="text-foreground">{app.name}</span> will fail to
+            authenticate until it is updated with the new secret.
+        </ConfirmModal>
+    {/if}
+
+    <ClientSecretModal bind:this={secretModal} />
+
+    <ConfirmModal
+        bind:this={deleteAppModal}
+        title="Delete application"
+        confirmLabel="Delete application"
+        confirmText={app.name}
+        onconfirm={deleteApp}
+    >
+        Deleting <span class="text-foreground">{app.name}</span> invalidates all of
+        its sessions and breaks every login that uses it. This action can not be reversed.
+    </ConfirmModal>
+{/if}

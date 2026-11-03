@@ -11,8 +11,17 @@ CREATE TABLE providers (
     authorization_url VARCHAR(255),
     token_url VARCHAR(255),
     userinfo_url VARCHAR(255),
+    trust_email BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL
 );
 
+ALTER TABLE accounts ADD COLUMN provider_id VARCHAR(64) REFERENCES providers(id) ON DELETE CASCADE;
+CREATE UNIQUE INDEX accounts_provider_lookup ON accounts (provider_id, external_id);
+
+ALTER TABLE login_flows ADD COLUMN account_id VARCHAR(64) REFERENCES accounts(id) ON DELETE CASCADE;
+
 -- +goose Down
+ALTER TABLE login_flows DROP COLUMN account_id;
+DROP INDEX IF EXISTS accounts_provider_lookup;
+ALTER TABLE accounts DROP COLUMN provider_id;
 DROP TABLE IF EXISTS providers;

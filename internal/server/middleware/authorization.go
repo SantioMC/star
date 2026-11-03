@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,22 +9,7 @@ import (
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
-	"github.com/tubblelive/star/internal/token"
 )
-
-func requestJWT(ctx fiber.Ctx) (*token.AccessTokenJWT, error) {
-	value := ctx.Locals(RequestAuthJWTKey)
-	if value == nil {
-		return nil, errors.New("no jwt found in request, there is likely no authentication middleware before this one")
-	}
-
-	jwt, ok := value.(*token.AccessTokenJWT)
-	if !ok || jwt == nil {
-		return nil, errors.New("the request auth jwt key does not hold a jwt")
-	}
-
-	return jwt, nil
-}
 
 func insufficientScope(ctx fiber.Ctx, scope string) error {
 	ctx.Set(
@@ -38,16 +22,13 @@ func insufficientScope(ctx fiber.Ctx, scope string) error {
 
 func RequirePermission(permission permission.PermissionDefinition) func(ctx fiber.Ctx) error {
 	return func(ctx fiber.Ctx) error {
-		jwt, err := requestJWT(ctx)
+		jwt, err := common.RequestJWT(ctx)
 		if err != nil {
 			return err
 		}
 
-		if slices.Contains(jwt.Permissions, "*") {
-			return ctx.Next()
-		}
-
-		if !slices.Contains(jwt.Permissions, permission.Name) {
+		permissions := strings.Split(jwt.Permissions, " ")
+		if !slices.Contains(permissions, permission.Name) {
 			return fiber.NewError(403, "You are not authorized to perform this action")
 		}
 
@@ -59,12 +40,12 @@ func RequireScope(scope string) func(ctx fiber.Ctx) error {
 	return func(ctx fiber.Ctx) error {
 		star := common.GetState(ctx)
 
-		jwt, err := requestJWT(ctx)
+		jwt, err := common.RequestJWT(ctx)
 		if err != nil {
 			return err
 		}
 
-		firstParty := slices.Contains(jwt.Audience, star.DefaultApp.ID)
+		firstParty := slices.Contains(jwt.Audience, star.DefaultApp.Load().ID)
 		if openid.IsStarScope(scope) && !firstParty {
 			return insufficientScope(ctx, scope)
 		}

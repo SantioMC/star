@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/security"
 	"github.com/tubblelive/star/internal/state"
@@ -20,39 +21,19 @@ func RefreshSession(
 	current *database.Session,
 	duration time.Duration,
 ) (*database.Session, error) {
-	if current.ExpiresAt.Before(time.Now()) {
-		return nil, ErrSessionExpired
-	}
-
 	if current.Status != database.SessionStateActive {
-		if err := server.Database.DeleteUserSessions(ctx, current.UserID); err != nil {
-			slog.Error("failed to invalidate user sessions due to security risk", "user", current.UserID)
-		}
-
-		security.Report(server, ctx, &database.SecurityAlert{
-			Kind:        database.SecurityAlertASessionReused,
-			Severity:    database.SecurityAlertSeverityHigh,
-			Message:     "The user's session was rotated multiple times, all user sessions have been automatically revoked",
-			UserID:      &current.UserID,
-			Application: &current.ApplicationID,
-			Data: map[string]any{
-				"session":    current.ID,
-				"ip_address": ctx.IP(),
-				"user_agent": ctx.UserAgent(),
-			},
-		})
-
+		RevokeReplayedSession(ctx, server, current)
 		return nil, ErrSessionRotated
 	}
 
-	current.Status = database.SessionStateRotated
-	if err := server.Database.UpdateSession(ctx, current); err != nil {
-		return nil, err
+	if current.ExpiresAt.Before(time.Now()) {
+		return nil, ErrSessionExpired
 	}
 
 	session := buildSession(
 		ctx,
 		server,
+		current.FamilyID,
 		current.UserID,
 		current.AccountID,
 		current.ApplicationID,
@@ -61,9 +42,35 @@ func RefreshSession(
 		current.AuthenticatedAt,
 	)
 
-	if err := server.Database.CreateSession(ctx, session); err != nil {
+	rotated, err := server.Database.RotateSession(ctx, current, session)
+	if err != nil {
 		return nil, err
+	} else if !rotated {
+		RevokeReplayedSession(ctx, server, current)
+		return nil, ErrSessionRotated
 	}
 
 	return session, nil
+}
+
+func RevokeReplayedSession(ctx fiber.Ctx, server *state.StarServer, current *database.Session) {
+	err := server.Database.RevokeSessionFamily(ctx, current.UserID, current.FamilyID, database.RevocationReasonTokenReplayed)
+	if err != nil {
+		slog.Error("failed to revoke replayed session family", "err", err, "user", current.UserID, "family", current.FamilyID)
+	}
+
+	cache.UpdateRevocations(ctx, server)
+
+	security.Report(server, ctx, &database.SecurityAlert{
+		Kind:        database.SecurityAlertASessionReused,
+		Severity:    database.SecurityAlertSeverityHigh,
+		Message:     "A rotated refresh token was used again, the session it belongs to has been revoked",
+		UserID:      &current.UserID,
+		Application: &current.ApplicationID,
+		Data: map[string]any{
+			"session":    current.FamilyID,
+			"ip_address": server.ClientIP(ctx),
+			"user_agent": ctx.UserAgent(),
+		},
+	})
 }

@@ -8,11 +8,16 @@ CREATE TABLE applications (
     client_id VARCHAR(255) NOT NULL UNIQUE,
     client_secret VARCHAR(255),
     internal BOOLEAN NOT NULL DEFAULT FALSE,
+    consent VARCHAR(16) NOT NULL DEFAULT 'default',
     token_duration INTEGER NOT NULL DEFAULT 3600,
     session_duration INTEGER NOT NULL DEFAULT 604800,
     redirect_uris VARCHAR(255)[] NOT NULL,
     development_mode BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL
+    privileged_scopes BOOLEAN NOT NULL DEFAULT FALSE,
+    signing_algorithm VARCHAR(16) NOT NULL DEFAULT 'ES512',
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT applications_token_duration_bounds CHECK (token_duration BETWEEN 60 AND 3600),
+    CONSTRAINT applications_session_duration_bounds CHECK (session_duration > token_duration)
 );
 
 CREATE TABLE application_scopes (
@@ -39,7 +44,7 @@ CREATE TABLE authorization_codes (
     nonce VARCHAR(255),
     code_challenge VARCHAR(255),
     code_challenge_method VARCHAR(12),
-    session_id VARCHAR(64) REFERENCES sessions(id) ON DELETE SET NULL,
+    family_id VARCHAR(64),
     authenticated_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -47,8 +52,20 @@ CREATE TABLE authorization_codes (
 );
 
 CREATE INDEX authorization_codes_code_lookup ON authorization_codes (code);
+CREATE INDEX authorization_codes_user_lookup ON authorization_codes (user_id, application_id);
+
+CREATE TABLE application_grants (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    application_id VARCHAR(64) NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    scopes VARCHAR(128)[] NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    UNIQUE (user_id, application_id)
+);
 
 -- +goose Down
+DROP TABLE IF EXISTS application_grants;
 DROP TABLE IF EXISTS authorization_codes;
 ALTER TABLE sessions DROP COLUMN application_id;
 DROP TABLE IF EXISTS application_scopes;

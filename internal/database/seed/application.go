@@ -13,19 +13,21 @@ import (
 
 func seedApplication(ctx context.Context, star *state.StarServer) error {
 	defaultStarApplication := &database.Application{
-		ID:              database.CreateID(database.ApplicationKey),
-		Kind:            database.ApplicationKindPublic,
-		Name:            "star",
-		Namespace:       openid.StarNamespace,
-		ApplicationURL:  star.Config.ServerURL,
-		ClientID:        "star",
-		ClientSecret:    nil,
-		Internal:        true,
-		TokenDuration:   models.Seconds(time.Hour),
-		SessionDuration: models.Seconds(time.Hour * 24 * 7),
-		RedirectURIs:    pq.StringArray{star.Config.ServerURL},
-		DevelopmentMode: false,
-		CreatedAt:       time.Now(),
+		ID:               database.CreateID(database.ApplicationKey),
+		Kind:             database.ApplicationKindPublic,
+		Name:             "star",
+		Namespace:        openid.StarNamespace,
+		ApplicationURL:   star.Config.ServerURL,
+		ClientID:         "star",
+		ClientSecret:     nil,
+		Internal:         true,
+		Consent:          database.ApplicationConsentImplicit,
+		TokenDuration:    models.Seconds(time.Minute * 15),
+		SessionDuration:  models.Seconds(time.Hour * 24 * 7),
+		RedirectURIs:     pq.StringArray{star.Config.ServerURL},
+		DevelopmentMode:  false,
+		SigningAlgorithm: database.KeyAlgorithmES512,
+		CreatedAt:        time.Now(),
 	}
 
 	application := star.Database.GetApplicationByName(ctx, "star")

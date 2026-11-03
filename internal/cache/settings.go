@@ -14,5 +14,5 @@ func UpdateSettings(ctx context.Context, state *state.StarServer) {
 		return
 	}
 
-	state.Settings = settings
+	state.Settings.Store(settings)
 }

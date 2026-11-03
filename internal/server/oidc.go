@@ -24,7 +24,7 @@ func getUserInfo(ctx fiber.Ctx) error {
 		return err
 	}
 
-	firstParty := slices.Contains(jwt.Audience, star.DefaultApp.ID)
+	firstParty := slices.Contains(jwt.Audience, star.DefaultApp.Load().ID)
 	scopes := openid.EffectiveScopes(strings.Fields(jwt.Scope), firstParty)
 
 	if !openid.HasScope(scopes, openid.ScopeOpenID) {

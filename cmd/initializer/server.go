@@ -2,6 +2,8 @@ package initializer
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"os"
 	"time"
@@ -13,6 +15,8 @@ import (
 	"github.com/tubblelive/star/internal/config"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/seed"
+	"github.com/tubblelive/star/internal/passkey"
+	"github.com/tubblelive/star/internal/revocation"
 	"github.com/tubblelive/star/internal/state"
 )
 
@@ -25,7 +29,9 @@ func PrepareServer() *state.StarServer {
 	logger := slog.New(tintHandler)
 	slog.SetDefault(logger)
 
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load(); errors.Is(err, fs.ErrNotExist) {
+		slog.Debug("no .env file found, using environment variables only")
+	} else if err != nil {
 		slog.Error("failed to load .env file", "err", err)
 		return nil
 	}
@@ -47,12 +53,21 @@ func PrepareServer() *state.StarServer {
 		return nil
 	}
 
+	relyingParty, err := passkey.NewRelyingParty(config)
+	if err != nil {
+		slog.Error("failed to configure passkeys", "err", err)
+		return nil
+	}
+
 	star := state.StarServer{
-		Database:   db,
-		GeoService: config.Geolocation.CreateService(),
-		Captcha:    config.Captcha.CreateVerifier(),
-		Email:      config.Email.CreateSender(),
-		Config:     config,
+		Database:    db,
+		GeoService:  config.Geolocation.CreateService(),
+		Captcha:     config.Captcha.CreateVerifier(),
+		Email:       config.Email.CreateSender(),
+		WebAuthn:    relyingParty,
+		Config:      config,
+		StartedAt:   time.Now(),
+		Revocations: revocation.NewList(),
 	}
 
 	if err := seed.Seed(context.Background(), &star); err != nil {
@@ -63,6 +78,11 @@ func PrepareServer() *state.StarServer {
 	// Get our cache up to date, and cleanup dead and old records
 	cache.StartTicker(&star)
 	cleanup.StartTicker(&star)
+
+	if star.DefaultApp.Load() == nil {
+		slog.Error("failed to load the built-in star application")
+		return nil
+	}
 
 	return &star
 }

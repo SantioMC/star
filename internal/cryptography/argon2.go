@@ -8,9 +8,19 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
+
+var dummyHash = sync.OnceValue(func() string {
+	hash, _ := HashString(CreateSecureString(32))
+	return hash
+})
+
+func SimulateVerifyHash(value string) {
+	VerifyHash(value, dummyHash())
+}
 
 // Create a random salt for hashing
 func createSalt(length int) []byte {

@@ -10,6 +10,7 @@ import (
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
+	"github.com/tubblelive/star/internal/server/transformer"
 	"github.com/tubblelive/star/internal/server/types"
 )
 
@@ -21,13 +22,15 @@ type providerPreset struct {
 	AuthorizationURL *string  `json:"authorization_url,omitempty"`
 	TokenURL         *string  `json:"token_url,omitempty"`
 	UserinfoURL      *string  `json:"userinfo_url,omitempty"`
+	TrustEmail       bool     `json:"trust_email"`
 }
 
 var providerPresets = []providerPreset{
 	{
-		Name: "Google",
-		Icon: "brand-google",
-		URL:  new("https://accounts.google.com/.well-known/openid-configuration"),
+		Name:       "Google",
+		Icon:       "brand-google",
+		URL:        new("https://accounts.google.com/.well-known/openid-configuration"),
+		TrustEmail: true,
 	},
 	{
 		Name:             "GitHub",
@@ -38,9 +41,10 @@ var providerPresets = []providerPreset{
 		UserinfoURL:      new("https://api.github.com/user"),
 	},
 	{
-		Name: "GitLab",
-		Icon: "brand-gitlab",
-		URL:  new("https://gitlab.com/.well-known/openid-configuration"),
+		Name:       "GitLab",
+		Icon:       "brand-gitlab",
+		URL:        new("https://gitlab.com/.well-known/openid-configuration"),
+		TrustEmail: true,
 	},
 	{
 		Name:             "Discord",
@@ -56,10 +60,11 @@ var providerPresets = []providerPreset{
 		URL:  new("https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"),
 	},
 	{
-		Name:   "Apple",
-		Icon:   "brand-apple",
-		Scopes: []string{"name", "email"},
-		URL:    new("https://appleid.apple.com/.well-known/openid-configuration"),
+		Name:       "Apple",
+		Icon:       "brand-apple",
+		Scopes:     []string{"name", "email"},
+		URL:        new("https://appleid.apple.com/.well-known/openid-configuration"),
+		TrustEmail: true,
 	},
 	{
 		Name:             "Facebook",
@@ -82,19 +87,19 @@ func providerRouter(router fiber.Router) {
 	readProviders := middleware.RequireScope(openid.ScopeAdminProvidersRead)
 	writeProviders := middleware.RequireScope(openid.ScopeAdminProvidersWrite)
 
-	router.Get("/", readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviders)
-	router.Post("/", writeProviders, middleware.RequirePermission(permission.PermissionAdminCreateProviders), createProvider)
+	router.Get("/", middleware.RequireAuth, readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviders)
+	router.Post("/", middleware.RequireAuth, writeProviders, middleware.RequirePermission(permission.PermissionAdminCreateProviders), createProvider)
 
-	router.Get("/presets", readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviderPresets)
+	router.Get("/presets", middleware.RequireAuth, readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProviderPresets)
 
-	router.Get("/:provider", readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProvider)
-	router.Patch("/:provider", writeProviders, middleware.RequirePermission(permission.PermissionAdminWriteProviders), updateProvider)
-	router.Delete("/:provider", writeProviders, middleware.RequirePermission(permission.PermissionAdminDeleteProviders), deleteProvider)
+	router.Get("/:provider", middleware.RequireAuth, readProviders, middleware.RequirePermission(permission.PermissionAdminReadProviders), getProvider)
+	router.Patch("/:provider", middleware.RequireAuth, writeProviders, middleware.RequirePermission(permission.PermissionAdminWriteProviders), updateProvider)
+	router.Delete("/:provider", middleware.RequireAuth, writeProviders, middleware.RequirePermission(permission.PermissionAdminDeleteProviders), deleteProvider)
 }
 
 func getProviders(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	return ctx.JSON(star.Database.GetProviders(ctx))
+	return ctx.JSON(transformer.TransformProviders(star.Database.GetProviders(ctx)))
 }
 
 func getProviderPresets(ctx fiber.Ctx) error {
@@ -109,7 +114,7 @@ func getProvider(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "Provider not found")
 	}
 
-	return ctx.JSON(provider)
+	return ctx.JSON(transformer.TransformProvider(*provider))
 }
 
 func validateProviderEndpoints(provider *database.Provider) error {
@@ -163,6 +168,7 @@ func createProvider(ctx fiber.Ctx) error {
 		AuthorizationURL: request.AuthorizationURL,
 		TokenURL:         request.TokenURL,
 		UserinfoURL:      request.UserinfoURL,
+		TrustEmail:       request.TrustEmail,
 		CreatedAt:        time.Now(),
 	}
 
@@ -174,7 +180,7 @@ func createProvider(ctx fiber.Ctx) error {
 		return err
 	}
 
-	return ctx.JSON(provider)
+	return ctx.JSON(transformer.TransformProvider(*provider))
 }
 
 func updateProvider(ctx fiber.Ctx) error {
@@ -234,6 +240,10 @@ func updateProvider(ctx fiber.Ctx) error {
 		provider.UserinfoURL = request.UserinfoURL
 	}
 
+	if request.TrustEmail != nil {
+		provider.TrustEmail = *request.TrustEmail
+	}
+
 	if err := validateProviderEndpoints(provider); err != nil {
 		return err
 	}
@@ -242,7 +252,7 @@ func updateProvider(ctx fiber.Ctx) error {
 		return err
 	}
 
-	return ctx.JSON(provider)
+	return ctx.JSON(transformer.TransformProvider(*provider))
 }
 
 func deleteProvider(ctx fiber.Ctx) error {

@@ -6,15 +6,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/server/common"
-	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/token"
 )
 
-var userKey = "request.user"
-
 // This method does not validate if the user exists on db, do not use for authentication endpoints
 func GetJWT(ctx fiber.Ctx) (*token.AccessTokenJWT, error) {
-	value := ctx.Locals(middleware.RequestAuthJWTKey)
+	value := ctx.Locals(common.RequestAuthJWTKey)
 	if value == nil {
 		return nil, errors.New("missing jwt from request")
 	}
@@ -28,7 +25,7 @@ func GetJWT(ctx fiber.Ctx) (*token.AccessTokenJWT, error) {
 }
 
 // This method does not validate if the user exists on db, do not use for authentication endpoints
-func GetUserId(ctx fiber.Ctx) (string, error) {
+func GetUserID(ctx fiber.Ctx) (string, error) {
 	// we can add api key support here down the road
 	jwt, err := GetJWT(ctx)
 	if err != nil {
@@ -39,7 +36,7 @@ func GetUserId(ctx fiber.Ctx) (string, error) {
 }
 
 func GetUser(ctx fiber.Ctx) (*database.User, error) {
-	value := ctx.Locals(userKey)
+	value := ctx.Locals(common.UserKey)
 	if value != nil {
 		data, ok := value.(*database.User)
 		if ok {
@@ -48,16 +45,16 @@ func GetUser(ctx fiber.Ctx) (*database.User, error) {
 	}
 
 	star := common.GetState(ctx)
-	userId, err := GetUserId(ctx)
+	userID, err := GetUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	user := star.Database.GetUserByID(ctx, userId)
+	user := star.Database.GetUserByID(ctx, userID)
 	if user == nil {
 		return nil, errors.New("user not found in database")
 	}
 
-	ctx.Locals(userKey, user)
+	ctx.Locals(common.UserKey, user)
 	return user, nil
 }

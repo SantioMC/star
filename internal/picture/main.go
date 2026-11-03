@@ -2,14 +2,14 @@ package picture
 
 import "github.com/tubblelive/star/internal/database"
 
-func GetProfilePicture(user *database.User, email string) string {
+func GetProfilePicture(user *database.User, email *string) string {
 	if user.ProfilePicture != nil {
 		return *user.ProfilePicture
 	}
 
-	if email == "" {
+	if email == nil || *email == "" {
 		return ""
 	}
 
-	return GetGravatarProfilePicture(user, email)
+	return GetGravatarProfilePicture(user, *email)
 }

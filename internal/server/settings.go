@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	minimumEmailCodeLength = 4
+	minimumEmailCodeLength = 8
 	maximumEmailCodeLength = 12
 	minimumPasswordLength  = 8
 	maximumPasswordLength  = 512
@@ -27,8 +27,8 @@ func settingsRouter(router fiber.Router) {
 	readSettings := middleware.RequireScope(openid.ScopeAdminSettingsRead)
 	writeSettings := middleware.RequireScope(openid.ScopeAdminSettingsWrite)
 
-	router.Get("/", readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getSettings)
-	router.Patch("/", writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), updateSettings)
+	router.Get("/", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getSettings)
+	router.Patch("/", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), updateSettings)
 }
 
 func currentSettings(star *state.StarServer, ctx fiber.Ctx) (*database.Settings, error) {
@@ -57,7 +57,7 @@ func getSettings(ctx fiber.Ctx) error {
 
 func validateSettings(settings *database.Settings, passwordSettings *password.PasswordSetttings) error {
 	if settings.EmailCodeLength < minimumEmailCodeLength || settings.EmailCodeLength > maximumEmailCodeLength {
-		return fiber.NewError(400, "Email codes must be between 4 and 12 characters long")
+		return fiber.NewError(400, "Email codes must be between 8 and 12 characters long")
 	}
 
 	if passwordSettings.MinLength < minimumPasswordLength || passwordSettings.MinLength > maximumPasswordLength {

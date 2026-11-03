@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/tubblelive/star/internal/outbound"
 )
 
 type OvalService struct {
@@ -49,12 +51,20 @@ func (service *OvalService) GetLocation(ctx context.Context, ip string) (*string
 		return nil, err
 	}
 
-	res, err := http.Post(
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
 		fmt.Sprintf("%s/query", service.Url),
-		"application/json",
 		bytes.NewReader(data),
 	)
 
+	if err != nil {
+		return nil, err
+	}
+
+	request.Header.Set("Content-Type", "application/json")
+
+	res, err := outbound.Trusted.Do(request)
 	if err != nil {
 		return nil, err
 	}

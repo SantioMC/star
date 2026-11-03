@@ -1,340 +1,445 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import * as star from '$lib/star';
-	import Icon from '@/components/icon.svelte';
-	import Modal from '@/components/modal.svelte';
-	import Sidebar from '@/components/sidebar.svelte';
-	import { Badge } from '@/components/ui/badge';
-	import { Button } from '@/components/ui/button';
-	import * as Card from '@/components/ui/card';
-	import * as DropdownMenu from '@/components/ui/dropdown-menu';
-	import { Input } from '@/components/ui/input';
-	import { Label } from '@/components/ui/label';
-	import { Spinner } from '@/components/ui/spinner';
-	import { hasPermission } from '@/index';
-	import { formatTime } from '@/utils';
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
+    import { goto } from "$app/navigation";
+    import { page } from "$app/state";
+    import * as star from "$lib/star";
+    import Badge from "@/components/badge.svelte";
+    import Button from "@/components/button.svelte";
+    import Card from "@/components/card.svelte";
+    import Checkbox from "@/components/checkbox.svelte";
+    import ConfirmModal from "@/components/confirm-modal.svelte";
+    import Notice from "@/components/notice.svelte";
+    import PermissionChip from "@/components/permission-chip.svelte";
+    import Input from "@/components/input.svelte";
+    import Menu, { type MenuItem } from "@/components/menu.svelte";
+    import Modal from "@/components/modal.svelte";
+    import SearchInput from "@/components/search-input.svelte";
+    import { Label } from "@/components/ui/label";
+    import { hasPermission } from "@/index";
+    import { groupByNamespace, groupPermissions } from "@/permissions";
+    import { formatTime, titleCase } from "@/utils";
+    import { onMount } from "svelte";
+    import { toast } from "svelte-sonner";
 
-	let loading = $state<boolean>(false);
+    let role = $state<star.Role | null>(null);
+    let available = $state<star.AvailablePermission[]>([]);
 
-	let role = $state<star.Role | null>(null);
-	let available = $state<star.AvailablePermission[]>([]);
-	let name = $state<string>('');
-	let description = $state<string>('');
-	let permissionInput = $state<string>('');
+    let name = $state("");
+    let description = $state("");
+    let saving = $state(false);
 
-	let deleteRoleModal = $state<Modal>();
-	let addPermissionModal = $state<Modal>();
+    let pendingPermission = $state<string | null>(null);
 
-	let canModify = $derived(
-		hasPermission('admin:role:write') && role != null && !role.internal
-	);
+    let addPermissionModal = $state<Modal>();
+    let permissionQuery = $state("");
+    let selectedPermissions = $state<string[]>([]);
+    let addingPermissions = $state(false);
 
-	let unassigned = $derived(
-		available.filter(p => !role?.permissions.includes(p.name))
-	);
+    let deleteRoleModal = $state<ConfirmModal>();
 
-	onMount(async () => {
-		if (!browser) return;
-		if (!hasPermission('admin:role:read')) return goto('/');
+    const canEditDetails = $derived(
+        hasPermission("admin:role:write") && role != null && !role.internal,
+    );
 
-		role = await star.getRole(page.params.role!);
-		if (role == null) return goto('/admin/roles');
+    const canEditPermissions = $derived(
+        hasPermission("admin:role:write") &&
+            role != null &&
+            (!role.internal || role.default),
+    );
 
-		name = role.name;
-		description = role.description;
-		available = await star.getAvailablePermissions();
-	});
+    const canDelete = $derived(
+        hasPermission("admin:role:delete") && role != null && !role.internal,
+    );
 
-	const updateRole = async () => {
-		loading = true;
-		const result = await star.updateRole(role!.id, {
-			name,
-			description
-		});
-		loading = false;
+    const menuItems = $derived.by(() => {
+        const items: MenuItem[] = [];
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			role = result;
-			toast.success('Successfully updated role');
-		}
-	};
+        if (canDelete) {
+            items.push({
+                label: "Delete role",
+                icon: "trash",
+                danger: true,
+                onclick: () => deleteRoleModal?.open(),
+            });
+        }
 
-	const addPermission = async () => {
-		const trimmed = permissionInput.trim();
-		if (!trimmed) return;
+        return items;
+    });
 
-		if (role!.permissions.includes(trimmed)) {
-			toast.error('This permission already exists on this role');
-			return;
-		}
+    const descriptions = $derived(
+        new Map(available.map((it) => [it.name, it.description])),
+    );
 
-		loading = true;
-		const updated = [...role!.permissions, trimmed];
-		const result = await star.updateRole(role!.id, { permissions: updated });
-		loading = false;
+    const unassigned = $derived(
+        available.filter((it) => !role?.permissions.includes(it.name)),
+    );
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			role = result;
-			permissionInput = '';
-			addPermissionModal?.close();
-			toast.success('Successfully added permission');
-		}
-	};
+    const filteredUnassigned = $derived.by(() => {
+        const search = permissionQuery.trim().toLowerCase();
+        if (!search) return unassigned;
 
-	const removePermission = async (permission: string) => {
-		loading = true;
-		const updated = role!.permissions.filter(p => p !== permission);
-		const result = await star.updateRole(role!.id, { permissions: updated });
-		loading = false;
+        return unassigned.filter(
+            (it) =>
+                it.name.toLowerCase().includes(search) ||
+                it.description.toLowerCase().includes(search),
+        );
+    });
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			role = result;
-			toast.success('Removed permission');
-		}
-	};
+    const groupedUnassigned = $derived(
+        groupByNamespace(filteredUnassigned, (it) => it.name),
+    );
 
-	const deleteRole = async () => {
-		loading = true;
-		const result = await star.deleteRole(role!.id);
-		loading = false;
-		deleteRoleModal?.close();
+    const groupedAssigned = $derived(groupPermissions(role?.permissions ?? []));
 
-		if ('error' in result) {
-			toast.error(result.message);
-		} else {
-			goto('/admin/roles');
-		}
-	};
+    const customPermission = $derived.by(() => {
+        const value = permissionQuery.trim();
+        if (!value || value.includes(" ")) return null;
+        if (role?.permissions.includes(value)) return null;
+        if (available.some((it) => it.name === value)) return null;
+
+        return value;
+    });
+
+    const additionCount = $derived(
+        selectedPermissions.length + (customPermission ? 1 : 0),
+    );
+
+    const resetForm = (data: star.Role) => {
+        name = data.name;
+        description = data.description;
+    };
+
+    onMount(async () => {
+        if (!hasPermission("admin:role:read")) return goto("/");
+
+        const data = await star.getRole(page.params.role!);
+        if (!data) return goto("/admin/roles");
+
+        role = data;
+        resetForm(data);
+        available = await star.getAvailablePermissions();
+    });
+
+    const updateRole = async (event: Event) => {
+        event.preventDefault();
+        if (!role || saving) return;
+
+        saving = true;
+        const result = await star.updateRole(role.id, { name, description });
+        saving = false;
+
+        if ("error" in result) {
+            resetForm(role);
+            return toast.error(result.message);
+        }
+
+        role = result;
+        toast.success("Successfully updated role");
+    };
+
+    const savePermissions = async (permissions: string[]) => {
+        if (!role) return false;
+
+        const result = await star.updateRole(role.id, { permissions });
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        role = result;
+        return true;
+    };
+
+    const removePermission = async (permission: string) => {
+        if (!role || pendingPermission) return;
+
+        pendingPermission = permission;
+        const remaining = role.permissions.filter((it) => it !== permission);
+        const saved = await savePermissions(remaining);
+        pendingPermission = null;
+
+        if (saved) toast.success(`Removed ${permission}`);
+    };
+
+    const openAddPermissionModal = () => {
+        permissionQuery = "";
+        selectedPermissions = [];
+        addPermissionModal?.open();
+    };
+
+    const toggleSelected = (permission: string, checked: boolean) => {
+        if (checked) selectedPermissions = [...selectedPermissions, permission];
+        else
+            selectedPermissions = selectedPermissions.filter(
+                (it) => it !== permission,
+            );
+    };
+
+    const addPermissions = async (event: Event) => {
+        event.preventDefault();
+        if (!role || addingPermissions) return;
+
+        const additions = [...selectedPermissions];
+        if (customPermission) {
+            additions.push(customPermission);
+        }
+
+        if (additions.length === 0) return;
+
+        addingPermissions = true;
+        const saved = await savePermissions([
+            ...role.permissions,
+            ...additions,
+        ]);
+        addingPermissions = false;
+
+        if (!saved) return;
+
+        addPermissionModal?.close();
+        toast.success(
+            `Added ${additions.length} permission${additions.length === 1 ? "" : "s"}`,
+        );
+    };
+
+    const deleteRole = async () => {
+        if (!role) return;
+
+        const result = await star.deleteRole(role.id);
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        toast.success(`Deleted role ${role.name}`);
+        goto("/admin/roles");
+    };
 </script>
 
-<Sidebar class="md:p-8 max-w-6xl mx-auto">
-	{#if role}
-		<div class="flex flex-row items-center">
-			<div>
-				<h1 class="text-2xl font-semibold">Role Management</h1>
-				<h2 class="text-lg text-primary/60">
-					Viewing role {role.name}
-				</h2>
-			</div>
+{#if role}
+    <div class="flex flex-row items-center gap-4">
+        <div class="min-w-0 flex-1">
+            <h1 class="leading-8 text-2xl font-semibold truncate">
+                {titleCase(role.name)}
+            </h1>
+            <div
+                class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted mt-0.5"
+            >
+                <span class="font-mono text-xs">{role.id}</span>
+                {#if role.internal}
+                    <Badge tone="primary">built-in</Badge>
+                {/if}
+                <span>Created {formatTime(new Date(role.created_at))}</span>
+            </div>
+        </div>
 
-			<Button
-				variant="ghost"
-				class="ml-auto"
-				onclick={() => goto('/admin/roles')}
-			>
-				<Icon icon="chevron-left" />Go back
-			</Button>
-		</div>
+        <Menu items={menuItems} label="Role actions" />
+    </div>
 
-		<div class="mt-16 flex flex-col gap-8">
-			<div class="flex flex-col xl:flex-row items-center gap-4">
-				<Icon class="text-3xl" icon="package" />
-				<div class="flex flex-col items-center xl:items-start justify-center gap-2">
-					<h3 class="text-lg leading-4 flex items-center gap-2">
-						{role.name}
-						{#if role.internal}
-							<Badge variant="secondary">Built-in role</Badge>
-						{/if}
-					</h3>
-					<div class="flex flex-col xl:flex-row items-center xl:gap-3 text-sm text-primary/60 flex-wrap">
-						<span>
-							<Icon icon="id" />
-							{role.id}
-						</span>
-						<span>
-							<Icon icon="calendar-event" />
-							Created {formatTime(new Date(role.created_at))}
-						</span>
-						<span>
-							<Icon icon="lock" />
-							{role.permissions.length} permission{role.permissions.length === 1 ? '' : 's'}
-						</span>
-					</div>
-				</div>
+    {#if role.default}
+        <Notice tone="info" icon="users" title="Default role.">
+            Every user inherits these permissions automatically, without being
+            assigned this role. Only its permissions can be changed.
+        </Notice>
+    {:else if role.internal}
+        <Notice icon="lock" title="Built-in role.">
+            This role is managed by Star and can not be modified or deleted.
+        </Notice>
+    {/if}
 
-				{#if canModify && hasPermission('admin:role:delete')}
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class="ml-auto">
-							<Button variant="ghost" size="icon">
-								<Icon icon="dots" class="text-2xl" />
-							</Button>
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content>
-							<DropdownMenu.Group>
-								<DropdownMenu.Item
-									variant="destructive"
-									onclick={() => deleteRoleModal?.open()}
-								>
-									<Icon icon="trash" />
-									Delete
-								</DropdownMenu.Item>
-							</DropdownMenu.Group>
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				{/if}
-			</div>
+    <Card title="Role Information" icon="package">
+        <form onsubmit={updateRole} class="mt-6">
+            <div class="flex flex-col gap-5">
+                <div class="grid gap-2">
+                    <Label for="name">Name</Label>
+                    <Input
+                        bind:value={name}
+                        id="name"
+                        type="text"
+                        disabled={!canEditDetails}
+                        required
+                    />
+                </div>
 
-			{#if role.internal}
-				<Card.Root class="w-full">
-					<Card.Content class="flex flex-col overflow-hidden flex-wrap text-yellow-100">
-						<Card.Title class="text-yellow-200 mb-4">
-							<Icon icon="shield" /> Built-in Role
-						</Card.Title>
-						<span>
-							This role is managed by star and can not be modified or deleted.
-						</span>
-					</Card.Content>
-				</Card.Root>
-			{/if}
+                <div class="grid gap-2">
+                    <Label for="description">Description</Label>
+                    <Input
+                        bind:value={description}
+                        id="description"
+                        type="text"
+                        disabled={!canEditDetails}
+                    />
+                </div>
+            </div>
 
-			<Card.Root class="min-w-1/3 w-full md:w-auto">
-				<Card.CardHeader>
-					<Card.Title class="flex items-center gap-1">
-						<Icon icon="package" class="text-2xl" /> Role Information
-					</Card.Title>
-				</Card.CardHeader>
-				<Card.Content class="flex flex-col gap-6">
-					<form class="flex flex-col gap-6">
-						<div class="grid gap-2">
-							<Label for="name">Name</Label>
-							<Input id="name" type="text" required bind:value={name} disabled={!canModify} />
-						</div>
+            {#if canEditDetails}
+                <div class="mt-4 flex items-center gap-2 justify-end">
+                    <Button type="submit" loading={saving}>Update</Button>
+                </div>
+            {/if}
+        </form>
+    </Card>
 
-						<div class="grid gap-2">
-							<Label for="description">Description</Label>
-							<Input id="description" type="text" bind:value={description} disabled={!canModify} />
-						</div>
-					</form>
-				</Card.Content>
-				{#if canModify}
-					<Card.Footer>
-						<Button class="ml-auto" onclick={updateRole} disabled={loading}>
-							{#if loading}
-								<Spinner />
-							{/if}
-							Update
-						</Button>
-					</Card.Footer>
-				{/if}
-			</Card.Root>
+    <Card
+        title="Permissions"
+        icon="lock"
+        description={role.default
+            ? "Granted to every user, and matched against the permissions claim in access tokens."
+            : "Granted to every user with this role, and matched against the permissions claim in access tokens."}
+        class="flex flex-col gap-4"
+    >
+        {#snippet actions()}
+            {#if canEditPermissions}
+                <Button variant="secondary" onclick={openAddPermissionModal}>
+                    Add permission
+                </Button>
+            {/if}
+        {/snippet}
 
-			<Card.Root class="min-w-1/3 w-full md:w-auto">
-				<Card.CardHeader>
-					<Card.Title class="flex items-center gap-1">
-						<Icon icon="lock" class="text-2xl" /> Permissions
-					</Card.Title>
-					<Card.Description class="md:max-w-2/3">
-						Permissions granted to users with this role. These are matched against the <code>permissions</code> claim in access tokens.
-					</Card.Description>
-				</Card.CardHeader>
-				<Card.Content>
-					{#if role.permissions.length === 0}
-						<div class="flex flex-col gap-4 items-center w-full my-12">
-							<span class="text-xl font-semibold leading-2">No Permissions</span>
-							<span class="text-primary/60 leading-5 m-0 -translate-y-1.5 text-center max-w-3/4">
-								This role currently has no assigned permissions.
-							</span>
-							{#if canModify}
-								<Button onclick={() => addPermissionModal?.open()}>Add Permission</Button>
-							{/if}
-						</div>
-					{:else}
-						<div class="flex flex-col gap-2">
-							{#each role.permissions as permission (permission)}
-								<div class="flex items-center justify-between rounded-md border border-primary/20 px-4 py-2">
-									<code class="text-sm">{permission}</code>
-									{#if canModify}
-										<Button
-											variant="ghost"
-											size="icon"
-											class="h-8 w-8 text-destructive hover:text-destructive"
-											onclick={() => removePermission(permission)}
-										>
-											<Icon icon="x" />
-										</Button>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</Card.Content>
-				{#if canModify && role.permissions.length > 0}
-					<Card.Footer>
-						<Button class="ml-auto" onclick={() => addPermissionModal?.open()}>
-							Add Permission
-						</Button>
-					</Card.Footer>
-				{/if}
-			</Card.Root>
-		</div>
-	{/if}
-</Sidebar>
+        <div class="flex flex-col gap-5">
+            {#each groupedAssigned as group (group.namespace)}
+                <section class="flex flex-col gap-1">
+                    <h3
+                        class="flex items-center justify-between border-b border-background-200 pb-1.5 font-sans text-xs font-medium text-muted select-none"
+                    >
+                        {titleCase(group.namespace)}
+                        <span class="font-mono font-normal">{group.count}</span>
+                    </h3>
 
-<Modal bind:this={deleteRoleModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Are you sure?</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		This action can not be reversed! Deleting this role will remove it from all users who currently have it assigned.
-	</h2>
+                    {#each group.resources as resource (resource.resource)}
+                        <div
+                            class="flex flex-col gap-1.5 py-1.5 sm:flex-row sm:items-center sm:gap-4"
+                        >
+                            <span
+                                class="font-mono text-sm text-foreground/80 sm:w-40 sm:shrink-0"
+                            >
+                                {resource.resource}
+                            </span>
+                            <div class="flex flex-wrap gap-1.5">
+                                {#each resource.actions as permission (permission.name)}
+                                    <PermissionChip
+                                        name={permission.name}
+                                        label={permission.action}
+                                        description={descriptions.get(
+                                            permission.name,
+                                        )}
+                                        removable={canEditPermissions}
+                                        pending={pendingPermission ===
+                                            permission.name}
+                                        disabled={pendingPermission != null}
+                                        onremove={() =>
+                                            removePermission(permission.name)}
+                                    />
+                                {/each}
+                            </div>
+                        </div>
+                    {/each}
+                </section>
+            {:else}
+                <p class="py-6 text-center text-sm text-muted">
+                    This role has no permissions.
+                </p>
+            {/each}
+        </div>
+    </Card>
 
-	<div class="flex items-center gap-2 justify-end mt-4">
-		<Button variant="secondary" onclick={() => deleteRoleModal?.close()}>
-			Cancel
-		</Button>
-		<Button variant="destructive" onclick={deleteRole} disabled={loading}>
-			{#if loading}
-				<Spinner />
-			{/if}
-			Delete Role
-		</Button>
-	</div>
-</Modal>
+    <Modal bind:this={addPermissionModal} button class="sm:w-2xl">
+        <form class="flex flex-col gap-6" onsubmit={addPermissions}>
+            <div class="flex flex-col gap-1 pr-8">
+                <h1 class="text-xl font-semibold">Add permissions</h1>
+                <h2 class="text-sm text-muted">
+                    Users with the {role.name} role will be granted the selected
+                    permissions.
+                </h2>
+            </div>
 
-<Modal bind:this={addPermissionModal} button class="xl:w-xl!">
-	<h1 class="text-xl font-semibold">Add Permission</h1>
-	<h2 class="text-card-foreground/60 sm:max-w-10/12">
-		Add a permission to this role. Users with this role will be granted this permission.
-	</h2>
+            <div class="flex flex-col gap-3">
+                <SearchInput
+                    bind:value={permissionQuery}
+                    placeholder="Search or enter a custom permission"
+                    class="sm:max-w-none"
+                />
 
-	<form onsubmit={addPermission} class="mt-6">
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="permission">Permission</Label>
-				<Input
-					id="permission"
-					type="text"
-					placeholder="admin:user:read"
-					list="available-permissions"
-					bind:value={permissionInput}
-					required
-				/>
-				<datalist id="available-permissions">
-					{#each unassigned as permission (permission.id)}
-						<option value={permission.name}>{permission.description}</option>
-					{/each}
-				</datalist>
-			</div>
-		</div>
+                <div
+                    class="max-h-[min(28rem,55vh)] overflow-y-auto overscroll-contain rounded-lg border border-background-200"
+                >
+                    {#each groupedUnassigned as [namespace, permissions] (namespace)}
+                        <div
+                            class="sticky top-0 z-10 flex items-center justify-between border-b border-background-200 bg-background-100 px-4 py-2 text-xs text-muted select-none"
+                        >
+                            <span class="font-medium">{titleCase(namespace)}</span>
+                            <span class="font-mono">{permissions.length}</span>
+                        </div>
 
-		<div class="flex items-center gap-2 justify-end mt-6">
-			<Button variant="secondary" onclick={() => addPermissionModal?.close()}>
-				Cancel
-			</Button>
-			<Button disabled={loading} type="submit">
-				{#if loading}
-					<Spinner />
-				{/if}
-				Add Permission
-			</Button>
-		</div>
-	</form>
-</Modal>
+                        {#each permissions as permission (permission.id)}
+                            <label
+                                class="flex cursor-pointer items-center gap-3 border-b border-background-200 px-4 py-3 transition-colors last:border-b-0 hover:bg-hover has-checked:bg-hover"
+                            >
+                                <Checkbox
+                                    checked={selectedPermissions.includes(
+                                        permission.name,
+                                    )}
+                                    onchange={(event) =>
+                                        toggleSelected(
+                                            permission.name,
+                                            event.currentTarget.checked,
+                                        )}
+                                />
+                                <div class="min-w-0 flex-1">
+                                    <span class="font-mono text-sm">
+                                        {permission.name}
+                                    </span>
+                                    {#if permission.description}
+                                        <p class="text-sm text-muted">
+                                            {permission.description}
+                                        </p>
+                                    {/if}
+                                </div>
+                            </label>
+                        {/each}
+                    {:else}
+                        <p class="px-4 py-8 text-center text-sm text-muted">
+                            {#if customPermission}
+                                No known permission matches, submit to add
+                                <span class="font-mono text-foreground"
+                                    >{customPermission}</span
+                                > as a custom permission.
+                            {:else}
+                                No permissions left to add.
+                            {/if}
+                        </p>
+                    {/each}
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 justify-end">
+                <span class="mr-auto text-sm text-muted select-none">
+                    {selectedPermissions.length} selected
+                </span>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={() => addPermissionModal?.close()}
+                >
+                    Cancel
+                </Button>
+                <Button
+                    type="submit"
+                    loading={addingPermissions}
+                    disabled={additionCount === 0}
+                >
+                    {additionCount > 1 ? `Add ${additionCount}` : "Add"}
+                </Button>
+            </div>
+        </form>
+    </Modal>
+
+    <ConfirmModal
+        bind:this={deleteRoleModal}
+        title="Delete role"
+        confirmLabel="Delete role"
+        confirmText={role.name}
+        onconfirm={deleteRole}
+    >
+        <span class="text-foreground">{role.name}</span> will be removed from every
+        user who currently has it assigned. This action can not be reversed.
+    </ConfirmModal>
+{/if}

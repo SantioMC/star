@@ -1,19 +1,18 @@
 package login
 
 import (
-	"time"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/session"
 	"github.com/tubblelive/star/internal/state"
 	"github.com/tubblelive/star/internal/token"
 )
 
 type SuccessfulLoginStage struct {
-	Next         string `json:"next"`
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	Next        string            `json:"next"`
+	AccessToken string            `json:"access_token"`
+	Session     *database.Session `json:"-"`
 }
 
 func CreateSuccessfulStage(
@@ -22,9 +21,13 @@ func CreateSuccessfulStage(
 	user *database.User,
 	account *database.Account,
 ) (*SuccessfulLoginStage, error) {
-	permissions := []string{}
-	for _, permission := range star.Database.GetUserPermissions(ctx, user.ID) {
-		permissions = append(permissions, permission.Name)
+	if err := star.Database.ClearLoginAttempts(ctx, user.ID); err != nil {
+		return nil, err
+	}
+
+	scopes := []string{}
+	for _, scope := range openid.BuiltinScopes {
+		scopes = append(scopes, scope.Name)
 	}
 
 	session, err := session.CreateSession(
@@ -33,7 +36,8 @@ func CreateSuccessfulStage(
 		&session.Options{
 			User:     user,
 			Account:  account,
-			Duration: time.Hour * 24 * 7,
+			Duration: star.DefaultApp.Load().SessionDuration.Duration(),
+			Scopes:   scopes,
 		},
 	)
 
@@ -41,19 +45,31 @@ func CreateSuccessfulStage(
 		return nil, err
 	}
 
-	accessToken, err := token.Create(ctx, star, session, &token.Options{
-		Application: star.DefaultApp,
-		Duration:    time.Hour,
-		Permissions: permissions,
-	})
-
+	accessToken, err := IssueAccessToken(ctx, star, session, user)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SuccessfulLoginStage{
-		Next:         "complete",
-		AccessToken:  string(accessToken),
-		RefreshToken: session.Token,
+		Next:        "complete",
+		AccessToken: string(accessToken),
+		Session:     session,
 	}, nil
+}
+
+func IssueAccessToken(
+	ctx fiber.Ctx,
+	star *state.StarServer,
+	session *database.Session,
+	user *database.User,
+) (token.JWT, error) {
+	claims := openid.UserClaims(ctx, star.Database, user, session.Scopes)
+	application := star.DefaultApp.Load()
+
+	return token.Create(ctx, star, session, &token.Options{
+		Application: application,
+		Duration:    application.TokenDuration.Duration(),
+		Scope:       session.Scopes,
+		Claims:      claims,
+	})
 }

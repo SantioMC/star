@@ -12,5 +12,5 @@ func UpdateKeys(ctx context.Context, state *state.StarServer) {
 		return
 	}
 
-	state.SigningKeys = &keys
+	state.SigningKeys.Store(&keys)
 }

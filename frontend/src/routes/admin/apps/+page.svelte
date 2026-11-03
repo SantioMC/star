@@ -1,143 +1,258 @@
 <script lang="ts">
-	import { browser } from "$app/environment";
-	import { goto } from "$app/navigation";
-	import * as star from '$lib/star';
-	import Icon from "@/components/icon.svelte";
-	import Modal from "@/components/modal.svelte";
-	import Sidebar from "@/components/sidebar.svelte";
-	import { Badge } from "@/components/ui/badge";
-	import { Button } from "@/components/ui/button";
-	import { Input } from "@/components/ui/input";
-	import { Label } from "@/components/ui/label";
-	import { Spinner } from "@/components/ui/spinner";
-	import * as Table from '@/components/ui/table';
-	import { hasPermission } from "@/index";
-	import { relativeTime } from "@/utils";
-	import { onMount } from "svelte";
-	import { toast } from "svelte-sonner";
+    import { goto } from "$app/navigation";
+    import { resolve } from "$app/paths";
+    import {
+        CLIENT_KIND_DESCRIPTIONS,
+        CLIENT_KIND_OPTIONS,
+        type ClientKind,
+    } from "@/applications";
+    import Badge from "@/components/badge.svelte";
+    import Button from "@/components/button.svelte";
+    import Card from "@/components/card.svelte";
+    import ClientSecretModal from "@/components/client-secret-modal.svelte";
+    import Icon from "@/components/icon.svelte";
+    import Input from "@/components/input.svelte";
+    import Modal from "@/components/modal.svelte";
+    import PageHeader from "@/components/page-header.svelte";
+    import SearchInput from "@/components/search-input.svelte";
+    import Select from "@/components/select.svelte";
+    import { Label } from "@/components/ui/label";
+    import { hasPermission } from "@/index";
+    import * as star from "@/star";
+    import { relativeTime } from "@/utils";
+    import { onMount } from "svelte";
+    import { toast } from "svelte-sonner";
 
-	let apps = $state<star.AdminApplication[]>([])
-	let loading = $state<boolean>(false)
+    const canCreate = hasPermission("application:create");
 
-	let name = $state<string>('')
-	let kind = $state<'public' | 'confidential'>('public')
-	let url = $state<string>('')
+    let apps = $state<star.AdminApplication[]>([]);
+    let loaded = $state(false);
+    let query = $state("");
 
-	let createAppModal = $state<Modal>()
+    let createModal = $state<Modal>();
+    let secretModal = $state<ClientSecretModal>();
+    let creating = $state(false);
+    let name = $state("");
+    let kind = $state<ClientKind>("public");
+    let url = $state("");
 
-	onMount(async () => {
-		if (!browser) return
-		if (!hasPermission('application:read')) return location.href = '/'
-		apps = await star.getAllApps()
-	})
+    const filteredApps = $derived.by(() => {
+        const needle = query.trim().toLowerCase();
+        if (!needle) return apps;
 
-	const createApp = async (e: Event) => {
-		e.preventDefault()
-		loading = true
+        return apps.filter((app) =>
+            [app.name, app.client_id, app.application_url].some((value) =>
+                value.toLowerCase().includes(needle),
+            ),
+        );
+    });
 
-		const result = await star.createApplication({
-			name, kind, url
-		})
+    const load = async () => {
+        apps = await star.getAllApps();
+        loaded = true;
+    };
 
-		if ('error' in result) {
-			loading = false;
-			toast.error(result.message)
-		} else {
-			apps = await star.getAllApps()
-			toast.success('Successfully created a new application')
-			createAppModal?.close()
-			loading = false;
-		}
-	}
+    onMount(() => {
+        if (!hasPermission("application:read")) return goto("/");
+        load();
+    });
+
+    const openCreate = () => {
+        name = "";
+        kind = "public";
+        url = "";
+        createModal?.open();
+    };
+
+    const createApp = async (event: Event) => {
+        event.preventDefault();
+        if (creating) return;
+
+        creating = true;
+        const result = await star.createApplication({
+            name: name.trim(),
+            kind,
+            url: url.trim(),
+        });
+        creating = false;
+
+        if ("error" in result) {
+            return toast.error(result.message);
+        }
+
+        await load();
+        createModal?.close();
+        if (result.client_secret) secretModal?.show(result.client_secret);
+
+        toast.success("Successfully created a new application");
+    };
+
+    const appHref = (app: star.AdminApplication) =>
+        resolve("/admin/apps/[app]", { app: app.id });
 </script>
 
-<Sidebar class='md:p-8 max-w-6xl mx-auto'>
-	<h1 class='text-2xl font-semibold'>Applications</h1>
-	<h2 class='text-lg text-primary/60'>View and manage different applications</h2>
+<PageHeader
+    title="Applications"
+    description="Clients allowed to authenticate users registered with Star"
+>
+    {#snippet actions()}
+        {#if canCreate}
+            <Button onclick={openCreate}>
+                <Icon icon="plus" />
+                New application
+            </Button>
+        {/if}
+    {/snippet}
+</PageHeader>
 
-	<div class='mt-24'>
-		<div class="flex flex-row items-center gap-2 my-2">
-			{#if hasPermission('application:create')}
-				<Button class='ml-auto' onclick={() => createAppModal?.open()}>Create Application</Button>
-			{/if}
-		</div>
+<SearchInput
+    bind:value={query}
+    placeholder="Search by name, client ID or URL"
+/>
 
-		<Table.Root>
-			<Table.Caption>Found {apps.length} application{apps.length == 1 ? '' : 's'}</Table.Caption>
-			<Table.Header>
-				<Table.Row>
-				<Table.Head>Application</Table.Head>
-				<Table.Head>Type</Table.Head>
-				<Table.Head>URL</Table.Head>
-				<Table.Head>Created</Table.Head>
-				<Table.Head class='text-end'>Actions</Table.Head>
-				</Table.Row>
-			</Table.Header>
-			<Table.Body>
-				{#each apps as app (app.id)}
-				<Table.Row>
-					<Table.Cell class='flex flex-row gap-2 items-center'>
-						<Icon class='text-3xl' icon='package' />
-						<div class="flex flex-col items-start">
-							<div class='flex items-center gap-2'>
-								<span>{app.name}</span>
-								{#if app.internal}
-									<Badge variant='secondary'>Built-in</Badge>
-								{/if}
-							</div>
-							<span class='text-primary/70'>{app.id}</span>
-						</div>
-					</Table.Cell>
-					<Table.Cell>
-						<Badge variant='outline'>{app.kind}</Badge>
-					</Table.Cell>
-					<Table.Cell>
-						<a href={app.application_url} class='text-blue-300' target="_blank">
-							{app.application_url}
-							<Icon icon='external-link' />
-						</a>
-					</Table.Cell>
-					<Table.Cell>{relativeTime(app.created_at)} ago</Table.Cell>
-					<Table.Cell class='w-0'><Button variant='secondary' class='ml-auto' size='sm' onclick={() => goto(`/admin/apps/${app.id}`)}>Manage</Button></Table.Cell>
-				</Table.Row>
-				{/each}
-			</Table.Body>
-		</Table.Root>
-	</div>
-</Sidebar>
+<Card class="p-2 sm:p-3">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="hover:bg-transparent">
+                <th class="px-3 text-xs font-medium text-muted select-none">
+                    Application
+                </th>
+                <th
+                    class="px-3 text-xs font-medium text-muted select-none max-sm:hidden"
+                >
+                    Type
+                </th>
+                <th
+                    class="px-3 text-xs font-medium text-muted select-none text-right max-sm:hidden"
+                >
+                    Created
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {#each filteredApps as app (app.id)}
+                <tr
+                    class="cursor-pointer hover:bg-hover"
+                    onclick={() => goto(appHref(app))}
+                >
+                    <td class="px-3 py-2.5">
+                        <div class="flex items-center gap-3">
+                            <Icon
+                                icon="package"
+                                class="shrink-0 text-lg text-muted"
+                            />
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <a
+                                        href={appHref(app)}
+                                        class="truncate font-medium"
+                                        onclick={(event) =>
+                                            event.stopPropagation()}
+                                    >
+                                        {app.name}
+                                    </a>
+                                    {#if app.internal}
+                                        <Badge tone="primary">built-in</Badge>
+                                    {/if}
+                                    {#if app.development_mode}
+                                        <Badge tone="warning">development</Badge>
+                                    {/if}
+                                </div>
+                                <p class="truncate font-mono text-xs text-muted">
+                                    {app.application_url}
+                                </p>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-3 max-sm:hidden">
+                        <Badge tone={app.kind === "confidential" ? "info" : "neutral"}>
+                            {app.kind}
+                        </Badge>
+                    </td>
+                    <td
+                        class="px-3 text-right text-muted whitespace-nowrap max-sm:hidden"
+                    >
+                        {relativeTime(app.created_at)} ago
+                    </td>
+                </tr>
+            {:else}
+                <tr class="hover:bg-transparent">
+                    <td colspan="3" class="py-10 text-center text-muted">
+                        {#if !loaded}
+                            Loading applications...
+                        {:else if query}
+                            No applications match "{query}".
+                        {:else}
+                            No applications found.
+                        {/if}
+                    </td>
+                </tr>
+            {/each}
+        </tbody>
+    </table>
+</Card>
 
-<Modal bind:this={createAppModal} button>
-	<h1 class='text-xl font-semibold'>Create Application</h1>
-	<h2 class='text-card-foreground/60 sm:max-w-10/12'>Create a new application, allowing it to authenticate users that are registered with star</h2>
+{#if canCreate}
+    <Modal bind:this={createModal} button>
+        <form class="flex flex-col gap-6" onsubmit={createApp}>
+            <div class="flex flex-col gap-1 pr-8">
+                <h1 class="text-xl font-semibold">Create application</h1>
+                <h2 class="text-sm text-muted">
+                    Register a new client that can authenticate users with Star.
+                </h2>
+            </div>
 
-	<form onsubmit={createApp} class='mt-6'>
-		<div class="flex flex-col gap-6 w-full mx-auto">
-			<div class="grid gap-2">
-				<Label for="name">Name</Label>
-				<Input id="name" type="text" placeholder='' bind:value={name} required />
-			</div>
-			<div class="grid gap-2">
-				<Label for="kind">Client Type</Label>
-				<select id="kind" bind:value={kind} class='border rounded-md bg-transparent px-3 py-2 text-sm'>
-					<option value='public'>Public (browser or native app, uses PKCE)</option>
-					<option value='confidential'>Confidential (server-side, uses a client secret)</option>
-				</select>
-			</div>
-			<div class="grid gap-2">
-				<Label for="url">URL</Label>
-				<Input id="url" type="url" placeholder='' bind:value={url} required />
-			</div>
-		</div>
+            <div class="flex flex-col gap-5">
+                <div class="grid gap-2">
+                    <Label for="name">Name</Label>
+                    <Input
+                        bind:value={name}
+                        id="name"
+                        type="text"
+                        placeholder="Acme Dashboard"
+                        required
+                    />
+                </div>
 
-		<div class='flex items-center gap-2 justify-end mt-6'>
-			<Button variant='secondary' onclick={() => createAppModal?.close()}>Cancel</Button>
-			<Button disabled={loading} type='submit'>
-				{#if loading}
-					<Spinner />
-				{/if}
+                <div class="grid gap-2">
+                    <Label for="kind">Client type</Label>
+                    <Select
+                        bind:value={kind}
+                        id="kind"
+                        options={CLIENT_KIND_OPTIONS}
+                    />
+                    <p class="text-xs text-muted">
+                        {CLIENT_KIND_DESCRIPTIONS[kind]}
+                    </p>
+                </div>
 
-				Create Application
-			</Button>
-		</div>
-	</form>
-</Modal>
+                <div class="grid gap-2">
+                    <Label for="url">Application URL</Label>
+                    <Input
+                        bind:value={url}
+                        id="url"
+                        type="url"
+                        class="font-mono"
+                        placeholder="https://example.com"
+                        required
+                    />
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 justify-end">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={() => createModal?.close()}
+                >
+                    Cancel
+                </Button>
+                <Button type="submit" loading={creating}>
+                    Create application
+                </Button>
+            </div>
+        </form>
+    </Modal>
+
+    <ClientSecretModal bind:this={secretModal} />
+{/if}

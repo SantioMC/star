@@ -3,18 +3,17 @@ package server
 import (
 	"errors"
 	"log/slog"
-	"net/url"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/tubblelive/star/emails"
+	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
-	"github.com/tubblelive/star/internal/password"
+	"github.com/tubblelive/star/internal/export"
 	"github.com/tubblelive/star/internal/openid"
+	"github.com/tubblelive/star/internal/password"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
@@ -33,6 +32,7 @@ func userRouter(router fiber.Router) {
 		getAllUsers,
 	)
 
+	router.Get("/register", getRegisterRequirements)
 	router.Post("/register", middleware.RequireCaptcha, registerUser)
 
 	router.Post("/password/change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserPasswordWrite), middleware.RequirePermission(permission.PermissionChangePassword), changePassword)
@@ -40,11 +40,21 @@ func userRouter(router fiber.Router) {
 
 	router.Route("/login", loginRouter)
 
+	router.Post("/session", middleware.RateLimit(30), refreshUserSession)
+	router.Delete("/session", middleware.RateLimit(30), endUserSession)
+
+	router.Get("/me", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserRead), getUser)
+	router.Patch("/me", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserWrite), middleware.RequirePermission(permission.PermissionModifySelf), patchUser)
+
+	router.Get("/me/export", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserRead), middleware.RequirePermission(permission.PermissionExportSelf), exportSelf)
+	router.Get("/:user/export", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminExportUsers), adminExportUser)
+
 	router.Get("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUser)
 	router.Patch("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminUpdateUser)
 	router.Delete("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminDeleteUser)
 	router.Delete("/:user/sessions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSessions)
 	router.Post("/:user/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
+	router.Delete("/:user/lockout", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminClearLockout)
 }
 
 // misc: maybe move this to transformer?
@@ -60,12 +70,23 @@ func populateUser(ctx fiber.Ctx, user *database.User) transformer.AdminUser {
 		transformed[idx] = transformer.TransformRole(role, permissions)
 	}
 
-	return transformer.TransformAdminUser(user, email, transformed)
+	attempts, err := star.Database.GetLoginAttempts(ctx, user.ID)
+	if err != nil {
+		slog.Error("failed to get login attempts", "user", user.ID, "err", err)
+	}
+
+	return transformer.TransformAdminUser(user, email, transformed, attempts)
+}
+
+func getRegisterRequirements(ctx fiber.Ctx) error {
+	return ctx.JSON(types.RegisterRequirements{
+		Username: username.DefaultSettings,
+	})
 }
 
 func registerUser(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	if !star.Settings.AllowRegistration {
+	if !star.Settings.Load().AllowRegistration {
 		return fiber.NewError(403, "Registration is currently disabled")
 	}
 
@@ -87,14 +108,14 @@ func registerUser(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	password, err := password.ValidatePassword(request.Password, star.Settings.GetPasswordSettings())
+	password, err := password.ValidatePassword(request.Password, star.Settings.Load().GetPasswordSettings())
 	if err != nil {
 		return fiber.NewError(400, err.Error())
 	}
 
 	hashed, alg := cryptography.HashString(password)
 
-	if star.Database.EmailExists(ctx, request.Email) {
+	if star.Database.EmailClaimed(ctx, request.Email) {
 		return fiber.NewError(400, "username or email already taken")
 	}
 
@@ -111,22 +132,14 @@ func registerUser(ctx fiber.Ctx) error {
 		CreatedAt: created,
 	}
 
-	if err := star.Database.CreateUser(ctx, user); err != nil {
-		return err
-	}
-
 	email := &database.UserEmail{
 		ID:        database.CreateID(database.EmailKey),
 		UserID:    user.ID,
 		Email:     request.Email,
 		Verified:  false,
 		Primary:   true,
-		Code:      email.CreateCode(star.Settings.EmailCodeLength),
+		Code:      email.CreateCode(star.Settings.Load().EmailCodeLength),
 		CreatedAt: created,
-	}
-
-	if err := star.Database.CreateEmail(ctx, email); err != nil {
-		return err
 	}
 
 	account := &database.Account{
@@ -140,28 +153,14 @@ func registerUser(ctx fiber.Ctx) error {
 		CreatedAt:   created,
 	}
 
-	if err := star.Database.CreateAccount(ctx, account); err != nil {
+	err = star.Database.CreateUserIdentity(ctx, user, email, account)
+	if errors.Is(err, database.ErrDuplicate) {
+		return fiber.NewError(400, "username or email already taken")
+	} else if err != nil {
 		return err
 	}
 
-	// Send verification email
-	values := url.Values{}
-	values.Set("email", request.Email)
-	values.Set("code", email.Code)
-
-	url := star.Config.ServerURL + "/verify?" + values.Encode()
-	if err := star.Email.Send(
-		request.Email,
-		"Verify your email address",
-		emails.VerificationEmail,
-		map[string]string{
-			"Name":            username,
-			"VerificationURL": url,
-			"Code":            email.Code,
-		},
-	); err != nil {
-		slog.Warn("failed to send verification email", "err", err, "email", request.Email, "code", email.Code)
-	}
+	sendVerificationEmail(star, username, request.Email, email.Code)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -193,7 +192,7 @@ func changePassword(ctx fiber.Ctx) error {
 		}
 	}
 
-	sanitized, err := password.ValidatePassword(data.NewPassword, star.Settings.GetPasswordSettings())
+	sanitized, err := password.ValidatePassword(data.NewPassword, star.Settings.Load().GetPasswordSettings())
 	if err != nil {
 		return fiber.NewError(400, err.Error())
 	}
@@ -243,12 +242,12 @@ func changePassword(ctx fiber.Ctx) error {
 func deletePassword(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	userId, err := request.GetUserId(ctx)
+	userID, err := request.GetUserID(ctx)
 	if err != nil {
 		return err
 	}
 
-	accounts := star.Database.GetAccountsByUserID(ctx, userId)
+	accounts := star.Database.GetAccountsByUserID(ctx, userID)
 	var internalAccount *database.Account = nil
 	for _, account := range accounts {
 		if account.Type == "internal" {
@@ -274,25 +273,95 @@ func deletePassword(ctx fiber.Ctx) error {
 	})
 }
 
+func getUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	user, err := request.GetUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	emails := star.Database.GetEmailsByUserID(ctx, user.ID)
+	roles := []database.Role{}
+	permissions := []database.Permission{}
+	sessions := []database.Session{}
+	accounts := []database.Account{}
+
+	if request.HasScope(ctx, openid.ScopeUserRolesRead) {
+		roles = star.Database.GetUserRoles(ctx, user.ID)
+		permissions = star.Database.GetUserPermissions(ctx, user.ID)
+	}
+
+	if request.HasScope(ctx, openid.ScopeUserSessionsRead) {
+		sessions = star.Database.GetUserSessions(ctx, user.ID)
+	}
+
+	if request.HasScope(ctx, openid.ScopeUserAccountRead) {
+		accounts = star.Database.GetAccountsByUserID(ctx, user.ID)
+	}
+
+	response := transformer.TransformUser(
+		user,
+		emails,
+		roles,
+		permissions,
+		sessions,
+		accounts,
+		request.HasScope(ctx, openid.ScopeUserEmailRead),
+	)
+
+	return ctx.JSON(response)
+}
+
+func patchUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var data types.UpdateUserRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	user, err := request.GetUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	if data.Username != nil && *data.Username != user.Name {
+		sanitized, err := username.ValidateUsername(*data.Username, &username.DefaultSettings)
+		if err != nil {
+			return fiber.NewError(400, err.Error())
+		}
+
+		for _, existing := range star.Database.GetUsersByName(ctx, sanitized) {
+			if existing.ID != user.ID {
+				return fiber.NewError(400, "This username is already taken")
+			}
+		}
+
+		user.Name = sanitized
+	}
+
+	if data.FirstName != nil {
+		user.FirstName = data.FirstName
+	}
+
+	if data.LastName != nil {
+		user.LastName = data.LastName
+	}
+
+	if err := star.Database.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	return ctx.JSON(populateUser(ctx, user))
+}
+
 func getAllUsers(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	page, err := strconv.Atoi(ctx.Query("page", "1"))
+	page, limit, err := request.GetPagination(ctx)
 	if err != nil {
 		return err
-	}
-
-	limit, err := strconv.Atoi(ctx.Query("limit", "25"))
-	if err != nil {
-		return err
-	}
-
-	if page < 1 {
-		return fiber.NewError(400, "page must be at least 1")
-	}
-
-	if limit < 1 || limit > 100 {
-		return fiber.NewError(400, "limit must be between 1 and 100")
 	}
 
 	query := ctx.Query("query")
@@ -321,6 +390,49 @@ func adminGetUser(ctx fiber.Ctx) error {
 	}
 
 	return ctx.JSON(populateUser(ctx, user))
+}
+
+func exportSelf(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	userID, err := request.GetUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	user := star.Database.GetUserByID(ctx, userID)
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	return sendExport(ctx, user)
+}
+
+func adminExportUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	return sendExport(ctx, user)
+}
+
+func sendExport(ctx fiber.Ctx, user *database.User) error {
+	star := common.GetState(ctx)
+
+	requesterID, err := request.GetUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("user data exported", "user", user.ID, "requester", requesterID)
+
+	ctx.Set(fiber.HeaderCacheControl, "no-store")
+	ctx.Attachment("star-export-" + user.Name + "-" + time.Now().UTC().Format(time.DateOnly) + ".json")
+
+	return ctx.JSON(export.User(ctx, star.Database, user))
 }
 
 func adminUpdateUser(ctx fiber.Ctx) error {
@@ -375,7 +487,7 @@ func adminUpdateUser(ctx fiber.Ctx) error {
 func setUserRoles(ctx fiber.Ctx, userID string, roleIDs []string) error {
 	star := common.GetState(ctx)
 
-	requesterID, err := request.GetUserId(ctx)
+	requesterID, err := request.GetUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -386,48 +498,27 @@ func setUserRoles(ctx fiber.Ctx, userID string, roleIDs []string) error {
 
 	requested := slices.Compact(slices.Sorted(slices.Values(roleIDs)))
 	for _, roleID := range requested {
-		if star.Database.GetRoleByID(ctx, roleID) == nil {
+		role := star.Database.GetRoleByID(ctx, roleID)
+		if role == nil {
 			return fiber.NewError(400, "Unknown role: "+roleID)
+		} else if role.IsDefault() {
+			return fiber.NewError(400, "The default role is already applied to every user")
 		}
 	}
 
-	current := star.Database.GetUserRoleBindings(ctx, userID)
-	for _, binding := range current {
-		if !slices.Contains(requested, binding.RoleID) {
-			if err := star.Database.DeleteRoleBindingByID(ctx, binding.ID); err != nil {
-				return err
-			}
-		}
+	changed, err := star.Database.SetUserRoles(ctx, userID, requested)
+	if err != nil || !changed {
+		return err
 	}
 
-	for _, roleID := range requested {
-		exists := slices.ContainsFunc(current, func(binding database.RoleBinding) bool {
-			return binding.RoleID == roleID
-		})
-
-		if exists {
-			continue
-		}
-
-		binding := &database.RoleBinding{
-			ID:        database.CreateID(database.RoleBindingKey),
-			RoleID:    roleID,
-			UserID:    userID,
-			CreatedAt: time.Now(),
-		}
-
-		if err := star.Database.CreateRoleBinding(ctx, binding); err != nil {
-			return err
-		}
-	}
-
+	cache.UpdateRevocations(ctx, star)
 	return nil
 }
 
 func adminSetPassword(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	requesterID, err := request.GetUserId(ctx)
+	requesterID, err := request.GetUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -446,7 +537,7 @@ func adminSetPassword(ctx fiber.Ctx) error {
 		return err
 	}
 
-	sanitized, err := password.ValidatePassword(data.Password, star.Settings.GetPasswordSettings())
+	sanitized, err := password.ValidatePassword(data.Password, star.Settings.Load().GetPasswordSettings())
 	if err != nil {
 		return fiber.NewError(400, err.Error())
 	}
@@ -483,9 +574,11 @@ func adminSetPassword(ctx fiber.Ctx) error {
 		}
 	}
 
-	if err := star.Database.DeleteUserSessions(ctx, user.ID); err != nil {
+	if err := star.Database.RevokeUserSessions(ctx, user.ID, database.RevocationReasonPasswordReset); err != nil {
 		return err
 	}
+
+	cache.UpdateRevocations(ctx, star)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -495,7 +588,7 @@ func adminSetPassword(ctx fiber.Ctx) error {
 func adminDeleteUser(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	requesterID, err := request.GetUserId(ctx)
+	requesterID, err := request.GetUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -513,9 +606,32 @@ func adminDeleteUser(ctx fiber.Ctx) error {
 		return err
 	}
 
+	cache.UpdateRevocations(ctx, star)
+
 	return ctx.JSON(fiber.Map{
 		"success": true,
 	})
+}
+
+func adminClearLockout(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	requesterID, err := request.GetUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	if err := star.Database.ClearLoginAttempts(ctx, user.ID); err != nil {
+		return err
+	}
+
+	slog.Info("login lockout cleared", "user", user.ID, "by", requesterID)
+	return ctx.JSON(populateUser(ctx, user))
 }
 
 func adminInvalidateUserSessions(ctx fiber.Ctx) error {
@@ -526,9 +642,11 @@ func adminInvalidateUserSessions(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "User not found")
 	}
 
-	if err := star.Database.DeleteUserSessions(ctx, user.ID); err != nil {
+	if err := star.Database.RevokeUserSessions(ctx, user.ID, database.RevocationReasonSessionsCleared); err != nil {
 		return err
 	}
+
+	cache.UpdateRevocations(ctx, star)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

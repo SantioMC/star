@@ -13,8 +13,7 @@ type Config struct {
 	Port        int      `env:"PORT,8080"`
 	DatabaseURL string   `env:"DATABASE_URL"`
 	Origins     []string `env:"ORIGIN,"`
-	TrustProxy  bool     `env:"TRUST_PROXY,false"`
-	ProxyHeader string   `env:"PROXY_HEADER,X-Forwarded-For"`
+	Proxy       ProxyConfig
 	Captcha     CaptchaConfig
 	Email       EmailConfig
 	Geolocation GeoserviceConfig
@@ -32,8 +31,14 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config := &Config{}
-	err := loadConfig(config)
-	config.AppToken = sha256.Sum256([]byte(appToken))
+	if err := loadConfig(config); err != nil {
+		return nil, err
+	}
 
-	return config, err
+	if err := config.Proxy.parse(); err != nil {
+		return nil, err
+	}
+
+	config.AppToken = sha256.Sum256([]byte(appToken))
+	return config, nil
 }

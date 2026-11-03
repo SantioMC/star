@@ -29,7 +29,7 @@ type OwnedApplicationScope struct {
 }
 
 func (db *Database) GetApplicationScopes(ctx context.Context, applicationID string) []ApplicationScope {
-	scopes, err := sqlx.ListContext[ApplicationScope](
+	scopes, err := list[ApplicationScope](
 		ctx,
 		db.DB(),
 		`SELECT * FROM application_scopes WHERE application_id = $1 ORDER BY name ASC`,
@@ -47,7 +47,7 @@ func (db *Database) GetApplicationScopes(ctx context.Context, applicationID stri
 }
 
 func (db *Database) GetAllApplicationScopes(ctx context.Context) []ApplicationScope {
-	scopes, err := sqlx.ListContext[ApplicationScope](
+	scopes, err := list[ApplicationScope](
 		ctx,
 		db.DB(),
 		`SELECT * FROM application_scopes ORDER BY name ASC`,
@@ -104,7 +104,7 @@ func (db *Database) GetApplicationScopesByNames(ctx context.Context, names []str
 		return []OwnedApplicationScope{}
 	}
 
-	scopes, err := sqlx.ListContext[OwnedApplicationScope](
+	scopes, err := list[OwnedApplicationScope](
 		ctx,
 		db.DB(),
 		`

@@ -14,11 +14,12 @@ import (
 const TotpKey = "totp"
 
 type Totp struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id" db:"user_id"`
-	Secret    string    `json:"secret"`
-	Verified  bool      `json:"verified"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id" db:"user_id"`
+	Secret       string    `json:"secret"`
+	Verified     bool      `json:"verified"`
+	LastUsedStep *int64    `json:"-" db:"last_used_step"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 }
 
 func (db *Database) GetTotpByID(ctx context.Context, id string) *Totp {
@@ -113,6 +114,26 @@ func (db *Database) UpdateTotp(ctx context.Context, totp *Totp) error {
 	)
 
 	return err
+}
+
+func (db *Database) UseTotpStep(ctx context.Context, id string, step int64) (bool, error) {
+	result, err := db.DB().ExecContext(
+		ctx,
+		`
+		UPDATE totp
+		SET last_used_step = $2
+		WHERE id = $1 AND (last_used_step IS NULL OR last_used_step < $2)
+		`,
+		id,
+		step,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	updated, err := result.RowsAffected()
+	return updated > 0, err
 }
 
 func (db *Database) IsTotpEnabled(ctx context.Context, userId string) (bool, error) {

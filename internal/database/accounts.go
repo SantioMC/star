@@ -21,6 +21,7 @@ type Account struct {
 	PasswordAlg cryptography.Algorithm `json:"password_alg" db:"password_alg"`
 
 	UserID     string    `json:"user_id" db:"user_id"`
+	ProviderID *string   `json:"provider_id" db:"provider_id"`
 	ExternalID *string   `json:"external_id" db:"external_id"`
 	Name       *string   `json:"name" db:"account_name"`
 	Email      *string   `json:"email" db:"account_email"`
@@ -29,7 +30,7 @@ type Account struct {
 }
 
 func (db *Database) GetAccountsByUserID(ctx context.Context, userID string) []Account {
-	accounts, err := sqlx.ListContext[Account](
+	accounts, err := list[Account](
 		ctx,
 		db.DB(),
 		`SELECT * FROM accounts WHERE user_id = $1 ORDER BY created_at DESC`,
@@ -44,6 +45,43 @@ func (db *Database) GetAccountsByUserID(ctx context.Context, userID string) []Ac
 	}
 
 	return accounts
+}
+
+func (db *Database) GetAccountByID(ctx context.Context, id string) *Account {
+	account, err := sqlx.OneContext[Account](
+		ctx,
+		db.DB(),
+		`SELECT * FROM accounts WHERE id = $1 LIMIT 1`,
+		id,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		slog.Error("failed to get account by id", "err", err)
+		return nil
+	}
+
+	return &account
+}
+
+func (db *Database) GetProviderAccount(ctx context.Context, providerID string, externalID string) *Account {
+	account, err := sqlx.OneContext[Account](
+		ctx,
+		db.DB(),
+		`SELECT * FROM accounts WHERE provider_id = $1 AND external_id = $2 LIMIT 1`,
+		providerID,
+		externalID,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		slog.Error("failed to get provider account", "err", err)
+		return nil
+	}
+
+	return &account
 }
 
 func (db *Database) GetInternalAccountByUserID(ctx context.Context, userID string) *Account {
@@ -66,17 +104,22 @@ func (db *Database) GetInternalAccountByUserID(ctx context.Context, userID strin
 }
 
 func (db *Database) CreateAccount(ctx context.Context, account *Account) error {
-	_, err := db.DB().ExecContext(
+	return db.insertAccount(ctx, db.DB(), account)
+}
+
+func (db *Database) insertAccount(ctx context.Context, execer sqlx.ExecerContext, account *Account) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
-		INSERT INTO accounts (id, user_id, type, password, password_alg, external_id, account_name, account_email, account_avatar, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO accounts (id, user_id, type, password, password_alg, provider_id, external_id, account_name, account_email, account_avatar, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		`,
 		account.ID,
 		account.UserID,
 		account.Type,
 		account.Password,
 		account.PasswordAlg,
+		account.ProviderID,
 		account.ExternalID,
 		account.Name,
 		account.Email,

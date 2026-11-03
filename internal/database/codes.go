@@ -30,7 +30,7 @@ type AuthorizationCode struct {
 	CodeChallenge       *string `json:"code_challenge" db:"code_challenge"`
 	CodeChallengeMethod *string `json:"code_challenge_method" db:"code_challenge_method"`
 
-	SessionID *string `json:"session_id" db:"session_id"`
+	FamilyID *string `json:"family_id" db:"family_id"`
 
 	AuthenticatedAt time.Time `json:"authenticated_at" db:"authenticated_at"`
 
@@ -131,12 +131,12 @@ func (db *Database) DeleteDeadAuthCodes(ctx context.Context) (int64, error) {
 	return result.RowsAffected()
 }
 
-func (db *Database) RedeemAuthorizationCode(ctx context.Context, id string, sessionID string) (bool, error) {
+func (db *Database) RedeemAuthorizationCode(ctx context.Context, id string, familyID string) (bool, error) {
 	result, err := db.DB().ExecContext(
 		ctx,
-		`UPDATE authorization_codes SET redeemed_at = $1, session_id = $2 WHERE id = $3 AND redeemed_at IS NULL`,
+		`UPDATE authorization_codes SET redeemed_at = $1, family_id = $2 WHERE id = $3 AND redeemed_at IS NULL`,
 		time.Now(),
-		sessionID,
+		familyID,
 		id,
 	)
 
@@ -150,4 +150,20 @@ func (db *Database) RedeemAuthorizationCode(ctx context.Context, id string, sess
 	}
 
 	return affected > 0, nil
+}
+
+func (db *Database) GetAuthorizationCodesByUserID(ctx context.Context, userID string) []AuthorizationCode {
+	authCodes, err := list[AuthorizationCode](
+		ctx,
+		db.DB(),
+		`SELECT * FROM authorization_codes WHERE user_id = $1 ORDER BY created_at DESC`,
+		userID,
+	)
+
+	if err != nil {
+		slog.Error("failed to get user authorization codes", "err", err)
+		return []AuthorizationCode{}
+	}
+
+	return authCodes
 }

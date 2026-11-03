@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/oauth"
@@ -19,7 +20,7 @@ func getJwks(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	keys := star.Database.GetAllSigningKeys(ctx)
 
-	var jwks []jose.JSONWebKey
+	jwks := make([]jose.JSONWebKey, 0, len(keys))
 	for _, key := range keys {
 		jwk, err := key.GetJWK()
 		if err != nil {
@@ -37,12 +38,19 @@ func getJwks(ctx fiber.Ctx) error {
 func getOpenIDConfiguration(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
+	signingAlgorithms := make([]string, len(database.KeyAlgorithms))
+	for idx, algorithm := range database.KeyAlgorithms {
+		signingAlgorithms[idx] = string(algorithm)
+	}
+
 	return ctx.JSON(openid.DiscoveryDocument{
-		Issuer:                            star.Config.ServerURL,
-		JwksURI:                           fmt.Sprintf("%s/.well-known/jwks.json", star.Config.ServerURL),
-		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth/authorize", star.Config.ServerURL),
-		TokenEndpoint:                     fmt.Sprintf("%s/oauth/token", star.Config.ServerURL),
-		RevocationEndpoint:                fmt.Sprintf("%s/oauth/revoke", star.Config.ServerURL),
+		Issuer:                star.Config.ServerURL,
+		JwksURI:               fmt.Sprintf("%s/.well-known/jwks.json", star.Config.ServerURL),
+		AuthorizationEndpoint: fmt.Sprintf("%s/oauth/authorize", star.Config.ServerURL),
+		TokenEndpoint:         fmt.Sprintf("%s/oauth/token", star.Config.ServerURL),
+		RevocationEndpoint:    fmt.Sprintf("%s/oauth/revoke", star.Config.ServerURL),
+		IntrospectionEndpoint: fmt.Sprintf("%s/oauth/introspect", star.Config.ServerURL),
+		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post"},
 		UserinfoEndpoint:                  fmt.Sprintf("%s/oidc/userinfo", star.Config.ServerURL),
 		DeviceAuthorizationEndpoint:       "",
 		RegistrationEndpoint:              "",
@@ -56,8 +64,6 @@ func getOpenIDConfiguration(ctx fiber.Ctx) error {
 		MfaChallengeEndpoint:              "",
 		ResponseModesSupported:            oauth.SupportedResponseModes,
 		RequestParameterSupported:         false,
-		IDTokenSigningAlgValuesSupported: []string{
-			string(jose.ES512),
-		},
+		IDTokenSigningAlgValuesSupported:  signingAlgorithms,
 	})
 }

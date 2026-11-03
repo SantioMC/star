@@ -1,10 +1,12 @@
 package token
 
 import (
-	"crypto/ecdsa"
+	"crypto"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -12,10 +14,7 @@ import (
 	"github.com/tubblelive/star/internal/state"
 )
 
-const (
-	clockSkew    = time.Second * 5
-	JwtAlgorithm = jose.ES512
-)
+const clockSkew = time.Second * 5
 
 const (
 	TypeJWT         jose.ContentType = "JWT"
@@ -24,26 +23,36 @@ const (
 
 type JWT string
 type JWTOptions struct {
-	Type     jose.ContentType
-	Duration time.Duration
-	Fields   map[string]any
+	Type      jose.ContentType
+	Algorithm database.KeyAlgorithm
+	Duration  time.Duration
+	IssuedAt  time.Time
+	Fields    map[string]any
 }
 
 func createJWT(
 	state *state.StarServer,
 	options JWTOptions,
 ) (JWT, error) {
-	var signingKey *database.SigningKey = nil
-	for _, key := range *state.SigningKeys {
-		if key.Status == database.SigningKeyStatusActive {
-			signingKey = &key
-			break
-		}
-	}
-
-	if signingKey == nil {
+	keys := state.SigningKeys.Load()
+	if keys == nil {
 		return "", ErrNoActiveSigningKey
 	}
+
+	algorithm := options.Algorithm
+	if algorithm == "" {
+		algorithm = database.KeyAlgorithmES512
+	}
+
+	index := slices.IndexFunc(*keys, func(key database.SigningKey) bool {
+		return key.Algorithm == algorithm && key.IsUsable()
+	})
+
+	if index == -1 {
+		return "", ErrNoActiveSigningKey
+	}
+
+	signingKey := (*keys)[index]
 
 	tokenType := options.Type
 	if tokenType == "" {
@@ -62,7 +71,7 @@ func createJWT(
 
 	signer, err := jose.NewSigner(
 		jose.SigningKey{
-			Algorithm: JwtAlgorithm,
+			Algorithm: jose.SignatureAlgorithm(signingKey.Algorithm),
 			Key:       privateKey,
 		},
 		(&jose.SignerOptions{
@@ -74,17 +83,20 @@ func createJWT(
 		return "", err
 	}
 
+	issuedAt := options.IssuedAt
+	if issuedAt.IsZero() {
+		issuedAt = time.Now()
+	}
+
 	data := map[string]any{
 		"iss": state.Config.ServerURL,
-		"iat": time.Now().Unix(),
+		"iat": issuedAt.Unix(),
 		"exp": time.Now().Add(options.Duration).Unix(),
 		"nbf": time.Now().Add(-clockSkew).Unix(),
 		"naf": time.Now().Add(options.Duration + clockSkew).Unix(),
 	}
 
-	for key, value := range options.Fields {
-		data[key] = value
-	}
+	maps.Copy(data, options.Fields)
 
 	payload, err := json.Marshal(data)
 	if err != nil {
@@ -104,10 +116,50 @@ func createJWT(
 	return JWT(sanitized), nil
 }
 
-func VerifyJWT(state *state.StarServer, jwt string, publicKey *ecdsa.PublicKey) (*AccessTokenJWT, error) {
-	signature, err := jose.ParseSigned(jwt, []jose.SignatureAlgorithm{jose.ES512})
+var ErrMalformedToken = errors.New("the access token is malformed")
+var ErrMissingKeyID = errors.New("the access token is missing a key id")
+var ErrUnknownKey = errors.New("the access token was signed by an unknown key")
+
+func Verify(state *state.StarServer, jwt string) (*AccessTokenJWT, error) {
+	signature, err := jose.ParseSigned(jwt, database.SignatureAlgorithms())
+	if err != nil || len(signature.Signatures) != 1 {
+		return nil, ErrMalformedToken
+	}
+
+	header := signature.Signatures[0].Protected
+	if header.KeyID == "" {
+		return nil, ErrMissingKeyID
+	}
+
+	keys := state.SigningKeys.Load()
+	if keys == nil {
+		return nil, ErrUnknownKey
+	}
+
+	index := slices.IndexFunc(*keys, func(key database.SigningKey) bool {
+		return key.ID == header.KeyID
+	})
+
+	if index == -1 {
+		return nil, ErrUnknownKey
+	}
+
+	signingKey := (*keys)[index]
+	if header.Algorithm != string(signingKey.Algorithm) {
+		return nil, ErrMalformedToken
+	}
+
+	publicKey, err := signingKey.GetPublicKey()
 	if err != nil {
 		return nil, err
+	}
+
+	return verifyJWT(state, signature, publicKey)
+}
+
+func verifyJWT(state *state.StarServer, signature *jose.JSONWebSignature, publicKey crypto.PublicKey) (*AccessTokenJWT, error) {
+	if signature.Signatures[0].Protected.ExtraHeaders[jose.HeaderType] != string(TypeAccessToken) {
+		return nil, errors.New("token is not an access token")
 	}
 
 	data, err := signature.Verify(publicKey)
@@ -134,6 +186,10 @@ func VerifyJWT(state *state.StarServer, jwt string, publicKey *ecdsa.PublicKey) 
 
 	if len(claims.Audience) == 0 {
 		return nil, errors.New("token has no audience")
+	}
+
+	if state.Revocations.Revoked(claims.IssuedAt, claims.SessionID, claims.Subject, database.GlobalRevocationSubject) {
+		return nil, errors.New("token has been revoked")
 	}
 
 	return &claims, nil
@@ -168,5 +224,6 @@ type AccessTokenJWT struct {
 	ClientID    string   `json:"client_id"`
 	SessionID   string   `json:"sid"`
 	Scope       string   `json:"scope"`
-	Permissions []string `json:"permissions"`
+	Permissions string   `json:"urn:star:iam:permissions"`
+	Roles       []string `json:"urn:star:iam:roles"`
 }

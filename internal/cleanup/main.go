@@ -24,4 +24,7 @@ func Cleanup(state *state.StarServer) {
 	CleanupSessions(ctx, state)
 	CleanupAuthCodes(ctx, state)
 	CleanupLoginFlows(ctx, state)
+	CleanupPasskeyChallenges(ctx, state)
+	CleanupSigningKeys(ctx, state)
+	CleanupTokenRevocations(ctx, state)
 }

@@ -29,10 +29,10 @@ func authorizationError(ctx fiber.Ctx, err string) error {
 	return ctx.Redirect().To("/oauth/authorize?error=" + url.QueryEscape(err))
 }
 
-func redirectError(ctx fiber.Ctx, redirectUri string, kind Oauth2Error, description string, state string) error {
-	target, err := url.Parse(redirectUri)
+func redirectError(ctx fiber.Ctx, redirectURI string, kind Oauth2Error, description string, state string) error {
+	target, err := url.Parse(redirectURI)
 	if err != nil {
-		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectUri)
+		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectURI)
 		return authorizationError(ctx, "The redirect_uri specified is not a valid URI")
 	}
 
@@ -81,7 +81,7 @@ func Authorize(ctx fiber.Ctx) error {
 		return authorizationError(ctx, "Missing redirect_uri, the authorization server requires one")
 	}
 
-	if !slices.Contains(application.RedirectURIs, redirectURI) {
+	if !AllowedRedirectURI(application, redirectURI) {
 		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectURI)
 		return authorizationError(ctx, "The redirect_uri specified is not allowed for this application")
 	}

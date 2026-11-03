@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"net/http"
 	"strings"
+
+	"github.com/tubblelive/star/internal/outbound"
 )
 
 type TurnstileValidator struct {
@@ -58,7 +59,7 @@ func (v *TurnstileValidator) ValidateToken(token string) bool {
 		return false
 	}
 
-	response, err := http.Post(
+	response, err := outbound.Public.Post(
 		"https://challenges.cloudflare.com/turnstile/v0/siteverify",
 		"application/json",
 		bytes.NewBuffer(body),
@@ -68,6 +69,8 @@ func (v *TurnstileValidator) ValidateToken(token string) bool {
 		slog.Error("failed to verify captcha token", "err", err)
 		return false
 	}
+
+	defer response.Body.Close()
 
 	bytes, err := io.ReadAll(response.Body)
 	if err != nil {

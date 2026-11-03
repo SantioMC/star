@@ -29,10 +29,6 @@ func seedUser(ctx context.Context, star *state.StarServer) error {
 		CreatedAt: time.Now(),
 	}
 
-	if err := star.Database.CreateUser(ctx, user); err != nil {
-		return err
-	}
-
 	password := cryptography.CreateSecureString(24)
 	hashed, algorithm := cryptography.HashString(password)
 	adminEmail := "admin@star.internal"
@@ -46,25 +42,21 @@ func seedUser(ctx context.Context, star *state.StarServer) error {
 		CreatedAt:   time.Now(),
 	}
 
-	if err := star.Database.CreateAccount(ctx, account); err != nil {
-		return err
-	}
-
 	userEmail := &database.UserEmail{
 		ID:        database.CreateID(database.EmailKey),
 		UserID:    user.ID,
 		Email:     "admin@star.internal",
 		Verified:  true,
 		Primary:   true,
-		Code:      email.CreateCode(6),
+		Code:      email.CreateCode(8),
 		CreatedAt: time.Now(),
 	}
 
-	if err := star.Database.CreateEmail(ctx, userEmail); err != nil {
+	if err := star.Database.CreateUserIdentity(ctx, user, userEmail, account); err != nil {
 		return err
 	}
 
-	role := star.Database.GetRoleByName(ctx, "superadmin")
+	role := star.Database.GetRoleByName(ctx, database.SuperadminRoleName)
 	if role == nil {
 		return errors.New("superadmin role not found")
 	}

@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -26,6 +27,15 @@ type Database struct {
 
 func (db *Database) DB() *sqlx.DB {
 	return db.db
+}
+
+func list[T any](ctx context.Context, q sqlx.QueryerContext, query string, args ...any) ([]T, error) {
+	items, err := sqlx.ListContext[T](ctx, q, query, args...)
+	if items == nil {
+		items = []T{}
+	}
+
+	return items, err
 }
 
 func (db *Database) Close() {
@@ -94,4 +104,15 @@ func CreateID(kind string) string {
 	}
 
 	return fmt.Sprintf("%s_%s", kind, string(b))
+}
+
+var ErrDuplicate = errors.New("a record with the same unique value already exists")
+
+func duplicate(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return ErrDuplicate
+	}
+
+	return err
 }

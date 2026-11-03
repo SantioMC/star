@@ -1,268 +1,295 @@
 <script lang="ts">
-	import { env } from '$env/dynamic/public';
-	import * as star from '$lib/star';
-	import Captcha from '@/components/captcha.svelte';
-	import Icon from '@/components/icon.svelte';
-	import TotpInput from '@/components/totp-input.svelte';
-	import Button from '@/components/ui/button/button.svelte';
-	import * as Card from '@/components/ui/card';
-	import { Input } from '@/components/ui/input';
-	import { Label } from '@/components/ui/label';
-	import { Separator } from '@/components/ui/separator';
-	import { Spinner } from '@/components/ui/spinner';
-	import { continueFlow, refreshToken, token } from '@/index';
-	import { onMount } from 'svelte';
+    import { env } from "$env/dynamic/public";
+    import { afterNavigate, replaceState } from "$app/navigation";
+    import { page } from "$app/state";
+    import * as star from "$lib/star";
+    import Card from "@/components/card.svelte";
+    import Icon from "@/components/icon.svelte";
+    import {
+        continueFlow,
+        getLoginIntent,
+        startSession,
+        user,
+    } from "@/index";
+    import { authenticateWithPasskey } from "@/passkey";
+    import {
+        browserSupportsWebAuthn,
+        browserSupportsWebAuthnAutofill,
+        WebAuthnAbortService,
+    } from "@simplewebauthn/browser";
+    import { onMount, untrack } from "svelte";
+    import CaptchaStep from "./components/captcha-step.svelte";
+    import CredentialsStep from "./components/credentials-step.svelte";
+    import MfaStep from "./components/mfa-step.svelte";
 
-	let notice = $state<string | null>(null);
+    type Step =
+        | { kind: "credentials" }
+        | { kind: "captcha" }
+        | { kind: "mfa"; flow: string; factors: star.MFAMethod[] };
 
-	let loading = $state(false);
-	let promptCaptcha = $state(false);
-	let error = $state('');
+    const intent = getLoginIntent();
+    const knownUsername = $user?.username;
+    const reauthenticating = intent?.reason === "reauthenticate" && !!knownUsername;
 
-	let username = $state('');
-	let password = $state('');
+    let step = $state<Step>({ kind: "credentials" });
+    let notice = $state<string | null>(null);
+    let error = $state("");
+    let loading = $state(false);
+    let mfaMethod = $state<star.MFAMethod>("totp");
+    let providers = $state<star.LoginProvider[]>([]);
 
-	let captchaToken = $state('');
-	let captchaError = $state('');
+    let username = $state(reauthenticating ? knownUsername! : "");
+    let password = $state("");
 
-	let mfaFlow = $state<string | null>(null);
-	let mfaCode = $state('');
+    const passkeysEnabled = !reauthenticating && browserSupportsWebAuthn();
 
-	const login = async (event: Event | null = null) => {
-		if (env.PUBLIC_SITE_KEY && !captchaToken) {
-			promptCaptcha = true;
-			return;
-		}
+    const heading = $derived.by(() => {
+        switch (step.kind) {
+            case "captcha":
+                return {
+                    title: "Verify you're human",
+                    description: "Complete the challenge below to continue signing in",
+                };
+            case "mfa":
+                return {
+                    title: "Two-factor authentication",
+                    description: {
+                        totp: "Enter the 6-digit code from your authenticator app to finish signing in",
+                        passkey: "Use one of your passkeys to finish signing in",
+                        backup_code:
+                            "Enter one of the backup codes you saved when setting up two-factor authentication",
+                    }[mfaMethod],
+                };
+        }
 
-		event?.preventDefault();
-		error = '';
-		loading = true;
+        if (reauthenticating) {
+            return {
+                title: "Confirm it's you",
+                description: "For your security, enter your password to continue",
+            };
+        }
 
-		const data = await star.login({
-			captcha: captchaToken ? captchaToken : undefined,
-			username,
-			password
-		});
+        if (intent?.reason === "authorize" && intent.label) {
+            return {
+                title: `Sign in to ${intent.label}`,
+                description: `Use your Star account to continue to ${intent.label}`,
+            };
+        }
 
-		loading = false;
+        return {
+            title: "Login to your account",
+            description: "Enter your account details below to login to your account",
+        };
+    });
 
-		if ('error' in data) {
-			captchaToken = '';
-			error = data.message;
-			return;
-		}
+    onMount(async () => {
+        notice = localStorage.getItem("star-login-note");
+        if (notice) localStorage.removeItem("star-login-note");
 
-		if (data.next === 'mfa_required') {
-			if (!data.factors.includes('totp')) {
-				error = 'Your account requires an authentication factor that is not supported';
-				return;
-			}
+        const flow = page.url.searchParams.get("flow");
+        error = page.url.searchParams.get("error") ?? "";
 
-			mfaFlow = data.flow;
-			mfaCode = '';
-			return;
-		}
+        if (!reauthenticating) {
+            star.getLoginProviders().then((value) => (providers = value));
+        }
 
-		token.set(data.access_token);
-		refreshToken.set(data.refresh_token);
+        if (!flow) return;
 
-		continueFlow();
-	};
+        loading = true;
+        const response = await star.completeProviderLogin(flow);
+        loading = false;
 
-	const submitTotp = async (event: Event | null = null) => {
-		event?.preventDefault();
+        if ("error" in response) {
+            return restart(response.message);
+        }
 
-		if (!mfaFlow || loading) return;
+        handleStage(response);
+    });
 
-		const code = mfaCode.trim();
-		if (code.length < 6) return;
+    afterNavigate(() => {
+        if (page.url.search) replaceState("/login", {});
+    });
 
-		error = '';
-		loading = true;
+    $effect(() => {
+        if (step.kind !== "credentials" || !passkeysEnabled) return;
 
-		const data = await star.loginTotp(mfaFlow, code);
-		loading = false;
+        untrack(() => passkeyLogin(true));
+        return () => WebAuthnAbortService.cancelCeremony();
+    });
 
-		if ('error' in data) {
-			mfaCode = '';
-			error = data.message;
-			return;
-		}
+    const restart = (message: string = "") => {
+        error = message;
+        password = "";
+        step = { kind: "credentials" };
+    };
 
-		token.set(data.access_token);
-		refreshToken.set(data.refresh_token);
+    const complete = (response: star.LoginSuccessResponse) => {
+        user.set(null);
+        startSession(response.access_token);
 
-		continueFlow();
-	};
+        continueFlow();
+    };
 
-	const backToLogin = () => {
-		mfaFlow = null;
-		mfaCode = '';
-		error = '';
-		captchaToken = '';
-		password = '';
-	};
+    const handleStage = (response: star.LoginResponse) => {
+        switch (response.next) {
+            case "complete":
+                return complete(response);
+            case "mfa_required":
+                if (response.factors.includes("passkey")) {
+                    mfaMethod = "passkey";
+                } else if (response.factors.includes("totp")) {
+                    mfaMethod = "totp";
+                } else {
+                    return restart(
+                        "Your account requires an authentication factor that is not supported yet",
+                    );
+                }
 
-	const captchaCallback = async (token: string) => {
-		captchaToken = token;
-		await login();
-		promptCaptcha = false;
-	};
+                step = {
+                    kind: "mfa",
+                    flow: response.flow,
+                    factors: response.factors,
+                };
+                return;
+            default:
+                return restart(
+                    "Your account requires a sign in step that is not supported yet",
+                );
+        }
+    };
 
-	onMount(() => {
-		notice = localStorage.getItem('star-login-note');
+    const login = async (captcha?: string) => {
+        if (loading) return;
 
-		if (notice) {
-			localStorage.removeItem('star-login-note');
-		}
-	});
+        if (env.PUBLIC_SITE_KEY && !captcha) {
+            step = { kind: "captcha" };
+            return;
+        }
+
+        error = "";
+        loading = true;
+        const response = await star.login({ username, password, captcha });
+        loading = false;
+
+        if ("error" in response) {
+            return restart(response.message);
+        }
+
+        handleStage(response);
+    };
+
+    const passkeyLogin = async (autofill: boolean = false) => {
+        if (autofill && !(await browserSupportsWebAuthnAutofill())) return;
+        if (!autofill) {
+            if (loading) return;
+
+            error = "";
+            loading = true;
+        }
+
+        const response = await authenticateWithPasskey(undefined, autofill);
+        if (!autofill) loading = false;
+
+        if (response === null) {
+            if (!autofill) passkeyLogin(true);
+            return;
+        }
+
+        if ("error" in response) {
+            error = response.message;
+            return;
+        }
+
+        handleStage(response);
+    };
+
+    const submitCredentials = (event: Event) => {
+        event.preventDefault();
+        login();
+    };
 </script>
 
-<div class="h-full w-full flex items-center justify-center">
-	<form
-		onsubmit={mfaFlow ? submitTotp : login}
-		class="w-full sm:w-fit flex flex-col gap-4 items-center"
-	>
-		{#if notice}
-			<div class="mb-4 flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
-				<Icon icon="alert-circle" class="text-lg shrink-0" />
-				<span>{notice}</span>
-			</div>
-		{/if}
+<div class="h-full w-full flex items-center justify-center px-4">
+    <div class="w-full sm:w-sm flex flex-col gap-4 items-center">
+        {#if notice}
+            <div
+                class="mb-4 w-full flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200"
+            >
+                <Icon icon="alert-circle" class="text-lg shrink-0" />
+                <span>{notice}</span>
+            </div>
+        {/if}
 
-		<Card.Root class="-my-4 w-full sm:w-sm">
-			{#if promptCaptcha}
-				<Card.Header>
-					<Card.Title>Solve the Captcha</Card.Title>
-					<Card.Description>
-						Please wait or manually solve the provided captcha to prove you are
-						a human
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="w-96 flex items-center flex-col gap-2">
-					<Captcha
-						onsuccess={captchaCallback}
-						onerror={(e) => (captchaError = e)}
-					/>
-					{#if captchaError}
-						<span class="text-red-400 text-center">{captchaError}</span>
-					{/if}
-				</Card.Content>
-			{:else if mfaFlow}
-				<Card.Header>
-					<Card.Title>Two-factor authentication</Card.Title>
-					<Card.Description>
-						Enter the 6-digit code from your authenticator app to finish
-						signing in
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="w-96">
-					<div class="grid gap-3 justify-items-center">
-						<Label>Authentication code</Label>
-						<TotpInput
-							bind:value={mfaCode}
-							disabled={loading}
-						/>
-					</div>
+        <Card class="-my-4 w-full">
+            <div class="flex flex-col mb-6">
+                <h1 class="text-lg">{heading.title}</h1>
+                <p class="text-muted text-sm">{heading.description}</p>
+            </div>
 
-					{#if error}
-						<span class="text-red-300 mt-2 block text-center">{error}</span>
-					{/if}
-				</Card.Content>
-				<Card.Footer class="flex-col gap-2">
-					<Button
-						type="submit"
-						class="w-full"
-						disabled={loading || mfaCode.trim().length < 6}
-					>
-						{#if loading}
-							<Spinner />
-						{/if}
-						Verify
-					</Button>
-				</Card.Footer>
-			{:else}
-				<Card.Header>
-					<Card.Title>Login to your account</Card.Title>
-					<Card.Description>
-						Enter your account details below to login to your account
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="w-96">
-					<div class="flex flex-col gap-6">
-						<div class="grid gap-2">
-							<Label for="username">Username or Email</Label>
-							<Input
-								bind:value={username}
-								id="username"
-								type="text"
-								autocomplete="username"
-								required
-							/>
-						</div>
-						<div class="grid gap-2">
-							<div class="flex items-center">
-								<Label for="password">Password</Label>
-							</div>
-							<Input
-								bind:value={password}
-								id="password"
-								type="password"
-								required
-							/>
-						</div>
-					</div>
+            {#if error}
+                <div
+                    role="alert"
+                    class="mb-6 flex items-start gap-2 rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300"
+                >
+                    <Icon icon="alert-triangle" class="mt-0.5 shrink-0" />
+                    <span>{error}</span>
+                </div>
+            {/if}
 
-					{#if error}
-						<span class="text-red-300 mt-2 block">{error}</span>
-					{/if}
-				</Card.Content>
-				<Card.Footer class="flex-col gap-2">
-					<Button
-						type="submit"
-						class="w-full"
-						disabled={loading}
-						onclick={login}
-					>
-						{#if loading}
-							<Spinner />
-						{/if}
-						Login
-					</Button>
+            {#if step.kind === "credentials"}
+                <form onsubmit={submitCredentials}>
+                    <CredentialsStep
+                        bind:username
+                        bind:password
+                        {loading}
+                        lockUsername={reauthenticating}
+                        allowRegistration={!reauthenticating}
+                        submitLabel={reauthenticating ? "Confirm" : "Login"}
+                        {providers}
+                        onpasskey={passkeysEnabled
+                            ? () => passkeyLogin()
+                            : undefined}
+                    />
+                </form>
+            {:else if step.kind === "captcha"}
+                <CaptchaStep onsolve={login} oncancel={() => restart()} />
+            {:else if step.kind === "mfa"}
+                <MfaStep
+                    bind:method={mfaMethod}
+                    flow={step.flow}
+                    factors={step.factors}
+                    onstage={handleStage}
+                    oncancel={() => restart()}
+                />
+            {/if}
+        </Card>
 
-					<div class="flex items-center gap-1 text-sm text-primary/60">
-						New user?
-						<a href="/register" class="link">Create an account</a>
-					</div>
-				</Card.Footer>
-			{/if}
-		</Card.Root>
+        {#if env.PUBLIC_TOS || env.PUBLIC_PRIVACY}
+            <div
+                class="flex w-full justify-center gap-4 mt-8 items-center text-sm text-primary/70"
+            >
+                {#if env.PUBLIC_TOS}
+                    <a
+                        href={env.PUBLIC_TOS}
+                        class="transition-colors hover:text-primary"
+                    >
+                        Terms of Service
+                    </a>
+                {/if}
 
-		{#if env.PUBLIC_TOS || env.PUBLIC_SITE_KEY}
-			<div
-				class="flex w-full justify-center h-5 gap-4 mt-8 items-center text-sm text-primary/70"
-			>
-				{#if env.PUBLIC_TOS}
-					<a
-						href={env.PUBLIC_TOS}
-						class="transition-colors cursor-pointer hover:text-primary"
-					>
-						Terms of Service
-					</a>
+                {#if env.PUBLIC_TOS && env.PUBLIC_PRIVACY}
+                    <span class="h-4 w-px bg-background-200"></span>
+                {/if}
 
-					{#if env.PUBLIC_SITE_KEY}
-						<Separator orientation="vertical" />
-					{/if}
-				{/if}
-				{#if env.PUBLIC_PRIVACY}
-					<a
-						href={env.PUBLIC_PRIVACY}
-						class="transition-colors cursor-pointer hover:text-primary"
-					>
-						Privacy Policy
-					</a>
-				{/if}
-			</div>
-		{/if}
-	</form>
+                {#if env.PUBLIC_PRIVACY}
+                    <a
+                        href={env.PUBLIC_PRIVACY}
+                        class="transition-colors hover:text-primary"
+                    >
+                        Privacy Policy
+                    </a>
+                {/if}
+            </div>
+        {/if}
+    </div>
 </div>

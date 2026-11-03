@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -29,4 +30,19 @@ func (d *Seconds) Scan(value any) error {
 	default:
 		return fmt.Errorf("cannot scan %T into Seconds", value)
 	}
+}
+
+func (d Seconds) MarshalJSON() ([]byte, error) {
+	return json.Marshal(int64(time.Duration(d).Seconds()))
+}
+
+func (d *Seconds) UnmarshalJSON(data []byte) error {
+	var seconds int64
+	if err := json.Unmarshal(data, &seconds); err != nil {
+		return err
+	}
+
+	*d = Seconds(time.Duration(seconds) * time.Second)
+
+	return nil
 }

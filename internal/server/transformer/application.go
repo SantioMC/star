@@ -7,8 +7,9 @@ import (
 
 type AdminApplication struct {
 	database.Application
-	Scopes        []database.ApplicationScope `json:"scopes"`
-	BuiltinScopes []openid.ScopeDefinition    `json:"builtin_scopes,omitempty"`
+	HasClientSecret bool                        `json:"has_client_secret"`
+	Scopes          []database.ApplicationScope `json:"scopes"`
+	BuiltinScopes   []openid.ScopeDefinition    `json:"builtin_scopes,omitempty"`
 }
 
 func builtinScopes(application database.Application) []openid.ScopeDefinition {
@@ -25,9 +26,10 @@ func TransformApplication(application database.Application, scopes []database.Ap
 	}
 
 	return AdminApplication{
-		Application:   application,
-		Scopes:        scopes,
-		BuiltinScopes: builtinScopes(application),
+		Application:     application,
+		HasClientSecret: application.ClientSecret != nil,
+		Scopes:          scopes,
+		BuiltinScopes:   builtinScopes(application),
 	}
 }
 

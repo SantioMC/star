@@ -1,20 +1,16 @@
 package middleware
 
 import (
-	"encoding/base64"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/token"
 )
-
-var RequestAuthJWTKey = "request.auth.jwt"
 
 func unauthorized(ctx fiber.Ctx, description string) error {
 	challenge := `Bearer realm="star"`
@@ -34,12 +30,20 @@ func RequireAuth(ctx fiber.Ctx) error {
 		return err
 	}
 
-	if !slices.Contains(jwt.Audience, star.DefaultApp.ID) {
+	if !slices.Contains(jwt.Audience, star.DefaultApp.Load().ID) {
 		return unauthorized(ctx, "This token is not permitted to access this application")
 	}
 
-	ctx.Locals(RequestAuthJWTKey, jwt)
+	ctx.Locals(common.RequestAuthJWTKey, jwt)
 	return ctx.Next()
+}
+
+func OptionalAuth(ctx fiber.Ctx) error {
+	if ctx.Get(fiber.HeaderAuthorization) == "" {
+		return ctx.Next()
+	}
+
+	return RequireAuth(ctx)
 }
 
 func RequireOAuth(ctx fiber.Ctx) error {
@@ -50,8 +54,9 @@ func RequireOAuth(ctx fiber.Ctx) error {
 		return err
 	}
 
+	defaultApp := star.DefaultApp.Load()
 	for _, audience := range jwt.Audience {
-		if audience == star.DefaultApp.ID {
+		if audience == defaultApp.ID {
 			continue
 		}
 
@@ -60,7 +65,7 @@ func RequireOAuth(ctx fiber.Ctx) error {
 		}
 	}
 
-	ctx.Locals(RequestAuthJWTKey, jwt)
+	ctx.Locals(common.RequestAuthJWTKey, jwt)
 	return ctx.Next()
 }
 
@@ -81,65 +86,13 @@ func verifyBearer(ctx fiber.Ctx) (*token.AccessTokenJWT, error) {
 		return nil, unauthorized(ctx, "Only the Bearer authentication scheme is supported")
 	}
 
-	value := segments[1]
-	if strings.Count(value, ".") != 2 {
-		return nil, unauthorized(ctx, "The access token is malformed")
-	}
-
-	kid, err := getKeyID(ctx, value)
-	if err != nil {
-		return nil, err
-	}
-
-	var signingKey *database.SigningKey = nil
-	for _, key := range *star.SigningKeys {
-		if key.ID == kid {
-			signingKey = &key
-			break
-		}
-	}
-
-	if signingKey == nil {
-		return nil, unauthorized(ctx, "The access token was signed by an unknown key")
-	}
-
-	publicKey, err := signingKey.GetPublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	jwt, err := token.VerifyJWT(star, value, publicKey)
-	if err != nil || jwt == nil {
+	jwt, err := token.Verify(star, segments[1])
+	if errors.Is(err, token.ErrMalformedToken) || errors.Is(err, token.ErrMissingKeyID) || errors.Is(err, token.ErrUnknownKey) {
+		return nil, unauthorized(ctx, err.Error())
+	} else if err != nil {
 		slog.Warn("failed to verify user jwt", "error", err)
 		return nil, unauthorized(ctx, "The access token is expired or invalid")
 	}
 
 	return jwt, nil
-}
-
-func getKeyID(ctx fiber.Ctx, jwt string) (string, error) {
-	segments := strings.Split(jwt, ".")
-	if len(segments) != 3 {
-		return "", unauthorized(ctx, "The access token is malformed")
-	}
-
-	header, err := base64.RawURLEncoding.DecodeString(segments[0])
-	if err != nil {
-		slog.Warn("failed to decode jwt header", "error", err)
-		return "", unauthorized(ctx, "The access token is malformed")
-	}
-
-	var headerMap map[string]any
-	if err := json.Unmarshal(header, &headerMap); err != nil {
-		slog.Warn("failed to unmarshal jwt header", "error", err, "header", string(header))
-		return "", unauthorized(ctx, "The access token is malformed")
-	}
-
-	kid, ok := headerMap["kid"].(string)
-	if !ok {
-		slog.Warn("failed to get kid from jwt header", "header", string(header))
-		return "", unauthorized(ctx, "The access token is missing a key id")
-	}
-
-	return kid, nil
 }

@@ -17,7 +17,7 @@ type PublicScope struct {
 type PublicApplication struct {
 	ID            string        `json:"id"`
 	Name          string        `json:"name"`
-	Implicit      bool          `json:"implicit"`
+	URL           string        `json:"url"`
 	Scopes        []PublicScope `json:"scopes"`
 	InvalidScopes []string      `json:"invalid_scopes"`
 }
@@ -28,6 +28,11 @@ func Application(ctx fiber.Ctx) error {
 	application := star.Database.GetApplicationByClientID(ctx, ctx.Params("client_id"))
 	if application == nil {
 		return fiber.NewError(404, "Application not found")
+	}
+
+	redirectURI := ctx.Query("redirect_uri")
+	if redirectURI != "" && !AllowedRedirectURI(application, redirectURI) {
+		return fiber.NewError(400, "The redirect_uri specified is not allowed for this application")
 	}
 
 	requested := strings.Fields(ctx.Query("scope"))
@@ -41,7 +46,7 @@ func Application(ctx fiber.Ctx) error {
 	for idx, granted := range resolution.Granted {
 		owner := granted.ApplicationName
 		if owner == "" {
-			owner = star.DefaultApp.Name
+			owner = star.DefaultApp.Load().Name
 		}
 
 		scopes[idx] = PublicScope{
@@ -54,7 +59,7 @@ func Application(ctx fiber.Ctx) error {
 	return ctx.JSON(PublicApplication{
 		ID:            application.ID,
 		Name:          application.Name,
-		Implicit:      application.Internal,
+		URL:           application.ApplicationURL,
 		Scopes:        scopes,
 		InvalidScopes: resolution.Invalid,
 	})

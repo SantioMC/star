@@ -9,10 +9,17 @@ import (
 	"github.com/tubblelive/star/internal/state"
 )
 
+var ErrLoginFlowExpired = fiber.NewError(400, "Your sign in attempt expired, please sign in again")
+
 type RequireMFAStage struct {
 	Next    string          `json:"next"`
 	Flow    string          `json:"flow"`
 	Factors []mfa.MFAMethod `json:"factors"`
+}
+
+type MFAAttempt struct {
+	Flow int
+	User int
 }
 
 func CreateRequireMFAStage(
@@ -24,10 +31,16 @@ func CreateRequireMFAStage(
 ) (*RequireMFAStage, error) {
 	id := database.CreateID(database.LoginFlowKey)
 
+	var accountID *string
+	if account != nil {
+		accountID = &account.ID
+	}
+
 	token := database.CreateLoginFlowToken()
 	if err := star.Database.CreateLoginFlow(ctx, &database.LoginFlow{
 		ID:        id,
 		UserID:    user.ID,
+		AccountID: accountID,
 		Token:     token,
 		Stage:     database.StageMFARequired,
 		CreatedAt: time.Now(),
@@ -40,4 +53,42 @@ func CreateRequireMFAStage(
 		Flow:    token,
 		Factors: mfa,
 	}, nil
+}
+
+func CheckLockout(ctx fiber.Ctx, star *state.StarServer, userID string) error {
+	attempts, err := star.Database.GetLoginAttempts(ctx, userID)
+	if err != nil {
+		return err
+	} else if attempts != nil && attempts.IsLocked() {
+		return ErrLoginLocked
+	}
+
+	return nil
+}
+
+func ReserveMFAAttempt(ctx fiber.Ctx, star *state.StarServer, loginFlow *database.LoginFlow) (*MFAAttempt, error) {
+	userAttempt, err := ReserveAttempt(ctx, star, loginFlow.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	flowAttempt, reserved, err := star.Database.ReserveLoginFlowAttempt(ctx, loginFlow.ID)
+	if err != nil {
+		return nil, err
+	} else if !reserved {
+		return nil, ErrLoginFlowExpired
+	}
+
+	return &MFAAttempt{Flow: flowAttempt, User: userAttempt}, nil
+}
+
+func RecordMFAFailure(ctx fiber.Ctx, star *state.StarServer, loginFlow *database.LoginFlow, attempt *MFAAttempt) error {
+	if attempt.Flow >= 5 {
+		if _, err := star.Database.DeleteLoginFlowByID(ctx, loginFlow.ID); err != nil {
+			return err
+		}
+	}
+
+	ReportFailure(ctx, star, loginFlow.UserID, attempt.User, database.SecurityAlertMFABruteForce)
+	return nil
 }

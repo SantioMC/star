@@ -3,13 +3,25 @@ package oauth
 import (
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/server/common"
 )
+
+var clientIDPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{3,128}$`)
+
+func ValidateClientID(value string) error {
+	if !clientIDPattern.MatchString(value) {
+		return errors.New("client ids must be 3-128 characters of letters, digits, '.', '_', '~' and '-'")
+	}
+
+	return nil
+}
 
 func authenticateClient(ctx fiber.Ctx, form url.Values) (*database.Application, bool, error) {
 	star := common.GetState(ctx)
@@ -66,7 +78,8 @@ func authenticateClient(ctx fiber.Ctx, form url.Values) (*database.Application, 
 			return nil, false, invalidClient(ctx, usedBasic, "Client authentication failed")
 		}
 
-		if subtle.ConstantTimeCompare([]byte(*application.ClientSecret), []byte(clientSecret)) != 1 {
+		hashed := star.Database.HashApplicationSecret(clientSecret)
+		if subtle.ConstantTimeCompare([]byte(*application.ClientSecret), []byte(hashed)) != 1 {
 			return nil, false, invalidClient(ctx, usedBasic, "Client authentication failed")
 		}
 	} else if clientSecret != "" {

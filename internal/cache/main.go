@@ -24,4 +24,5 @@ func UpdateCache(state *state.StarServer) {
 	UpdateKeys(ctx, state)
 	UpdateSettings(ctx, state)
 	UpdateApplication(ctx, state)
+	UpdateRevocations(ctx, state)
 }

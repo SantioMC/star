@@ -1,12 +1,12 @@
 package server
 
 import (
-	"crypto/subtle"
+	"errors"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/tubblelive/star/emails"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
@@ -17,13 +17,15 @@ import (
 	"github.com/tubblelive/star/internal/server/request"
 	"github.com/tubblelive/star/internal/server/transformer"
 	"github.com/tubblelive/star/internal/server/types"
+	"github.com/tubblelive/star/internal/state"
 )
 
 func emailRouter(router fiber.Router) {
 	router.Get("/", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailRead), middleware.RequirePermission(permission.PermissionReadEmails), getUserEmails)
 	router.Post("/", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailWrite), middleware.RequirePermission(permission.PermissionAddEmails), addUserEmail)
 
-	router.Post("/verify", limiter.New(middleware.HeavyRateLimiter), verifyEmail)
+	router.Post("/verify", middleware.RateLimit(10), middleware.OptionalAuth, verifyEmail)
+	router.Post("/resend", middleware.RateLimit(10), resendVerification)
 
 	router.Delete("/:email", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailWrite), middleware.RequirePermission(permission.PermissionDeleteEmails), deleteUserEmail)
 	router.Post("/:email/primary", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserEmailWrite), middleware.RequirePermission(permission.PermissionUpdatePrimaryEmail), updatePrimaryEmail)
@@ -32,7 +34,7 @@ func emailRouter(router fiber.Router) {
 func getUserEmails(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	userId, err := request.GetUserId(ctx)
+	userId, err := request.GetUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -54,51 +56,89 @@ func addUserEmail(ctx fiber.Ctx) error {
 		return err
 	}
 
-	// Prevent taking over an email that is either verified, or has recently been added within the last hour
-	existing := star.Database.GetEmailByName(ctx, data.Email)
-	canUse := existing == nil || !existing.Verified || existing.CreatedAt.Add(time.Hour).Before(time.Now())
-
-	if !canUse {
+	if star.Database.EmailClaimed(ctx, data.Email) {
 		return fiber.NewError(400, "the provided email is either already in use or has recently been added to an account")
 	}
 
-	email := &database.UserEmail{
+	userEmail := &database.UserEmail{
 		ID:        database.CreateID(database.EmailKey),
 		UserID:    user.ID,
 		Email:     data.Email,
 		Verified:  false,
 		Primary:   false,
-		Code:      email.CreateCode(star.Settings.EmailCodeLength),
+		Code:      email.CreateCode(star.Settings.Load().EmailCodeLength),
 		CreatedAt: time.Now(),
 	}
 
-	if err := star.Database.CreateEmail(ctx, email); err != nil {
+	if err := star.Database.CreateEmail(ctx, userEmail); err != nil {
 		return err
 	}
 
-	// Send verification email
-	url := star.Config.ServerURL + "/verify?email=" + data.Email + "&code=" + email.Code
-	if err := star.Email.Send(
-		data.Email,
+	sendVerificationEmail(star, user.Name, userEmail.Email, userEmail.Code)
+	return ctx.JSON(transformer.TransformEmail(userEmail))
+}
+
+func sendVerificationEmail(star *state.StarServer, name string, address string, code string) {
+	values := url.Values{}
+	values.Set("email", address)
+	values.Set("code", code)
+
+	verificationURL := star.Config.ServerURL + "/verify?" + values.Encode()
+	err := star.Email.Send(
+		address,
 		"Verify your email address",
 		emails.VerificationEmail,
 		map[string]string{
-			"Name":            user.Name,
-			"VerificationURL": url,
-			"Code":            email.Code,
+			"Name":            name,
+			"VerificationURL": verificationURL,
+			"Code":            code,
 		},
-	); err != nil {
-		slog.Warn("failed to send verification email", "err", err, "email", data.Email, "code", email.Code)
+	)
+
+	if err != nil {
+		slog.Warn("failed to send verification email", "err", err, "email", address, "code", code)
+	}
+}
+
+func resendVerification(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var request types.ResendVerificationRequest
+	if err := ctx.Bind().Body(&request); err != nil {
+		return err
 	}
 
-	return ctx.JSON(transformer.TransformEmail(email))
+	success := fiber.Map{
+		"success": true,
+	}
+
+	userEmail := star.Database.GetEmailByName(ctx, request.Email)
+	if userEmail == nil || userEmail.Verified {
+		return ctx.JSON(success)
+	}
+
+	user := star.Database.GetUserByID(ctx, userEmail.UserID)
+	if user == nil {
+		return ctx.JSON(success)
+	}
+
+	code := email.CreateCode(star.Settings.Load().EmailCodeLength)
+	reset, err := star.Database.ResetEmailCode(ctx, userEmail.ID, code)
+
+	if err != nil {
+		return err
+	} else if reset {
+		sendVerificationEmail(star, user.Name, userEmail.Email, code)
+	}
+
+	return ctx.JSON(success)
 }
 
 func deleteUserEmail(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	emailID := ctx.Params("email")
 
-	userId, err := request.GetUserId(ctx)
+	userId, err := request.GetUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -130,7 +170,7 @@ func updatePrimaryEmail(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	emailID := ctx.Params("email")
 
-	userId, err := request.GetUserId(ctx)
+	userId, err := request.GetUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -156,23 +196,23 @@ func updatePrimaryEmail(ctx fiber.Ctx) error {
 func verifyEmail(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	var request types.VerifyEmailRequest
-	if err := ctx.Bind().Body(&request); err != nil {
+	var data types.VerifyEmailRequest
+	if err := ctx.Bind().Body(&data); err != nil {
 		return err
 	}
 
-	email := star.Database.GetEmailByName(ctx, request.Email)
-	if email == nil || email.Verified {
-		return fiber.NewError(404, "email not found")
+	var requesterID *string
+	if jwt, err := request.GetJWT(ctx); err == nil {
+		requesterID = &jwt.Subject
 	}
 
-	if subtle.ConstantTimeCompare([]byte(email.Code), []byte(request.Code)) != 1 {
-		return fiber.NewError(400, "invalid code specified")
-	}
-
-	email.Verified = true
-	if err := star.Database.UpdateEmail(ctx, email); err != nil {
+	verified, err := star.Database.VerifyEmailCode(ctx, data.Email, data.Code, requesterID)
+	if errors.Is(err, database.ErrEmailOwnerRequired) {
+		return fiber.NewError(403, "Sign in to the account this email was added to, then open the verification link again")
+	} else if err != nil {
 		return err
+	} else if !verified {
+		return fiber.NewError(400, "This verification code is invalid or has expired, please request a new one")
 	}
 
 	return ctx.JSON(fiber.Map{

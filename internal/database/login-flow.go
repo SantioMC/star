@@ -22,13 +22,17 @@ const (
 	StageMFARequired LoginFlowStage = "mfa_required"
 	// Set when the user is required to change their password before being authenticated
 	StagePasswordChange LoginFlowStage = "pass_change"
+	// Set when the user has signed in through an external provider and is waiting for the frontend to claim the flow
+	StageProvider LoginFlowStage = "provider"
 )
 
 type LoginFlow struct {
 	ID        string         `json:"id"`
 	UserID    string         `json:"user_id" db:"user_id"`
+	AccountID *string        `json:"account_id" db:"account_id"`
 	Token     string         `json:"token"`
 	Stage     LoginFlowStage `json:"stage"`
+	Attempts  int            `json:"attempts"`
 	CreatedAt time.Time      `json:"created_at" db:"created_at"`
 }
 
@@ -74,14 +78,36 @@ func (db *Database) GetLoginStageByToken(ctx context.Context, token string) *Log
 	return &loginFlow
 }
 
-func (db *Database) DeleteLoginFlowByID(ctx context.Context, id string) error {
-	_, err := db.DB().ExecContext(
+func (db *Database) DeleteLoginFlowByID(ctx context.Context, id string) (bool, error) {
+	result, err := db.DB().ExecContext(
 		ctx,
 		`DELETE FROM login_flows WHERE id = $1`,
 		id,
 	)
 
-	return err
+	if err != nil {
+		return false, err
+	}
+
+	deleted, err := result.RowsAffected()
+	return deleted > 0, err
+}
+
+func (db *Database) ReserveLoginFlowAttempt(ctx context.Context, id string) (int, bool, error) {
+	attempts, err := sqlx.OneContext[int](
+		ctx,
+		db.DB(),
+		`UPDATE login_flows SET attempts = attempts + 1 WHERE id = $1 AND attempts < 5 RETURNING attempts`,
+		id,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	} else if err != nil {
+		return 0, false, err
+	}
+
+	return attempts, true, nil
 }
 
 func (db *Database) CreateLoginFlow(ctx context.Context, loginFlow *LoginFlow) error {
@@ -91,11 +117,12 @@ func (db *Database) CreateLoginFlow(ctx context.Context, loginFlow *LoginFlow) e
 		ctx,
 		`
 		INSERT INTO login_flows (
-			id, user_id, token, stage, created_at
-		) VALUES ($1, $2, $3, $4, $5)
+			id, user_id, account_id, token, stage, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6)
 		`,
 		loginFlow.ID,
 		loginFlow.UserID,
+		loginFlow.AccountID,
 		hashed,
 		loginFlow.Stage,
 		loginFlow.CreatedAt,
@@ -141,4 +168,20 @@ func (db *Database) GetLoginFlowCount(ctx context.Context) (int, error) {
 	}
 
 	return count, nil
+}
+
+func (db *Database) GetLoginFlowsByUserID(ctx context.Context, userID string) []LoginFlow {
+	loginFlows, err := list[LoginFlow](
+		ctx,
+		db.DB(),
+		`SELECT * FROM login_flows WHERE user_id = $1 ORDER BY created_at DESC`,
+		userID,
+	)
+
+	if err != nil {
+		slog.Error("failed to get user login flows", "err", err)
+		return []LoginFlow{}
+	}
+
+	return loginFlows
 }
