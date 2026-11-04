@@ -608,6 +608,30 @@ export const exportSelf = async () => exportData("api/user/me/export");
 export const exportUser = async (userId: string) =>
   exportData(`api/user/${encodeURIComponent(userId)}/export`);
 
+export const getUserSessions = async (userId: string, before?: string) => {
+  const user = encodeURIComponent(userId);
+  const searchParams = new URLSearchParams({ limit: "10" });
+  if (before) searchParams.set("before", before);
+
+  return api
+    .get(`api/user/${user}/sessions?${searchParams.toString()}`)
+    .json<SessionPage>()
+    .catch(orError);
+};
+
+export const invalidateUserSession = async (
+  userId: string,
+  sessionId: string,
+) => {
+  const user = encodeURIComponent(userId);
+  const session = encodeURIComponent(sessionId);
+
+  return api
+    .delete(`api/user/${user}/sessions/${session}`)
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
 export const invalidateUserSessions = async (userId: string) => {
   return api
     .delete(`api/user/${encodeURIComponent(userId)}/sessions`)
@@ -1396,6 +1420,11 @@ export interface Session {
   device: string;
   created_at: string;
   expires_at: string;
+}
+
+export interface SessionPage {
+  items: Session[];
+  next: string | null;
 }
 
 export interface Email {

@@ -61,7 +61,9 @@ func userRouter(router fiber.Router) {
 	router.Get("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUser)
 	router.Patch("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminUpdateUser)
 	router.Delete("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminDeleteUser)
+	router.Get("/:user/sessions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUserSessions)
 	router.Delete("/:user/sessions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSessions)
+	router.Delete("/:user/sessions/:session", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSession)
 	router.Post("/:user/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
 	router.Post("/:user/password/require-change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminRequirePasswordChange)
 	router.Delete("/:user/lockout", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminClearLockout)
@@ -727,6 +729,39 @@ func adminClearLockout(ctx fiber.Ctx) error {
 	return ctx.JSON(populateUser(ctx, user))
 }
 
+func adminGetUserSessions(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	_, limit, err := request.GetPagination(ctx)
+	if err != nil {
+		return err
+	}
+
+	before, err := request.GetCursor(ctx)
+	if err != nil {
+		return err
+	}
+
+	sessions, err := star.Database.GetActiveUserSessions(ctx, user.ID, before, limit+1)
+	if err != nil {
+		return err
+	}
+
+	page := types.NewPage(sessions, limit, func(last database.Session) database.Cursor {
+		return database.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	})
+
+	return ctx.JSON(types.Page[transformer.UserSession]{
+		Items: transformer.TransformSessions(page.Items),
+		Next:  page.Next,
+	})
+}
+
 func adminInvalidateUserSessions(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
@@ -741,6 +776,31 @@ func adminInvalidateUserSessions(ctx fiber.Ctx) error {
 
 	cache.UpdateRevocations(ctx, star)
 	audit.Log(ctx, audit.SessionRevokeAll, audit.OnUser(user))
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
+}
+
+func adminInvalidateUserSession(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	session := star.Database.GetSessionByFamily(ctx, ctx.Params("session"))
+	if session == nil || session.UserID != user.ID {
+		return fiber.NewError(404, "Session not found")
+	}
+
+	if err := star.Database.RevokeSessionFamily(ctx, user.ID, session.FamilyID, database.RevocationReasonSignedOut); err != nil {
+		return err
+	}
+
+	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.SessionRevoke, audit.OnUser(user), audit.With("session", session.FamilyID))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

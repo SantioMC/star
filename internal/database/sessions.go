@@ -80,14 +80,48 @@ func (db *Database) GetUserSessions(ctx context.Context, userId string) []Sessio
 		return []Session{}
 	}
 
-	for idx, session := range sessions {
-		if sessions[idx].Address, err = cryptography.DecryptAES(session.Address, db.config.AppToken); err != nil {
-			slog.Error("failed to decrypt session ip address", "err", err)
-			return []Session{}
-		}
+	if err := db.decryptSessionAddresses(sessions); err != nil {
+		slog.Error("failed to decrypt session ip address", "err", err)
+		return []Session{}
 	}
 
 	return sessions
+}
+
+func (db *Database) GetActiveUserSessions(ctx context.Context, userID string, before *Cursor, limit int) ([]Session, error) {
+	query := `SELECT * FROM sessions WHERE user_id = $1 AND status = $2 AND expires_at > $3`
+	args := []any{userID, SessionStateActive, time.Now(), limit}
+
+	if before != nil {
+		query += ` AND (created_at, id) < ($5, $6)`
+		args = append(args, before.CreatedAt, before.ID)
+	}
+
+	query += ` ORDER BY created_at DESC, id DESC LIMIT $4`
+
+	sessions, err := list[Session](ctx, db.DB(), query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.decryptSessionAddresses(sessions); err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
+}
+
+func (db *Database) decryptSessionAddresses(sessions []Session) error {
+	for idx, session := range sessions {
+		address, err := cryptography.DecryptAES(session.Address, db.config.AppToken)
+		if err != nil {
+			return err
+		}
+
+		sessions[idx].Address = address
+	}
+
+	return nil
 }
 
 func (db *Database) GetSessionByToken(ctx context.Context, token string) *Session {

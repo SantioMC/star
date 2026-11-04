@@ -3,9 +3,8 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import Badge from "@/components/badge.svelte";
-    import Button from "@/components/button.svelte";
     import Card from "@/components/card.svelte";
-    import Icon from "@/components/icon.svelte";
+    import Pagination from "@/components/pagination.svelte";
     import PageHeader from "@/components/page-header.svelte";
     import SearchInput from "@/components/search-input.svelte";
     import * as Avatar from "@/components/ui/avatar";
@@ -167,24 +166,10 @@
     </table>
 </Card>
 
-{#if page > 1 || hasNextPage}
-    <div class="flex items-center justify-end gap-2 -mt-4">
-        <span class="mr-2 text-sm text-muted select-none">Page {page}</span>
-        <Button
-            variant="secondary"
-            disabled={page <= 1 || !loaded}
-            onclick={() => changePage(-1)}
-            aria-label="Previous page"
-        >
-            <Icon icon="chevron-left" />
-        </Button>
-        <Button
-            variant="secondary"
-            disabled={!hasNextPage || !loaded}
-            onclick={() => changePage(1)}
-            aria-label="Next page"
-        >
-            <Icon icon="chevron-right" />
-        </Button>
-    </div>
-{/if}
+<Pagination
+    {page}
+    hasNext={hasNextPage}
+    {loaded}
+    onprevious={() => changePage(-1)}
+    onnext={() => changePage(1)}
+/>

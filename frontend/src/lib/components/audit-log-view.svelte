@@ -7,11 +7,11 @@
     import { onMount, type Snippet } from "svelte";
     import { toast } from "svelte-sonner";
     import Badge, { type BadgeTone } from "./badge.svelte";
-    import Button from "./button.svelte";
     import Card from "./card.svelte";
     import Icon from "./icon.svelte";
     import Input from "./input.svelte";
     import Modal from "./modal.svelte";
+    import Pagination from "./pagination.svelte";
     import SearchInput from "./search-input.svelte";
     import Select, { type SelectOption } from "./select.svelte";
 
@@ -432,29 +432,13 @@
     </div>
 </Card>
 
-{#if cursors.length > 0 || next}
-    <div class="flex items-center justify-end gap-2 -mt-4">
-        <span class="mr-2 text-sm text-muted select-none">
-            Page {cursors.length + 1}
-        </span>
-        <Button
-            variant="secondary"
-            disabled={cursors.length === 0 || !loaded}
-            onclick={previousPage}
-            aria-label="Previous page"
-        >
-            <Icon icon="chevron-left" />
-        </Button>
-        <Button
-            variant="secondary"
-            disabled={!next || !loaded}
-            onclick={nextPage}
-            aria-label="Next page"
-        >
-            <Icon icon="chevron-right" />
-        </Button>
-    </div>
-{/if}
+<Pagination
+    page={cursors.length + 1}
+    hasNext={next !== null}
+    {loaded}
+    onprevious={previousPage}
+    onnext={nextPage}
+/>
 
 <Modal bind:this={detailModal} button class="sm:w-xl">
     {#if selected}

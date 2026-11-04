@@ -1,14 +1,13 @@
 <script lang="ts">
-    import { tooltip } from "@/tooltip";
     import { goto } from "$app/navigation";
     import Badge from "@/components/badge.svelte";
     import Button from "@/components/button.svelte";
     import Card from "@/components/card.svelte";
     import ConfirmModal from "@/components/confirm-modal.svelte";
-    import Icon from "@/components/icon.svelte";
+    import SessionTable from "@/components/session-table.svelte";
     import { getJWT, hasPermission } from "@/index";
     import * as star from "@/star";
-    import { getIcon, isExpired, relativeTime } from "@/utils";
+    import { isExpired } from "@/utils";
     import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
 
@@ -80,61 +79,27 @@
         {/if}
     {/snippet}
 
-    <table>
-        <tbody>
-            {#each activeSessions as session (session.id)}
-                <tr>
-                    <td class="w-10 pl-1 align-middle">
-                        <Icon
-                            icon={getIcon(session)}
-                            class="text-lg text-muted"
-                        />
-                    </td>
-                    <td class="py-2.5">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <span {@attach tooltip(session.user_agent)}>
-                                {session.geolocation ?? session.ip_address}
-                            </span>
-                            {#if session.id === currentSession}
-                                <Badge tone="success">this device</Badge>
-                            {/if}
-                        </div>
-                        <p class="text-muted text-xs mt-0.5">
-                            {session.browser !== "Unknown"
-                                ? session.browser
-                                : session.user_agent}
-                            &middot;
-                            <span class="font-mono">{session.ip_address}</span>
-                            &middot; signed in {relativeTime(
-                                session.created_at,
-                            )} ago
-                        </p>
-                    </td>
-                    <td class="w-px pr-1 text-right">
-                        {#if canDelete}
-                            <Button
-                                variant="ghost"
-                                class="text-xs text-red-300 whitespace-nowrap"
-                                loading={pendingSession === session.id}
-                                disabled={pendingSession != null}
-                                onclick={() => invalidate(session)}
-                            >
-                                Sign out
-                            </Button>
-                        {/if}
-                    </td>
-                </tr>
-            {:else}
-                <tr>
-                    <td class="py-6 text-center text-sm text-muted">
-                        {loaded
-                            ? "No active sessions found."
-                            : "Loading sessions..."}
-                    </td>
-                </tr>
-            {/each}
-        </tbody>
-    </table>
+    <SessionTable sessions={activeSessions} {loaded}>
+        {#snippet badge(session)}
+            {#if session.id === currentSession}
+                <Badge tone="success">this device</Badge>
+            {/if}
+        {/snippet}
+
+        {#snippet action(session)}
+            {#if canDelete}
+                <Button
+                    variant="ghost"
+                    class="text-xs text-red-300 whitespace-nowrap"
+                    loading={pendingSession === session.id}
+                    disabled={pendingSession != null}
+                    onclick={() => invalidate(session)}
+                >
+                    Sign out
+                </Button>
+            {/if}
+        {/snippet}
+    </SessionTable>
 </Card>
 
 <ConfirmModal

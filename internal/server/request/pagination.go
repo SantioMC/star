@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/database"
 )
 
 func GetPagination(ctx fiber.Ctx) (int, int, error) {
@@ -26,4 +27,18 @@ func GetPagination(ctx fiber.Ctx) (int, int, error) {
 	}
 
 	return page, limit, nil
+}
+
+func GetCursor(ctx fiber.Ctx) (*database.Cursor, error) {
+	before := ctx.Query("before")
+	if before == "" {
+		return nil, nil
+	}
+
+	cursor, err := database.ParseCursor(before)
+	if err != nil {
+		return nil, fiber.NewError(400, "Invalid cursor")
+	}
+
+	return cursor, nil
 }

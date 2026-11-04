@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -33,29 +32,6 @@ type AuditLog struct {
 	CreatedAt   time.Time   `json:"created_at" db:"created_at"`
 }
 
-type AuditLogCursor struct {
-	CreatedAt time.Time
-	ID        string
-}
-
-func (cursor AuditLogCursor) String() string {
-	return strconv.FormatInt(cursor.CreatedAt.UnixMicro(), 10) + "." + cursor.ID
-}
-
-func ParseAuditLogCursor(value string) (*AuditLogCursor, error) {
-	micros, id, found := strings.Cut(value, ".")
-	if !found || id == "" {
-		return nil, errors.New("malformed audit log cursor")
-	}
-
-	parsed, err := strconv.ParseInt(micros, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	return &AuditLogCursor{CreatedAt: time.UnixMicro(parsed), ID: id}, nil
-}
-
 type AuditLogFilter struct {
 	UserID      *string
 	Application *string
@@ -65,7 +41,7 @@ type AuditLogFilter struct {
 	Actions     []string
 	Since       *time.Time
 	Until       *time.Time
-	Before      *AuditLogCursor
+	Before      *Cursor
 	Limit       int
 }
 

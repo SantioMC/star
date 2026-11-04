@@ -46,12 +46,21 @@
         if (!user) return [];
 
         const overview = resolve("/admin/users/[user]", { user: user.id });
+        const sessions = resolve("/admin/users/[user]/sessions", {
+            user: user.id,
+        });
         const audit = resolve("/admin/users/[user]/audit", { user: user.id });
 
-        return [
+        const items = [
             { label: "Overview", href: overview, icon: "user" },
-            { label: "Audit Log", href: audit, icon: "history" },
+            { label: "Sessions", href: sessions, icon: "device-desktop" },
         ];
+
+        if (canReadAudit) {
+            items.push({ label: "Audit Log", href: audit, icon: "history" });
+        }
+
+        return items;
     });
 
     const displayName = $derived.by(() => {
@@ -260,9 +269,7 @@
         <Menu items={menuItems} label="User actions" />
     </div>
 
-    {#if canReadAudit}
-        <Tabs items={tabs} label="User sections" />
-    {/if}
+    <Tabs items={tabs} label="User sections" />
 
     {@render children()}
 

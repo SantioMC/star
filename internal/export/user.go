@@ -155,7 +155,7 @@ func auditLogs(ctx context.Context, db *database.Database, userID string) ([]Aud
 		}
 
 		last := page[len(page)-1]
-		filter.Before = &database.AuditLogCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		filter.Before = &database.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
 	}
 }
 

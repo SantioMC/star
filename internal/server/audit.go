@@ -96,10 +96,8 @@ func parseAuditFilter(ctx fiber.Ctx) (*database.AuditLogFilter, error) {
 		return nil, err
 	}
 
-	if before := ctx.Query("before"); before != "" {
-		if filter.Before, err = database.ParseAuditLogCursor(before); err != nil {
-			return nil, fiber.NewError(400, "Invalid audit log cursor")
-		}
+	if filter.Before, err = request.GetCursor(ctx); err != nil {
+		return nil, err
 	}
 
 	if search := strings.TrimSpace(ctx.Query("query")); search != "" {
@@ -124,14 +122,10 @@ func getAuditLogs(ctx fiber.Ctx) error {
 		return err
 	}
 
-	page := types.AuditLogPage{Items: logs}
-
-	if size := filter.Limit - 1; len(logs) > size {
-		page.Items = logs[:size]
-
-		last := page.Items[size-1]
-		page.Next = new(database.AuditLogCursor{CreatedAt: last.CreatedAt, ID: last.ID}.String())
-	}
+	size := filter.Limit - 1
+	page := types.NewPage(logs, size, func(last database.AuditLog) database.Cursor {
+		return database.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	})
 
 	return ctx.JSON(page)
 }
