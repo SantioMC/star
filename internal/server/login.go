@@ -17,6 +17,7 @@ import (
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/types"
+	"github.com/tubblelive/star/internal/session"
 	"github.com/tubblelive/star/internal/state"
 )
 
@@ -353,6 +354,18 @@ func completeUserLogin(ctx fiber.Ctx, star *state.StarServer, userID string, acc
 }
 
 func finishLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, account *database.Account, method string) (any, error) {
+	suspension, err := star.Database.GetActiveSuspension(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if suspension != nil {
+		slog.Warn("login attempt failed", "reason", "user is suspended", "user", user.ID)
+		audit.Log(ctx, audit.LoginFailed, audit.By(user), audit.With("reason", "suspended"), audit.With("method", method))
+
+		return nil, session.ErrUserSuspended
+	}
+
 	// User has completed every factor, let's run some last verifications
 	if err := login.Preverify(ctx, star, user, account); err != nil {
 		return nil, err

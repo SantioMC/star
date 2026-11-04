@@ -3,27 +3,31 @@
     import { resolve } from "$app/paths";
     import { page } from "$app/state";
     import * as star from "$lib/star";
-    import Badge from "@/components/badge.svelte";
+    import Badge, { type BadgeTone } from "@/components/badge.svelte";
     import Button from "@/components/button.svelte";
     import ConfirmModal from "@/components/confirm-modal.svelte";
     import Icon from "@/components/icon.svelte";
     import Input from "@/components/input.svelte";
     import Menu, { type MenuItem } from "@/components/menu.svelte";
     import Modal from "@/components/modal.svelte";
+    import Notice from "@/components/notice.svelte";
     import Tabs from "@/components/tabs.svelte";
     import * as Avatar from "@/components/ui/avatar";
     import { Label } from "@/components/ui/label";
     import { hasPermission, user as currentUser } from "@/index";
     import { Resource, setResource } from "@/resource.svelte";
-    import { downloadFile, simpleDate } from "@/utils";
+    import { downloadFile, formatTime, simpleDate } from "@/utils";
     import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
+    import SuspendModal from "./components/suspend-modal.svelte";
+    import UnsuspendModal from "./components/unsuspend-modal.svelte";
 
     let { children } = $props();
 
     const canWrite = hasPermission("admin:user:write");
     const canDelete = hasPermission("admin:user:delete");
     const canExport = hasPermission("admin:user:export");
+    const canSuspend = hasPermission("admin:user:suspend");
     const canRevokeTokens = hasPermission("admin:token:revoke");
     const canReadAudit = hasPermission("admin:audit:read");
 
@@ -41,6 +45,8 @@
     let revokeTokensModal = $state<ConfirmModal>();
     let requirePasswordChangeModal = $state<ConfirmModal>();
     let passwordModal = $state<Modal>();
+    let suspendModal = $state<SuspendModal>();
+    let unsuspendModal = $state<UnsuspendModal>();
 
     const tabs = $derived.by(() => {
         if (!user) return [];
@@ -49,11 +55,15 @@
         const sessions = resolve("/admin/users/[user]/sessions", {
             user: user.id,
         });
+        const suspensions = resolve("/admin/users/[user]/suspensions", {
+            user: user.id,
+        });
         const audit = resolve("/admin/users/[user]/audit", { user: user.id });
 
         const items = [
             { label: "Overview", href: overview, icon: "user" },
             { label: "Sessions", href: sessions, icon: "device-desktop" },
+            { label: "Suspensions", href: suspensions, icon: "user-off" },
         ];
 
         if (canReadAudit) {
@@ -73,6 +83,29 @@
         return fullName || user.username;
     });
 
+    const badges = $derived.by(() => {
+        const items: { label: string; tone: BadgeTone }[] = [];
+        if (!user) return items;
+
+        if (user.email && !user.email_verified) {
+            items.push({ label: "unverified", tone: "warning" });
+        }
+
+        if (user.lockout?.locked) {
+            items.push({ label: "locked", tone: "danger" });
+        }
+
+        if (user.suspension) {
+            items.push({ label: "suspended", tone: "danger" });
+        }
+
+        if (user.password_change_required) {
+            items.push({ label: "password change required", tone: "warning" });
+        }
+
+        return items;
+    });
+
     const menuItems = $derived.by(() => {
         const items: MenuItem[] = [];
 
@@ -80,6 +113,7 @@
             items.push({
                 label: "Set password",
                 icon: "key",
+                group: "account",
                 onclick: openPasswordModal,
             });
         }
@@ -94,6 +128,7 @@
             items.push({
                 label: "Require password change",
                 icon: "lock",
+                group: "account",
                 onclick: () => requirePasswordChangeModal?.open(),
             });
         }
@@ -102,15 +137,8 @@
             items.push({
                 label: "Export data",
                 icon: "download",
+                group: "account",
                 onclick: exportData,
-            });
-        }
-
-        if (canRevokeTokens) {
-            items.push({
-                label: "Revoke access tokens",
-                icon: "ban",
-                onclick: () => revokeTokensModal?.open(),
             });
         }
 
@@ -118,12 +146,43 @@
             items.push({
                 label: "Sign out all sessions",
                 icon: "logout",
+                group: "access",
                 onclick: () => signOutModal?.open(),
             });
+        }
+
+        if (canRevokeTokens) {
+            items.push({
+                label: "Revoke access tokens",
+                icon: "ban",
+                group: "access",
+                onclick: () => revokeTokensModal?.open(),
+            });
+        }
+
+        if (canSuspend && user?.suspension) {
+            items.push({
+                label: "Unsuspend user",
+                icon: "user-check",
+                group: "moderation",
+                onclick: () => unsuspendModal?.open(),
+            });
+        } else if (canSuspend && user?.id !== $currentUser?.id) {
+            items.push({
+                label: "Suspend user",
+                icon: "user-off",
+                danger: true,
+                group: "moderation",
+                onclick: () => suspendModal?.open(),
+            });
+        }
+
+        if (canDelete) {
             items.push({
                 label: "Delete user",
                 icon: "trash",
                 danger: true,
+                group: "moderation",
                 onclick: () => deleteUserModal?.open(),
             });
         }
@@ -252,26 +311,61 @@
                 <span class="flex items-center gap-1">
                     <Icon icon="mail" />
                     {user.email ?? "No email"}
-                    {#if user.email && !user.email_verified}
-                        <Badge tone="warning" class="ml-1">unverified</Badge>
-                    {/if}
                 </span>
                 <span>Joined {simpleDate(new Date(user.created_at))}</span>
-                {#if user.lockout?.locked}
-                    <Badge tone="danger">locked</Badge>
-                {/if}
-                {#if user.password_change_required}
-                    <Badge tone="warning">password change required</Badge>
-                {/if}
             </div>
+            {#if badges.length > 0}
+                <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    {#each badges as badge (badge.label)}
+                        <Badge tone={badge.tone}>{badge.label}</Badge>
+                    {/each}
+                </div>
+            {/if}
         </div>
 
         <Menu items={menuItems} label="User actions" />
     </div>
 
+    {#if user.suspension}
+        {@const suspension = user.suspension}
+        {@const suspender = suspension.suspended_by_name ?? "a deleted user"}
+        <Notice
+            tone="danger"
+            icon="user-off"
+            title={suspension.expires_at
+                ? `Suspended by ${suspender} until ${formatTime(new Date(suspension.expires_at))}.`
+                : `Permanently suspended by ${suspender}.`}
+        >
+            {suspension.reason}
+
+            {#snippet actions()}
+                {#if canSuspend}
+                    <Button
+                        variant="secondary"
+                        onclick={() => unsuspendModal?.open()}
+                    >
+                        Unsuspend
+                    </Button>
+                {/if}
+            {/snippet}
+        </Notice>
+    {/if}
+
     <Tabs items={tabs} label="User sections" />
 
     {@render children()}
+
+    <SuspendModal
+        bind:this={suspendModal}
+        {user}
+        onsuspended={(updated) => (context.current = updated)}
+    />
+
+    <UnsuspendModal
+        bind:this={unsuspendModal}
+        {user}
+        onunsuspended={(updated) => (context.current = updated)}
+    />
 
     <Modal bind:this={passwordModal} button>
         <form class="flex flex-col gap-6" onsubmit={setPassword}>

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/models"
 )
@@ -21,6 +22,7 @@ type UserExport struct {
 	Authorizations []Authorization `json:"authorizations"`
 	LoginAttempts  []LoginAttempt  `json:"login_attempts"`
 	SecurityAlerts []SecurityAlert `json:"security_alerts"`
+	Suspensions    []Suspension    `json:"suspensions"`
 	AuditLogs      []AuditLog      `json:"audit_logs"`
 }
 
@@ -93,6 +95,12 @@ type SecurityAlert struct {
 	CreatedAt     time.Time   `json:"created_at"`
 }
 
+type Suspension struct {
+	ExpiresAt *time.Time `json:"expires_at"`
+	LiftedAt  *time.Time `json:"lifted_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
 type AuditLog struct {
 	Action        string      `json:"action"`
 	Actor         string      `json:"actor"`
@@ -109,6 +117,11 @@ type AuditLog struct {
 
 func User(ctx context.Context, db *database.Database, user *database.User) (*UserExport, error) {
 	logs, err := auditLogs(ctx, db, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	suspensions, err := db.GetUserSuspensions(ctx, user.ID, nil, 1000)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +145,7 @@ func User(ctx context.Context, db *database.Database, user *database.User) (*Use
 		Authorizations: convert(db.GetAuthorizationCodesByUserID(ctx, user.ID), authorization),
 		LoginAttempts:  convert(db.GetLoginFlowsByUserID(ctx, user.ID), loginAttempt),
 		SecurityAlerts: convert(db.GetSecurityAlertsByUserID(ctx, user.ID), securityAlert),
+		Suspensions:    convert(suspensions, suspension),
 		AuditLogs:      logs,
 	}, nil
 }
@@ -178,6 +192,10 @@ func auditLog(record database.AuditLog, userID string) AuditLog {
 		log.UserAgent = record.UserAgent
 	} else if record.ActorID != nil {
 		log.Actor = "administrator"
+	}
+
+	if record.Action == string(audit.UserSuspend) || record.Action == string(audit.UserUnsuspend) {
+		log.Metadata = nil
 	}
 
 	isOtherUser := record.TargetType != nil && *record.TargetType == "user" && record.TargetID != nil && *record.TargetID != userID
@@ -275,6 +293,14 @@ func authorization(record database.AuthorizationCode) Authorization {
 func loginAttempt(record database.LoginFlow) LoginAttempt {
 	return LoginAttempt{
 		Stage:     string(record.Stage),
+		CreatedAt: record.CreatedAt,
+	}
+}
+
+func suspension(record database.UserSuspension) Suspension {
+	return Suspension{
+		ExpiresAt: record.ExpiresAt,
+		LiftedAt:  record.LiftedAt,
 		CreatedAt: record.CreatedAt,
 	}
 }

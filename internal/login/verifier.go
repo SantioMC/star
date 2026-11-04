@@ -12,7 +12,7 @@ import (
 
 var ErrLoginsDisabled = fiber.NewError(403, "Logins are currently disabled, you may not login at this time")
 
-// Run any last checks on user logins before allowing them through, to be used later for bans or whatever
+// Run any last checks on user logins before allowing them through
 func Preverify(ctx context.Context, star *state.StarServer, user *database.User, account *database.Account) error {
 	// If logins are disabled, prevent them from actually getting in
 	if !star.Settings.Load().AllowLogins {

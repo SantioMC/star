@@ -38,6 +38,7 @@
         password_reset: "Password reset by an admin",
         password_change_required: "Password change required by an admin",
         user_deleted: "User deleted",
+        user_suspended: "User suspended",
         application_deleted: "Application deleted",
         manual: "Revoked by an admin",
     };

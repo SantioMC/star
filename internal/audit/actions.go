@@ -57,6 +57,8 @@ const (
 	UserExport       Action = "user.export"
 	UserRolesUpdate  Action = "user.roles_update"
 	UserLockoutClear Action = "user.lockout_clear"
+	UserSuspend      Action = "user.suspend"
+	UserUnsuspend    Action = "user.unsuspend"
 
 	RoleCreate Action = "role.create"
 	RoleUpdate Action = "role.update"
@@ -133,6 +135,8 @@ var Definitions = []Definition{
 	{UserExport, "User data exported", "Users", SeverityNotice},
 	{UserRolesUpdate, "User roles changed", "Users", SeverityCritical},
 	{UserLockoutClear, "Sign in lockout cleared", "Users", SeverityNotice},
+	{UserSuspend, "User suspended", "Users", SeverityCritical},
+	{UserUnsuspend, "User unsuspended", "Users", SeverityCritical},
 
 	{RoleCreate, "Role created", "Roles", SeverityNotice},
 	{RoleUpdate, "Role updated", "Roles", SeverityCritical},

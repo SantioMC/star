@@ -47,7 +47,8 @@
 
 <div
     class={cn(
-        "flex items-start gap-3 rounded-lg border px-4 py-3 text-sm leading-5",
+        "flex gap-3 rounded-lg border px-4 py-3 text-sm leading-5",
+        actions ? "items-center" : "items-start",
         styles.container,
         className,
     )}
@@ -55,14 +56,14 @@
     <span class="flex h-5 shrink-0 items-center">
         <Icon {icon} class={cn("leading-none", styles.icon)} />
     </span>
-    <p>
+    <p class="min-w-0 break-words">
         {#if title}
             <span class={cn("font-medium", styles.title)}>{title}</span>
         {/if}
         <span class="text-foreground/80">{@render children?.()}</span>
     </p>
     {#if actions}
-        <div class="ml-auto flex shrink-0 items-center gap-2 self-center">
+        <div class="ml-auto flex shrink-0 items-center gap-2">
             {@render actions()}
         </div>
     {/if}

@@ -3,6 +3,7 @@
         label: string;
         icon?: string;
         danger?: boolean;
+        group?: string;
         onclick: () => void;
     }
 </script>
@@ -109,7 +110,10 @@
         onkeydown={handleKeydown}
         class="fixed inset-auto m-0 min-w-48 rounded-lg border border-background-200 bg-background-100 p-1 text-sm text-foreground shadow-xl shadow-black/40"
     >
-        {#each items as item (item.label)}
+        {#each items as item, index (item.label)}
+            {#if index > 0 && item.group !== items[index - 1].group}
+                <div role="separator" class="-mx-1 my-1 h-px bg-background-200"></div>
+            {/if}
             <button
                 type="button"
                 role="menuitem"

@@ -50,18 +50,19 @@ type PublicUser struct {
 }
 
 type AdminUser struct {
-	ID                     string      `json:"id"`
-	Username               string      `json:"username"`
-	FirstName              *string     `json:"first_name"`
-	LastName               *string     `json:"last_name"`
-	ProfilePicture         string      `json:"profile_picture"`
-	Email                  *string     `json:"email"`
-	EmailVerified          bool        `json:"email_verified"`
-	Roles                  []AdminRole `json:"roles"`
-	Lockout                *Lockout    `json:"lockout"`
-	HasPassword            bool        `json:"has_password"`
-	PasswordChangeRequired bool        `json:"password_change_required"`
-	CreatedAt              time.Time   `json:"created_at"`
+	ID                     string                   `json:"id"`
+	Username               string                   `json:"username"`
+	FirstName              *string                  `json:"first_name"`
+	LastName               *string                  `json:"last_name"`
+	ProfilePicture         string                   `json:"profile_picture"`
+	Email                  *string                  `json:"email"`
+	EmailVerified          bool                     `json:"email_verified"`
+	Roles                  []AdminRole              `json:"roles"`
+	Lockout                *Lockout                 `json:"lockout"`
+	Suspension             *database.UserSuspension `json:"suspension"`
+	HasPassword            bool                     `json:"has_password"`
+	PasswordChangeRequired bool                     `json:"password_change_required"`
+	CreatedAt              time.Time                `json:"created_at"`
 }
 
 type Lockout struct {
@@ -90,6 +91,7 @@ func TransformAdminUser(
 	roles []AdminRole,
 	attempts *database.LoginAttempts,
 	account *database.Account,
+	suspension *database.UserSuspension,
 ) AdminUser {
 	var primaryEmail *string
 
@@ -107,6 +109,7 @@ func TransformAdminUser(
 		EmailVerified:          email != nil && email.Verified,
 		Roles:                  roles,
 		Lockout:                TransformLockout(attempts),
+		Suspension:             suspension,
 		HasPassword:            account != nil && account.Password != nil,
 		PasswordChangeRequired: account != nil && account.PasswordChangeRequired,
 		CreatedAt:              user.CreatedAt,

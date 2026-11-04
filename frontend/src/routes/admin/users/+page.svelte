@@ -132,6 +132,11 @@
                             {#if user.lockout?.locked}
                                 <Badge tone="danger" class="ml-1">locked</Badge>
                             {/if}
+                            {#if user.suspension}
+                                <Badge tone="danger" class="ml-1">
+                                    suspended
+                                </Badge>
+                            {/if}
                         </div>
                     </td>
                     <td class="px-3 max-sm:hidden">

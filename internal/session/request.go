@@ -13,6 +13,18 @@ import (
 )
 
 var ErrUserNotFound = errors.New("user must be specified in session options")
+var ErrUserSuspended = fiber.NewError(403, "This account has been suspended by the platform")
+
+func rejectSuspended(ctx fiber.Ctx, server *state.StarServer, userID string) error {
+	suspension, err := server.Database.GetActiveSuspension(ctx, userID)
+	if err != nil {
+		return err
+	} else if suspension != nil {
+		return ErrUserSuspended
+	}
+
+	return nil
+}
 
 func CreateSession(
 	ctx fiber.Ctx,
@@ -21,6 +33,10 @@ func CreateSession(
 ) (*database.Session, error) {
 	if options.User == nil {
 		return nil, ErrUserNotFound
+	}
+
+	if err := rejectSuspended(ctx, server, options.User.ID); err != nil {
+		return nil, err
 	}
 
 	var accountID *string

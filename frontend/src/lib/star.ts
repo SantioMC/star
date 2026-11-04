@@ -681,6 +681,34 @@ export const clearLockout = async (user: string) => {
     .catch(orError);
 };
 
+export const getUserSuspensions = async (user: string, before?: string) => {
+  const searchParams = new URLSearchParams({ limit: "10" });
+  if (before) searchParams.set("before", before);
+
+  return api
+    .get(
+      `api/user/${encodeURIComponent(user)}/suspensions?${searchParams.toString()}`,
+    )
+    .json<SuspensionPage>()
+    .catch(orError);
+};
+
+export const suspendUser = async (user: string, data: SuspendUserRequest) => {
+  return api
+    .post(`api/user/${encodeURIComponent(user)}/suspend`, { json: data })
+    .json<AdminUser>()
+    .catch(orError);
+};
+
+export const unsuspendUser = async (user: string, reason: string) => {
+  return api
+    .post(`api/user/${encodeURIComponent(user)}/unsuspend`, {
+      json: { reason },
+    })
+    .json<AdminUser>()
+    .catch(orError);
+};
+
 export const adminSetPassword = async (user: string, password: string) => {
   return api
     .post(`api/user/${encodeURIComponent(user)}/password`, {
@@ -1378,9 +1406,34 @@ export interface AdminUser {
   email_verified: boolean;
   roles: Role[];
   lockout: Lockout | null;
+  suspension: UserSuspension | null;
   has_password: boolean;
   password_change_required: boolean;
   created_at: string;
+}
+
+export interface UserSuspension {
+  id: string;
+  user_id: string;
+  reason: string;
+  suspended_by: string | null;
+  suspended_by_name: string | null;
+  expires_at: string | null;
+  created_at: string;
+  lifted_at: string | null;
+  lifted_by: string | null;
+  lifted_by_name: string | null;
+  lift_reason: string | null;
+}
+
+export interface SuspensionPage {
+  items: UserSuspension[];
+  next: string | null;
+}
+
+export interface SuspendUserRequest {
+  reason: string;
+  expires_at: string | null;
 }
 
 export interface Lockout {
@@ -1538,6 +1591,7 @@ export type RevocationReason =
   | "password_reset"
   | "password_change_required"
   | "user_deleted"
+  | "user_suspended"
   | "application_deleted"
   | "manual";
 

@@ -29,6 +29,7 @@ const (
 	RevocationReasonPasswordReset          RevocationReason = "password_reset"
 	RevocationReasonPasswordChangeRequired RevocationReason = "password_change_required"
 	RevocationReasonUserDeleted            RevocationReason = "user_deleted"
+	RevocationReasonUserSuspended          RevocationReason = "user_suspended"
 	RevocationReasonAppDeleted             RevocationReason = "application_deleted"
 	RevocationReasonManual                 RevocationReason = "manual"
 )

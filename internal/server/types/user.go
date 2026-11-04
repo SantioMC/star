@@ -1,6 +1,10 @@
 package types
 
-import "github.com/tubblelive/star/internal/username"
+import (
+	"time"
+
+	"github.com/tubblelive/star/internal/username"
+)
 
 type LoginRequest struct {
 	Username string `json:"username" validate:"required"`
@@ -57,6 +61,15 @@ type AdminUpdateUserRequest struct {
 	FirstName *string   `json:"first_name" validate:"omitempty,max=255"`
 	LastName  *string   `json:"last_name" validate:"omitempty,max=255"`
 	Roles     *[]string `json:"roles" validate:"omitempty"`
+}
+
+type SuspendUserRequest struct {
+	Reason    string     `json:"reason" validate:"required,max=500"`
+	ExpiresAt *time.Time `json:"expires_at" validate:"omitempty"`
+}
+
+type UnsuspendUserRequest struct {
+	Reason string `json:"reason" validate:"required,max=500"`
 }
 
 type AddUserEmailRequest struct {

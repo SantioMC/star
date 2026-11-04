@@ -30,6 +30,10 @@ func RefreshSession(
 		return nil, ErrSessionExpired
 	}
 
+	if err := rejectSuspended(ctx, server, current.UserID); err != nil {
+		return nil, err
+	}
+
 	session := buildSession(
 		ctx,
 		server,

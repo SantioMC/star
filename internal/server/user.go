@@ -67,6 +67,9 @@ func userRouter(router fiber.Router) {
 	router.Post("/:user/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
 	router.Post("/:user/password/require-change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminRequirePasswordChange)
 	router.Delete("/:user/lockout", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminClearLockout)
+	router.Get("/:user/suspensions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUserSuspensions)
+	router.Post("/:user/suspend", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminSuspendUsers), adminSuspendUser)
+	router.Post("/:user/unsuspend", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminSuspendUsers), adminUnsuspendUser)
 }
 
 // misc: maybe move this to transformer?
@@ -87,9 +90,14 @@ func populateUser(ctx fiber.Ctx, user *database.User) transformer.AdminUser {
 		slog.Error("failed to get login attempts", "user", user.ID, "err", err)
 	}
 
+	suspension, err := star.Database.GetActiveSuspension(ctx, user.ID)
+	if err != nil {
+		slog.Error("failed to get active suspension", "user", user.ID, "err", err)
+	}
+
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
 
-	return transformer.TransformAdminUser(user, email, transformed, attempts, account)
+	return transformer.TransformAdminUser(user, email, transformed, attempts, account, suspension)
 }
 
 func getRegisterRequirements(ctx fiber.Ctx) error {

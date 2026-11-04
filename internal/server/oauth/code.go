@@ -76,7 +76,9 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		AuthenticatedAt: authCode.AuthenticatedAt,
 	})
 
-	if err != nil {
+	if errors.Is(err, session.ErrUserSuspended) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for is suspended")
+	} else if err != nil {
 		return err
 	}
 
