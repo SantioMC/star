@@ -7,18 +7,32 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/tubblelive/star/internal/database/models"
+	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/password"
 	"github.com/vinovest/sqlx"
 )
 
 type Settings struct {
-	ID                 int    `json:"id"`
-	AllowRegistration  bool   `json:"allow_registration" db:"allow_registration"`
-	AllowLogins        bool   `json:"allow_logins" db:"allow_logins"`
-	EmailCodeLength    int    `json:"email_code_length" db:"email_code_length"`
-	AuditRetentionDays *int   `json:"audit_retention_days" db:"audit_retention_days"`
-	AuditAnonymize     bool   `json:"audit_anonymize" db:"audit_anonymize"`
-	PasswordSettings   string `json:"password_settings" db:"password_settings"`
+	ID                    int                       `json:"id"`
+	AllowRegistration     bool                      `json:"allow_registration" db:"allow_registration"`
+	AllowLogins           bool                      `json:"allow_logins" db:"allow_logins"`
+	EmailCodeLength       int                       `json:"email_code_length" db:"email_code_length"`
+	EmailVerification     bool                      `json:"email_verification" db:"email_verification"`
+	EmailDomainMode       email.DomainMode          `json:"email_domain_mode" db:"email_domain_mode"`
+	EmailDomains          models.JSONData[[]string] `json:"email_domains" db:"email_domains"`
+	BlockDisposableEmails bool                      `json:"block_disposable_emails" db:"block_disposable_emails"`
+	AuditRetentionDays    *int                      `json:"audit_retention_days" db:"audit_retention_days"`
+	AuditAnonymize        bool                      `json:"audit_anonymize" db:"audit_anonymize"`
+	PasswordSettings      string                    `json:"password_settings" db:"password_settings"`
+}
+
+func (s *Settings) GetEmailDomainPolicy() email.DomainPolicy {
+	return email.DomainPolicy{
+		Mode:            s.EmailDomainMode,
+		Domains:         s.EmailDomains.Data,
+		BlockDisposable: s.BlockDisposableEmails,
+	}
 }
 
 func (s *Settings) GetPasswordSettings() *password.PasswordSetttings {
@@ -55,7 +69,8 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		`
 		UPDATE settings
 		SET allow_registration = $2, allow_logins = $3, password_settings = $4, email_code_length = $5,
-			audit_retention_days = $6, audit_anonymize = $7
+			audit_retention_days = $6, audit_anonymize = $7, email_verification = $8, email_domain_mode = $9,
+			email_domains = $10, block_disposable_emails = $11
 		WHERE id = $1
 		`,
 		settings.ID,
@@ -65,6 +80,10 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		settings.EmailCodeLength,
 		settings.AuditRetentionDays,
 		settings.AuditAnonymize,
+		settings.EmailVerification,
+		settings.EmailDomainMode,
+		settings.EmailDomains,
+		settings.BlockDisposableEmails,
 	)
 
 	return err

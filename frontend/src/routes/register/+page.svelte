@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { goto } from "$app/navigation";
     import { env } from "$env/dynamic/public";
     import * as star from "$lib/star";
     import Button from "@/components/button.svelte";
@@ -70,6 +71,12 @@
         if ("error" in data) {
             captchaToken = "";
             error = data.message;
+            return;
+        }
+
+        if (!data.verification_required) {
+            toast.success("Your account has been created, you may now login");
+            await goto("/login");
             return;
         }
 

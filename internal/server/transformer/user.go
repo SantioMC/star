@@ -128,7 +128,7 @@ func TransformUser(
 	for _, email := range emails {
 		if email.Primary {
 			primaryEmail = email.Email
-			emailVerified = email.Verified
+			emailVerified = email.Trusted()
 		}
 	}
 

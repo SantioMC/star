@@ -95,7 +95,9 @@
         addEmailModal?.close();
 
         toast.success(
-            `A verification email has been sent to ${response.email}`,
+            response.verified
+                ? `Added ${response.email} to your account`
+                : `A verification email has been sent to ${response.email}`,
         );
     };
 
@@ -367,8 +369,8 @@
             <div class="flex flex-col gap-1">
                 <h1 class="text-xl font-semibold">Add an email address</h1>
                 <h2 class="text-sm text-muted">
-                    We'll send a verification link to this address before it can
-                    be used on your account.
+                    This address may need to be verified before it can be used
+                    on your account.
                 </h2>
             </div>
 

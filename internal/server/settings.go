@@ -7,6 +7,7 @@ import (
 	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/password"
 	"github.com/tubblelive/star/internal/permission"
@@ -30,6 +31,7 @@ func settingsRouter(router fiber.Router) {
 
 	router.Get("/", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getSettings)
 	router.Patch("/", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), updateSettings)
+	router.Get("/disposable-domains", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getDisposableDomains)
 }
 
 func currentSettings(star *state.StarServer, ctx fiber.Ctx) (*database.Settings, error) {
@@ -56,9 +58,19 @@ func getSettings(ctx fiber.Ctx) error {
 	return ctx.JSON(transformer.TransformSettings(*settings, *settings.GetPasswordSettings()))
 }
 
+func getDisposableDomains(ctx fiber.Ctx) error {
+	return ctx.JSON(fiber.Map{
+		"domains": email.DisposableDomains(),
+	})
+}
+
 func validateSettings(settings *database.Settings, passwordSettings *password.PasswordSetttings) error {
 	if settings.EmailCodeLength < minimumEmailCodeLength || settings.EmailCodeLength > maximumEmailCodeLength {
 		return fiber.NewError(400, "Email codes must be between 6 and 12 characters long")
+	}
+
+	if settings.EmailDomainMode == email.DomainModeWhitelist && len(settings.EmailDomains.Data) == 0 {
+		return fiber.NewError(400, "A whitelist needs at least one domain, otherwise nobody could add an email address")
 	}
 
 	if passwordSettings.MinLength < minimumPasswordLength || passwordSettings.MinLength > maximumPasswordLength {
@@ -112,7 +124,29 @@ func updateSettings(ctx fiber.Ctx) error {
 		settings.EmailCodeLength = *request.EmailCodeLength
 	}
 
-	passwordSettings := *settings.GetPasswordSettings()
+	if request.EmailVerification != nil {
+		settings.EmailVerification = *request.EmailVerification
+	}
+
+	if request.EmailDomainMode != nil {
+		settings.EmailDomainMode = email.DomainMode(*request.EmailDomainMode)
+	}
+
+	if request.EmailDomains != nil {
+		domains, err := email.NormalizeDomains(request.EmailDomains)
+		if err != nil {
+			return fiber.NewError(400, err.Error())
+		}
+
+		settings.EmailDomains.Data = domains
+	}
+
+	if request.BlockDisposableEmails != nil {
+		settings.BlockDisposableEmails = *request.BlockDisposableEmails
+	}
+
+	currentPasswordSettings := *settings.GetPasswordSettings()
+	passwordSettings := currentPasswordSettings
 
 	if update := request.PasswordSettings; update != nil {
 		if update.MinLength != nil {
@@ -140,12 +174,14 @@ func updateSettings(ctx fiber.Ctx) error {
 		return err
 	}
 
-	encoded, err := json.Marshal(passwordSettings)
-	if err != nil {
-		return err
-	}
+	if passwordSettings != currentPasswordSettings {
+		encoded, err := json.Marshal(passwordSettings)
+		if err != nil {
+			return err
+		}
 
-	settings.PasswordSettings = string(encoded)
+		settings.PasswordSettings = string(encoded)
+	}
 
 	if err := star.Database.UpdateSettings(ctx, settings); err != nil {
 		return err

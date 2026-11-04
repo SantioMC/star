@@ -9,8 +9,12 @@ type UpdatePasswordSettingsRequest struct {
 }
 
 type UpdateSettingsRequest struct {
-	AllowRegistration *bool                          `json:"allow_registration" validate:"omitempty"`
-	AllowLogins       *bool                          `json:"allow_logins" validate:"omitempty"`
-	EmailCodeLength   *int                           `json:"email_code_length" validate:"omitempty,min=6,max=12"`
-	PasswordSettings  *UpdatePasswordSettingsRequest `json:"password_settings" validate:"omitempty"`
+	AllowRegistration     *bool                          `json:"allow_registration" validate:"omitempty"`
+	AllowLogins           *bool                          `json:"allow_logins" validate:"omitempty"`
+	EmailCodeLength       *int                           `json:"email_code_length" validate:"omitempty,min=6,max=12"`
+	EmailVerification     *bool                          `json:"email_verification" validate:"omitempty"`
+	EmailDomainMode       *string                        `json:"email_domain_mode" validate:"omitempty,oneof=disabled whitelist blacklist"`
+	EmailDomains          []string                       `json:"email_domains" validate:"omitempty,max=1000,dive,max=253"`
+	BlockDisposableEmails *bool                          `json:"block_disposable_emails" validate:"omitempty"`
+	PasswordSettings      *UpdatePasswordSettingsRequest `json:"password_settings" validate:"omitempty"`
 }

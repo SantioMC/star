@@ -11,7 +11,6 @@ import (
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
-	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/export"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/password"
@@ -99,7 +98,9 @@ func getRegisterRequirements(ctx fiber.Ctx) error {
 
 func registerUser(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
-	if !star.Settings.Load().AllowRegistration {
+	settings := star.Settings.Load()
+
+	if !settings.AllowRegistration {
 		return fiber.NewError(403, "Registration is currently disabled")
 	}
 
@@ -121,9 +122,13 @@ func registerUser(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	password, err := password.ValidatePassword(request.Password, star.Settings.Load().GetPasswordSettings())
+	password, err := password.ValidatePassword(request.Password, settings.GetPasswordSettings())
 	if err != nil {
 		return fiber.NewError(400, err.Error())
+	}
+
+	if err := settings.GetEmailDomainPolicy().Check(request.Email); err != nil {
+		return err
 	}
 
 	hashed, alg := cryptography.HashString(password)
@@ -145,15 +150,7 @@ func registerUser(ctx fiber.Ctx) error {
 		CreatedAt: created,
 	}
 
-	email := &database.UserEmail{
-		ID:        database.CreateID(database.EmailKey),
-		UserID:    user.ID,
-		Email:     request.Email,
-		Verified:  false,
-		Primary:   true,
-		Code:      email.CreateCode(star.Settings.Load().EmailCodeLength),
-		CreatedAt: created,
-	}
+	email := newUserEmail(settings, user.ID, request.Email, true, created)
 
 	account := &database.Account{
 		ID:          database.CreateID(database.AccountKey),
@@ -173,11 +170,15 @@ func registerUser(ctx fiber.Ctx) error {
 		return err
 	}
 
-	sendVerificationEmail(star, username, request.Email, email.Code)
+	if !email.Verified {
+		sendVerificationEmail(star, username, request.Email, email.Code)
+	}
+
 	audit.Log(ctx, audit.UserRegister, audit.By(user))
 
 	return ctx.JSON(fiber.Map{
-		"success": true,
+		"success":               true,
+		"verification_required": !email.Verified,
 	})
 }
 

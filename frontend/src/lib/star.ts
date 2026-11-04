@@ -972,6 +972,15 @@ export const updateServerSettings = async (
     .catch(orError);
 };
 
+export const getDisposableDomains = async () => {
+  const response = await api
+    .get("api/settings/disposable-domains")
+    .json<DisposableDomains>()
+    .catch((_) => null);
+
+  return response?.domains ?? null;
+};
+
 export const getBranding = async () => {
   return api
     .get("api/branding")
@@ -1034,6 +1043,7 @@ export interface RegisterRequirements {
 
 export interface RegisterResponse {
   success: boolean;
+  verification_required: boolean;
 }
 
 export interface PublicApplication {
@@ -1102,10 +1112,20 @@ export interface PasswordSettings {
   min_lower: number;
 }
 
+export interface DisposableDomains {
+  domains: string[];
+}
+
+export type EmailDomainMode = "disabled" | "whitelist" | "blacklist";
+
 export interface ServerSettings {
   allow_registration: boolean;
   allow_logins: boolean;
   email_code_length: number;
+  email_verification: boolean;
+  email_domain_mode: EmailDomainMode;
+  email_domains: string[];
+  block_disposable_emails: boolean;
   password_settings: PasswordSettings;
 }
 
@@ -1113,6 +1133,10 @@ export interface UpdateServerSettingsRequest {
   allow_registration?: boolean;
   allow_logins?: boolean;
   email_code_length?: number;
+  email_verification?: boolean;
+  email_domain_mode?: EmailDomainMode;
+  email_domains?: string[];
+  block_disposable_emails?: boolean;
   password_settings?: Partial<PasswordSettings>;
 }
 

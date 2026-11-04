@@ -60,6 +60,12 @@ func createUser(
 	}
 
 	verified := identity.Email != nil && identity.EmailVerified && provider.TrustEmail
+	if verified {
+		if err := star.Settings.Load().GetEmailDomainPolicy().Check(*identity.Email); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	if verified && len(star.Database.GetUsersByVerifiedEmail(ctx, *identity.Email)) > 0 {
 		return nil, nil, ErrEmailInUse
 	}

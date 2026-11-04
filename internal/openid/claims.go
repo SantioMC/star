@@ -29,7 +29,7 @@ func UserClaims(
 
 			if wantsEmail {
 				claims["email"] = email.Email
-				claims["email_verified"] = email.Verified
+				claims["email_verified"] = email.Trusted()
 			}
 		}
 	}

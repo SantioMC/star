@@ -9,7 +9,7 @@
     } from "@/branding";
     import Button from "@/components/button.svelte";
     import Card from "@/components/card.svelte";
-    import EmailPreview from "@/components/email-preview.svelte";
+    import EmailTemplatePreview from "@/components/email-template-preview.svelte";
     import Icon from "@/components/icon.svelte";
     import Input from "@/components/input.svelte";
     import Select from "@/components/select.svelte";
@@ -397,16 +397,7 @@
         </div>
     </Card>
 
-    <Card
-        title="Email Preview"
-        icon="mail-opened"
-        description="An example verification email with your unsaved changes applied. Newly uploaded logos appear once saved."
-    >
-        <EmailPreview
-            template="verification"
-            branding={fields}
-            removeLogo={logo === "remove"}
-            class="mt-6 h-[680px]"
-        />
-    </Card>
+    {#snippet preview()}
+        <EmailTemplatePreview branding={fields} removeLogo={logo === "remove"} />
+    {/snippet}
 </SettingsForm>

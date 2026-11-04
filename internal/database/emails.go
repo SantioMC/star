@@ -20,11 +20,16 @@ type UserEmail struct {
 	UserID        string     `json:"user_id" db:"user_id"`
 	Email         string     `json:"email"`
 	Verified      bool       `json:"verified"`
+	SelfAsserted  bool       `json:"-" db:"self_asserted"`
 	Code          string     `json:"-"`
 	CodeAttempts  int        `json:"-" db:"code_attempts"`
 	CodeExpiresAt *time.Time `json:"-" db:"code_expires_at"`
 	Primary       bool       `json:"primary" db:"preferred"`
 	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
+}
+
+func (e *UserEmail) Trusted() bool {
+	return e.Verified && !e.SelfAsserted
 }
 
 func (db *Database) GetEmailsByUserID(ctx context.Context, userID string) []UserEmail {
@@ -89,8 +94,8 @@ func (db *Database) insertEmail(ctx context.Context, execer sqlx.ExecerContext, 
 	_, err := execer.ExecContext(
 		ctx,
 		`
-		INSERT INTO user_emails (id, user_id, email, created_at, code, code_expires_at, verified, preferred)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO user_emails (id, user_id, email, created_at, code, code_expires_at, verified, preferred, self_asserted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		`,
 		email.ID,
 		email.UserID,
@@ -100,6 +105,7 @@ func (db *Database) insertEmail(ctx context.Context, execer sqlx.ExecerContext, 
 		time.Now().Add(time.Minute*15),
 		email.Verified,
 		email.Primary,
+		email.SelfAsserted,
 	)
 
 	if err != nil || !email.Verified {

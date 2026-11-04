@@ -57,28 +57,45 @@ func addUserEmail(ctx fiber.Ctx) error {
 		return err
 	}
 
-	if star.Database.EmailClaimed(ctx, data.Email) {
-		return fiber.NewError(400, "the provided email is either already in use or has recently been added to an account")
-	}
-
-	userEmail := &database.UserEmail{
-		ID:        database.CreateID(database.EmailKey),
-		UserID:    user.ID,
-		Email:     data.Email,
-		Verified:  false,
-		Primary:   false,
-		Code:      email.CreateCode(star.Settings.Load().EmailCodeLength),
-		CreatedAt: time.Now(),
-	}
-
-	if err := star.Database.CreateEmail(ctx, userEmail); err != nil {
+	settings := star.Settings.Load()
+	if err := settings.GetEmailDomainPolicy().Check(data.Email); err != nil {
 		return err
 	}
 
-	sendVerificationEmail(star, user.Name, userEmail.Email, userEmail.Code)
+	claimedError := fiber.NewError(400, "the provided email is either already in use or has recently been added to an account")
+	if star.Database.EmailClaimed(ctx, data.Email) {
+		return claimedError
+	}
+
+	userEmail := newUserEmail(settings, user.ID, data.Email, false, time.Now())
+
+	err = star.Database.CreateEmail(ctx, userEmail)
+	if errors.Is(err, database.ErrDuplicate) {
+		return claimedError
+	} else if err != nil {
+		return err
+	}
+
+	if !userEmail.Verified {
+		sendVerificationEmail(star, user.Name, userEmail.Email, userEmail.Code)
+	}
+
 	audit.Log(ctx, audit.EmailAdd, audit.With("email_id", userEmail.ID), audit.Private("email", userEmail.Email))
 
 	return ctx.JSON(transformer.TransformEmail(userEmail))
+}
+
+func newUserEmail(settings *database.Settings, userID string, address string, primary bool, created time.Time) *database.UserEmail {
+	return &database.UserEmail{
+		ID:           database.CreateID(database.EmailKey),
+		UserID:       userID,
+		Email:        address,
+		Verified:     !settings.EmailVerification,
+		SelfAsserted: !settings.EmailVerification,
+		Primary:      primary,
+		Code:         email.CreateCode(settings.EmailCodeLength),
+		CreatedAt:    created,
+	}
 }
 
 func sendVerificationEmail(star *state.StarServer, name string, address string, code string) {

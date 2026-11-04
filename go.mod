@@ -18,6 +18,7 @@ require (
 	github.com/resend/resend-go/v3 v3.3.0
 	github.com/vinovest/sqlx v1.7.2
 	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.58.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
 
@@ -51,7 +52,6 @@ require (
 	github.com/valyala/fasthttp v1.69.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
