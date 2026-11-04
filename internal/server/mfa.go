@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/mfa"
 	"github.com/tubblelive/star/internal/openid"
@@ -70,6 +71,8 @@ func deleteTotp(ctx fiber.Ctx) error {
 	if err := mfa.RemoveOrphanedBackupCodes(ctx, star, userID); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.MFATotpRemove)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -156,6 +159,8 @@ func verifyTotp(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.MFATotpEnroll)
+
 	return ctx.JSON(fiber.Map{
 		"success":      true,
 		"backup_codes": codes,
@@ -197,6 +202,8 @@ func regenerateBackupCodes(ctx fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.MFABackupRotate)
 
 	return ctx.JSON(fiber.Map{
 		"backup_codes": codes,
@@ -289,6 +296,8 @@ func verifyPasskey(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.MFAPasskeyAdd, audit.With("passkey", created.ID), audit.Private("name", created.Name))
+
 	return ctx.JSON(fiber.Map{
 		"passkey":      transformer.TransformPasskey(*created),
 		"backup_codes": codes,
@@ -322,6 +331,8 @@ func renamePasskey(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.MFAPasskeyEdit, audit.With("passkey", existing.ID), audit.Private("name", existing.Name))
+
 	return ctx.JSON(transformer.TransformPasskey(*existing))
 }
 
@@ -344,6 +355,8 @@ func deletePasskey(ctx fiber.Ctx) error {
 	if err := mfa.RemoveOrphanedBackupCodes(ctx, star, userID); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.MFAPasskeyDrop, audit.With("passkey", existing.ID), audit.Private("name", existing.Name))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

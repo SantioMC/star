@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/emails"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/branding"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
@@ -75,6 +76,8 @@ func addUserEmail(ctx fiber.Ctx) error {
 	}
 
 	sendVerificationEmail(star, user.Name, userEmail.Email, userEmail.Code)
+	audit.Log(ctx, audit.EmailAdd, audit.With("email_id", userEmail.ID), audit.Private("email", userEmail.Email))
+
 	return ctx.JSON(transformer.TransformEmail(userEmail))
 }
 
@@ -158,6 +161,8 @@ func deleteUserEmail(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.EmailRemove, audit.With("email_id", email.ID), audit.Private("email", email.Email))
+
 	return ctx.JSON(fiber.Map{
 		"success": true,
 	})
@@ -185,6 +190,8 @@ func updatePrimaryEmail(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.EmailPrimary, audit.With("email_id", email.ID), audit.Private("email", email.Email))
+
 	return ctx.JSON(fiber.Map{
 		"success": true,
 	})
@@ -210,6 +217,10 @@ func verifyEmail(ctx fiber.Ctx) error {
 		return err
 	} else if !verified {
 		return fiber.NewError(400, "This verification code is invalid or has expired, please request a new one")
+	}
+
+	if verifiedEmail := star.Database.GetEmailByName(ctx, data.Email); verifiedEmail != nil {
+		audit.Log(ctx, audit.EmailVerify, audit.ByID(verifiedEmail.UserID), audit.With("email_id", verifiedEmail.ID), audit.Private("email", verifiedEmail.Email))
 	}
 
 	return ctx.JSON(fiber.Map{

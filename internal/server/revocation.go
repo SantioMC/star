@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
@@ -43,12 +44,17 @@ func createTokenRevocation(ctx fiber.Ctx) error {
 		return err
 	}
 
+	action := audit.TokenRevokeAll
+	options := []audit.Option{}
+
 	if data.Kind == string(database.RevocationKindGlobal) {
 		err = star.Database.RevokeAllTokens(ctx, database.RevocationReasonManual)
 	} else if user := star.Database.GetUserByID(ctx, *data.User); user == nil {
 		return fiber.NewError(404, "User not found")
 	} else {
 		err = star.Database.RevokeUserTokens(ctx, user.ID, database.RevocationReasonManual)
+		action = audit.TokenRevoke
+		options = append(options, audit.OnUser(user))
 	}
 
 	if err != nil {
@@ -56,6 +62,7 @@ func createTokenRevocation(ctx fiber.Ctx) error {
 	}
 
 	slog.Info("access tokens revoked", "kind", data.Kind, "user", data.User, "by", requesterID)
+	audit.Log(ctx, action, options...)
 
 	cache.UpdateRevocations(ctx, star)
 	return getTokenRevocations(ctx)

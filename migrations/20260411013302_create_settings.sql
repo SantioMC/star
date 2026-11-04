@@ -4,6 +4,8 @@ CREATE TABLE settings (
     allow_registration BOOLEAN NOT NULL DEFAULT TRUE,
     allow_logins BOOLEAN NOT NULL DEFAULT TRUE,
     email_code_length INTEGER NOT NULL DEFAULT 8,
+    audit_retention_days INTEGER,
+    audit_anonymize BOOLEAN NOT NULL DEFAULT FALSE,
     password_settings JSONB NOT NULL
 );
 

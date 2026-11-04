@@ -227,3 +227,19 @@ func (db *Database) GetUserCount(ctx context.Context) (int, error) {
 
 	return count, nil
 }
+
+func (db *Database) FindUserIDs(ctx context.Context, search string, limit int) ([]string, error) {
+	return list[string](
+		ctx,
+		db.DB(),
+		`
+		SELECT id FROM users
+		WHERE name ILIKE '%' || $1 || '%'
+		   OR id IN (SELECT user_id FROM user_emails WHERE LOWER(email) = LOWER($1))
+		ORDER BY LOWER(name) = LOWER($1) DESC, LENGTH(name)
+		LIMIT $2
+		`,
+		search,
+		limit,
+	)
+}

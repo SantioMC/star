@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
@@ -90,6 +91,8 @@ func createRole(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.RoleCreate, audit.On(audit.TargetRole, role.ID, role.Name), audit.With("permissions", request.Permissions))
+
 	return ctx.JSON(transformer.TransformRole(*role, permissions))
 }
 
@@ -106,6 +109,7 @@ func updateRole(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "Role not found")
 	}
 
+	before := *role
 	nameChanged := request.Name != nil && *request.Name != role.Name
 	descriptionChanged := request.Description != nil && *request.Description != role.Description
 
@@ -144,6 +148,13 @@ func updateRole(ctx fiber.Ctx) error {
 		cache.UpdateRevocations(ctx, star)
 	}
 
+	options := []audit.Option{audit.On(audit.TargetRole, role.ID, role.Name), audit.Changes(before, *role)}
+	if request.Permissions != nil {
+		options = append(options, audit.With("permissions", *request.Permissions))
+	}
+
+	audit.Log(ctx, audit.RoleUpdate, options...)
+
 	permissions := star.Database.GetRolePermissions(ctx, role.ID)
 	return ctx.JSON(transformer.TransformRole(*role, permissions))
 }
@@ -165,6 +176,7 @@ func deleteRole(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.RoleDelete, audit.On(audit.TargetRole, role.ID, role.Name))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

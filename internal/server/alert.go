@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
@@ -45,6 +46,8 @@ func resolveSecurityAlert(ctx fiber.Ctx) error {
 	} else if !resolved {
 		return fiber.NewError(409, "This security alert has already been resolved")
 	}
+
+	audit.Log(ctx, audit.AlertResolve, audit.On(audit.TargetAlert, alert.ID, string(alert.Kind)))
 
 	return ctx.JSON(star.Database.GetSecurityAlertByID(ctx, alert.ID))
 }

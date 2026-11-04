@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/branding"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
@@ -150,6 +151,8 @@ func updateBranding(ctx fiber.Ctx) error {
 		return err
 	}
 
+	before := *current
+
 	if err := applyBranding(current, &request); err != nil {
 		return err
 	}
@@ -157,6 +160,12 @@ func updateBranding(ctx fiber.Ctx) error {
 	if err := star.Database.UpdateBranding(ctx, current); err != nil {
 		return err
 	}
+
+	audit.Log(
+		ctx,
+		audit.BrandingUpdate,
+		audit.Changes(transformer.TransformBranding(&before, star.Config.ServerURL), transformer.TransformBranding(current, star.Config.ServerURL)),
+	)
 
 	return respondBranding(star, ctx)
 }
@@ -182,6 +191,8 @@ func uploadBrandingLogo(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.BrandingUpdate, audit.With("fields", []string{"logo"}))
+
 	return respondBranding(star, ctx)
 }
 
@@ -191,6 +202,8 @@ func deleteBrandingLogo(ctx fiber.Ctx) error {
 	if err := star.Database.DeleteBrandingLogo(ctx); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.BrandingUpdate, audit.With("fields", []string{"logo"}))
 
 	return respondBranding(star, ctx)
 }

@@ -26,10 +26,11 @@ func ResolveAccount(
 	star *state.StarServer,
 	provider *database.Provider,
 	identity *Identity,
-) (*database.User, *database.Account, error) {
+) (*database.User, *database.Account, bool, error) {
 	account := star.Database.GetProviderAccount(ctx, provider.ID, identity.Subject)
 	if account == nil {
-		return createUser(ctx, star, provider, identity)
+		user, linked, err := createUser(ctx, star, provider, identity)
+		return user, linked, err == nil, err
 	}
 
 	account.Name = displayName(identity)
@@ -37,15 +38,15 @@ func ResolveAccount(
 	account.Avatar = identity.Picture
 
 	if err := star.Database.UpdateAccount(ctx, account); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	user := star.Database.GetUserByID(ctx, account.UserID)
 	if user == nil {
-		return nil, nil, errors.New("linked provider account has no user")
+		return nil, nil, false, errors.New("linked provider account has no user")
 	}
 
-	return user, account, nil
+	return user, account, false, nil
 }
 
 func createUser(

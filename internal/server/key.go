@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/keypair"
 	"github.com/tubblelive/star/internal/openid"
@@ -39,6 +40,8 @@ func rotateSigningKeys(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateKeys(ctx, star)
+	audit.Log(ctx, audit.KeyRotate)
+
 	return getSigningKeys(ctx)
 }
 
@@ -58,5 +61,7 @@ func deleteSigningKey(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateKeys(ctx, star)
+	audit.Log(ctx, audit.KeyDelete, audit.On(audit.TargetKey, key.ID, ""))
+
 	return getSigningKeys(ctx)
 }

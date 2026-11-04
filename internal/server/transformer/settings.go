@@ -20,3 +20,15 @@ func TransformSettings(settings database.Settings, passwordSettings password.Pas
 		PasswordSettings:  passwordSettings,
 	}
 }
+
+type AuditSettings struct {
+	RetentionDays *int `json:"retention_days"`
+	Anonymize     bool `json:"anonymize"`
+}
+
+func TransformAuditSettings(settings database.Settings) AuditSettings {
+	return AuditSettings{
+		RetentionDays: settings.AuditRetentionDays,
+		Anonymize:     settings.AuditAnonymize,
+	}
+}

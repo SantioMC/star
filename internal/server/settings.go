@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	minimumEmailCodeLength = 8
+	minimumEmailCodeLength = 6
 	maximumEmailCodeLength = 12
 	minimumPasswordLength  = 8
 	maximumPasswordLength  = 512
@@ -57,7 +58,7 @@ func getSettings(ctx fiber.Ctx) error {
 
 func validateSettings(settings *database.Settings, passwordSettings *password.PasswordSetttings) error {
 	if settings.EmailCodeLength < minimumEmailCodeLength || settings.EmailCodeLength > maximumEmailCodeLength {
-		return fiber.NewError(400, "Email codes must be between 8 and 12 characters long")
+		return fiber.NewError(400, "Email codes must be between 6 and 12 characters long")
 	}
 
 	if passwordSettings.MinLength < minimumPasswordLength || passwordSettings.MinLength > maximumPasswordLength {
@@ -96,6 +97,8 @@ func updateSettings(ctx fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+
+	before := *settings
 
 	if request.AllowRegistration != nil {
 		settings.AllowRegistration = *request.AllowRegistration
@@ -149,6 +152,7 @@ func updateSettings(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateSettings(ctx, star)
+	audit.Log(ctx, audit.SettingsUpdate, audit.Changes(before, *settings))
 
 	return ctx.JSON(transformer.TransformSettings(*settings, passwordSettings))
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
@@ -57,6 +58,7 @@ func revokeUserGrant(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.GrantRevoke, audit.On(audit.TargetApplication, grant.ApplicationID, ""))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

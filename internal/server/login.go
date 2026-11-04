@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/login"
@@ -61,6 +62,7 @@ func loginUser(ctx fiber.Ctx) error {
 	if user == nil {
 		cryptography.SimulateVerifyHash(request.Password)
 		slog.Warn("login attempt failed", "reason", "unknown login identifier")
+		audit.Log(ctx, audit.LoginFailed, audit.With("reason", "unknown_identifier"))
 		return fiber.NewError(401, "Invalid username or password")
 	}
 
@@ -68,6 +70,7 @@ func loginUser(ctx fiber.Ctx) error {
 	if account == nil || account.Password == nil {
 		cryptography.SimulateVerifyHash(request.Password)
 		slog.Warn("login attempt failed", "reason", "no internal account")
+		audit.Log(ctx, audit.LoginFailed, audit.By(user), audit.With("reason", "no_password"))
 		return fiber.NewError(401, "Invalid username or password")
 	}
 
@@ -79,6 +82,7 @@ func loginUser(ctx fiber.Ctx) error {
 	success := cryptography.VerifyHash(request.Password, *account.Password)
 	if !success {
 		slog.Warn("login attempt failed", "reason", "invalid password")
+		audit.Log(ctx, audit.LoginFailed, audit.By(user), audit.With("reason", "invalid_password"))
 		login.ReportFailure(ctx, star, user.ID, attempt, database.SecurityAlertPasswordBruteForce)
 		return fiber.NewError(401, "Invalid username or password")
 	}
@@ -88,10 +92,10 @@ func loginUser(ctx fiber.Ctx) error {
 	}
 
 	// We have successfully passed first factor at this point
-	return continueLogin(ctx, star, user, account)
+	return continueLogin(ctx, star, user, account, "password")
 }
 
-func continueLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, account *database.Account) error {
+func continueLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, account *database.Account, method string) error {
 	factors, err := mfa.GetMFA(ctx, star, user.ID)
 	if err != nil {
 		slog.Error("login attempt failed", "reason", "critical mfa error has occurred", "err", err)
@@ -100,7 +104,7 @@ func continueLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, a
 
 	if len(factors) == 0 {
 		// We have no MFA available, we have completed all factors
-		stage, err := finishLogin(ctx, star, user, account)
+		stage, err := finishLogin(ctx, star, user, account, method)
 		if err != nil {
 			return err
 		}
@@ -145,12 +149,12 @@ func loginFlowTotp(ctx fiber.Ctx) error {
 	}
 
 	if err := mfa.VerifyTotp(ctx, star, totp, request.Code); errors.Is(err, mfa.ErrInvalidTotp) {
-		return failMFAFlow(ctx, star, loginFlow, attempt, "Invalid authentication code, please try again")
+		return failMFAFlow(ctx, star, loginFlow, attempt, "totp", "Invalid authentication code, please try again")
 	} else if err != nil {
 		return err
 	}
 
-	return completeMFAFlow(ctx, star, loginFlow)
+	return completeMFAFlow(ctx, star, loginFlow, "totp")
 }
 
 func loginFlowBackupCode(ctx fiber.Ctx) error {
@@ -175,11 +179,11 @@ func loginFlowBackupCode(ctx fiber.Ctx) error {
 	if err != nil {
 		return err
 	} else if !used {
-		return failMFAFlow(ctx, star, loginFlow, attempt, "Invalid backup code, please try again")
+		return failMFAFlow(ctx, star, loginFlow, attempt, "backup_code", "Invalid backup code, please try again")
 	}
 
 	slog.Info("backup code used to sign in", "user", loginFlow.UserID)
-	return completeMFAFlow(ctx, star, loginFlow)
+	return completeMFAFlow(ctx, star, loginFlow, "backup_code")
 }
 
 func loginFlowPassword(ctx fiber.Ctx) error {
@@ -221,8 +225,9 @@ func loginFlowPassword(ctx fiber.Ctx) error {
 	ipAddress := star.ClientIP(ctx)
 	slog.Info("required password change completed", "user", loginFlow.UserID, "ip_address", ipAddress)
 	notifyPasswordChanged(ctx, star, loginFlow.UserID, ipAddress)
+	audit.Log(ctx, audit.PasswordChangeRequired, audit.ByID(loginFlow.UserID))
 
-	stage, err := completeUserLogin(ctx, star, loginFlow.UserID, loginFlow.AccountID)
+	stage, err := completeUserLogin(ctx, star, loginFlow.UserID, loginFlow.AccountID, "password")
 	if err != nil {
 		return err
 	}
@@ -251,10 +256,12 @@ func pendingFlow(ctx fiber.Ctx, star *state.StarServer, token string, stage data
 	return loginFlow, nil
 }
 
-func failMFAFlow(ctx fiber.Ctx, star *state.StarServer, loginFlow *database.LoginFlow, attempt *login.MFAAttempt, message string) error {
+func failMFAFlow(ctx fiber.Ctx, star *state.StarServer, loginFlow *database.LoginFlow, attempt *login.MFAAttempt, method string, message string) error {
 	if err := login.RecordMFAFailure(ctx, star, loginFlow, attempt); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.LoginFailed, audit.ByID(loginFlow.UserID), audit.With("reason", "invalid_code"), audit.With("method", method))
 
 	return fiber.NewError(401, message)
 }
@@ -309,7 +316,7 @@ func loginPasskey(ctx fiber.Ctx) error {
 			return err
 		}
 
-		stage, err := completeUserLogin(ctx, star, userID, nil)
+		stage, err := completeUserLogin(ctx, star, userID, nil, "passkey")
 		if err != nil {
 			return err
 		}
@@ -326,10 +333,10 @@ func loginPasskey(ctx fiber.Ctx) error {
 		return err
 	}
 
-	return completeMFAFlow(ctx, star, loginFlow)
+	return completeMFAFlow(ctx, star, loginFlow, "passkey")
 }
 
-func completeUserLogin(ctx fiber.Ctx, star *state.StarServer, userID string, accountID *string) (any, error) {
+func completeUserLogin(ctx fiber.Ctx, star *state.StarServer, userID string, accountID *string, method string) (any, error) {
 	user := star.Database.GetUserByID(ctx, userID)
 	if user == nil {
 		return nil, fiber.NewError(500, "failed to retrieve your user details from database")
@@ -342,10 +349,10 @@ func completeUserLogin(ctx fiber.Ctx, star *state.StarServer, userID string, acc
 		account = star.Database.GetInternalAccountByUserID(ctx, userID)
 	}
 
-	return finishLogin(ctx, star, user, account)
+	return finishLogin(ctx, star, user, account, method)
 }
 
-func finishLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, account *database.Account) (any, error) {
+func finishLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, account *database.Account, method string) (any, error) {
 	// User has completed every factor, let's run some last verifications
 	if err := login.Preverify(ctx, star, user, account); err != nil {
 		return nil, err
@@ -362,11 +369,19 @@ func finishLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, acc
 	}
 
 	setSessionCookie(ctx, star, stage.Session)
+
+	options := []audit.Option{audit.By(user), audit.With("method", method)}
+	if account != nil && account.ProviderID != nil {
+		options = append(options, audit.ViaProvider(*account.ProviderID))
+	}
+
+	audit.Log(ctx, audit.SessionStart, options...)
+
 	return stage, nil
 }
 
-func completeMFAFlow(ctx fiber.Ctx, star *state.StarServer, loginFlow *database.LoginFlow) error {
-	stage, err := completeUserLogin(ctx, star, loginFlow.UserID, loginFlow.AccountID)
+func completeMFAFlow(ctx fiber.Ctx, star *state.StarServer, loginFlow *database.LoginFlow, method string) error {
+	stage, err := completeUserLogin(ctx, star, loginFlow.UserID, loginFlow.AccountID, method)
 	if err != nil {
 		return err
 	}

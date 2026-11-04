@@ -57,6 +57,8 @@ const (
 	ScopeAdminMetricsRead    = "star:admin:metrics:read"
 	ScopeAdminAlertsRead     = "star:admin:alerts:read"
 	ScopeAdminAlertsWrite    = "star:admin:alerts:write"
+	ScopeAdminAuditRead      = "star:admin:audit:read"
+	ScopeAdminAuditWrite     = "star:admin:audit:write"
 )
 
 type ScopeDefinition struct {
@@ -239,6 +241,16 @@ var BuiltinScopes = []ScopeDefinition{
 	{
 		Name:        ScopeAdminAlertsWrite,
 		Description: "Resolve security alerts",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminAuditRead,
+		Description: "View the audit log",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminAuditWrite,
+		Description: "Change the audit log retention and anonymization",
 		Restricted:  true,
 	},
 }

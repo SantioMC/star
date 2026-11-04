@@ -5,6 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/lib/pq"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
@@ -180,6 +181,8 @@ func createProvider(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.ProviderCreate, audit.On(audit.TargetProvider, provider.ID, provider.Name))
+
 	return ctx.JSON(transformer.TransformProvider(*provider))
 }
 
@@ -195,6 +198,8 @@ func updateProvider(ctx fiber.Ctx) error {
 	if provider == nil {
 		return fiber.NewError(404, "Provider not found")
 	}
+
+	before := *provider
 
 	if request.Name != nil && *request.Name != provider.Name {
 		if star.Database.GetProviderByName(ctx, *request.Name) != nil {
@@ -252,6 +257,14 @@ func updateProvider(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(
+		ctx,
+		audit.ProviderUpdate,
+		audit.On(audit.TargetProvider, provider.ID, provider.Name),
+		audit.Changes(before, *provider),
+		audit.With("secret_changed", request.ClientSecret != nil),
+	)
+
 	return ctx.JSON(transformer.TransformProvider(*provider))
 }
 
@@ -266,6 +279,8 @@ func deleteProvider(ctx fiber.Ctx) error {
 	if err := star.Database.DeleteProviderByID(ctx, provider.ID); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.ProviderDelete, audit.On(audit.TargetProvider, provider.ID, provider.Name))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

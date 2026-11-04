@@ -83,8 +83,7 @@ func CreateServer(star *state.StarServer) (*fiber.App, error) {
 	app.Use(func(ctx fiber.Ctx) error {
 		err := ctx.Next()
 
-		uri := string(ctx.Request().URI().RequestURI())
-		request := ctx.Method() + " " + uri
+		request := ctx.Method() + " " + ctx.Path()
 
 		if err != nil {
 			switch data := err.(type) {
@@ -123,7 +122,7 @@ func CreateServer(star *state.StarServer) (*fiber.App, error) {
 					"message": "An internal error has occurred, please try again later",
 				})
 			}
-		} else if strings.HasPrefix(uri, "/api") {
+		} else if strings.HasPrefix(ctx.Path(), "/api") {
 			slog.Info(strconv.Itoa(ctx.Response().StatusCode()) + " " + request)
 		}
 
@@ -159,6 +158,7 @@ func CreateServer(star *state.StarServer) (*fiber.App, error) {
 	api.Route("/revocation", revocationRouter)
 	api.Route("/metrics", metricsRouter)
 	api.Route("/alert", alertRouter)
+	api.Route("/audit", auditRouter)
 
 	api.All("*", func(ctx fiber.Ctx) error {
 		// We don't want API routes to fallback to the frontend and send a 200

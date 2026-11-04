@@ -1,5 +1,6 @@
 <script lang="ts">
     import { hasPermission } from "@/index";
+    import type { StarPermission } from "@/star";
     import type { Snippet } from "svelte";
     import Button from "./button.svelte";
     import PageHeader from "./page-header.svelte";
@@ -9,6 +10,9 @@
         description,
         dirty,
         issue = null,
+        permission = "admin:settings:write",
+        saveLabel = "Save settings",
+        saveVariant = "primary",
         onsave,
         ondiscard,
         children,
@@ -18,13 +22,16 @@
         description?: string;
         dirty: boolean;
         issue?: string | null;
+        permission?: StarPermission;
+        saveLabel?: string;
+        saveVariant?: "primary" | "danger";
         onsave: () => Promise<unknown>;
         ondiscard: () => void;
         children?: Snippet;
         preview?: Snippet;
     } = $props();
 
-    const canModify = hasPermission("admin:settings:write");
+    const canModify = $derived(hasPermission(permission));
 
     let saving = $state(false);
 
@@ -59,10 +66,11 @@
             {/if}
             <Button
                 type="submit"
+                variant={saveVariant}
                 loading={saving}
                 disabled={!dirty || issue != null}
             >
-                Save settings
+                {saveLabel}
             </Button>
         </div>
     {/if}

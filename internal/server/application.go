@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/lib/pq"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
@@ -93,9 +94,15 @@ func rotateApplicationSecret(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.ApplicationSecretRotate, onApplication(application))
+
 	return ctx.JSON(fiber.Map{
 		"client_secret": secret,
 	})
+}
+
+func onApplication(application *database.Application) audit.Option {
+	return audit.On(audit.TargetApplication, application.ID, application.Name)
 }
 
 func assignClientSecret(star *state.StarServer, application *database.Application) string {
@@ -193,6 +200,8 @@ func createApplication(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.ApplicationCreate, onApplication(application))
+
 	return ctx.JSON(types.ApplicationSecretResponse{
 		ID:           application.ID,
 		ClientSecret: clientSecret,
@@ -217,6 +226,7 @@ func deleteApplication(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.ApplicationDelete, onApplication(application))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -240,6 +250,8 @@ func updateApplication(ctx fiber.Ctx) error {
 	if application.Internal {
 		return fiber.NewError(401, "You are not permitted to modify this application")
 	}
+
+	before := *application
 
 	var clientSecret *string
 
@@ -358,6 +370,8 @@ func updateApplication(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.ApplicationUpdate, onApplication(application), audit.Changes(before, *application))
+
 	return ctx.JSON(types.ApplicationSecretResponse{
 		ID:           application.ID,
 		ClientSecret: clientSecret,
@@ -439,6 +453,8 @@ func createApplicationScope(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.ApplicationScopeCreate, onApplication(application), audit.With("scope", scope.Name))
+
 	return ctx.JSON(scope)
 }
 
@@ -484,6 +500,8 @@ func updateApplicationScope(ctx fiber.Ctx) error {
 		return err
 	}
 
+	audit.Log(ctx, audit.ApplicationScopeUpdate, onApplication(application), audit.With("scope", scope.Name))
+
 	return ctx.JSON(scope)
 }
 
@@ -503,6 +521,8 @@ func deleteApplicationScope(ctx fiber.Ctx) error {
 	if err := star.Database.DeleteApplicationScopeByID(ctx, scope.ID); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.ApplicationScopeDelete, onApplication(application), audit.With("scope", scope.Name))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -571,17 +591,23 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 	}
 
 	if !application.Internal {
+		merged := oauth.MergeGrantScopes(grant, validScopes)
+
 		err := star.Database.SaveApplicationGrant(ctx, &database.ApplicationGrant{
 			ID:            database.CreateID(database.ApplicationGrantKey),
 			UserID:        user.ID,
 			ApplicationID: application.ID,
-			Scopes:        pq.StringArray(oauth.MergeGrantScopes(grant, validScopes)),
+			Scopes:        pq.StringArray(merged),
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
 		})
 
 		if err != nil {
 			return err
+		}
+
+		if grant == nil || len(merged) != len(grant.Scopes) {
+			audit.Log(ctx, audit.GrantCreate, onApplication(application), audit.With("scopes", merged))
 		}
 	}
 
@@ -613,6 +639,8 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 	if err := star.Database.CreateAuthorizationCode(ctx, &authCode); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.GrantAuthorize, onApplication(application), audit.With("scopes", validScopes))
 
 	return ctx.JSON(types.CreateApplicationAuthorizationResponse{
 		Code:           authCode.Code,

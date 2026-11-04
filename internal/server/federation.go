@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/federation"
@@ -147,14 +148,27 @@ func providerLoginCallback(ctx fiber.Ctx) error {
 		return redirectToLogin(ctx, star, "error", "The sign in provider rejected the request, please try again")
 	}
 
-	user, account, err := authenticateWithProvider(ctx, star, loginState, callbackValue(ctx, "code"))
+	user, account, associated, err := authenticateWithProvider(ctx, star, loginState, callbackValue(ctx, "code"))
 	if err != nil {
+		audit.Log(ctx, audit.LoginFailed, audit.ViaProvider(loginState.Provider), audit.With("reason", "provider_error"))
+
 		if known, ok := errors.AsType[*fiber.Error](err); ok {
 			return redirectToLogin(ctx, star, "error", known.Message)
 		}
 
 		slog.Error("provider login failed", "provider", loginState.Provider, "err", err)
 		return redirectToLogin(ctx, star, "error", "Unable to sign you in with this provider, please try again later")
+	}
+
+	if associated {
+		audit.Log(ctx, audit.UserRegister, audit.By(user), audit.With("provider", loginState.Provider))
+		audit.Log(
+			ctx,
+			audit.ProviderAssociate,
+			audit.By(user),
+			audit.On(audit.TargetProvider, loginState.Provider, ""),
+			audit.Private("external_id", *account.ExternalID),
+		)
 	}
 
 	token := database.CreateLoginFlowToken()
@@ -178,29 +192,29 @@ func authenticateWithProvider(
 	star *state.StarServer,
 	loginState *types.ProviderLoginState,
 	code string,
-) (*database.User, *database.Account, error) {
+) (*database.User, *database.Account, bool, error) {
 	if code == "" {
-		return nil, nil, errors.New("provider did not return an authorization code")
+		return nil, nil, false, errors.New("provider did not return an authorization code")
 	}
 
 	provider := star.Database.GetProviderByID(ctx, loginState.Provider)
 	if provider == nil {
-		return nil, nil, fiber.NewError(404, "This sign in provider is no longer available")
+		return nil, nil, false, fiber.NewError(404, "This sign in provider is no longer available")
 	}
 
 	endpoints, err := federation.ResolveEndpoints(ctx, provider)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	tokens, err := federation.Exchange(ctx, endpoints, provider, code, providerCallbackURL(star, provider), loginState.Verifier)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	identity, err := federation.FetchIdentity(ctx, endpoints, provider, tokens, loginState.Nonce)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	return federation.ResolveAccount(ctx, star, provider, identity)
@@ -242,5 +256,5 @@ func completeProviderLogin(ctx fiber.Ctx) error {
 		return expired
 	}
 
-	return continueLogin(ctx, star, user, account)
+	return continueLogin(ctx, star, user, account, "provider")
 }

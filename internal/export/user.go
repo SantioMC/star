@@ -21,6 +21,7 @@ type UserExport struct {
 	Authorizations []Authorization `json:"authorizations"`
 	LoginAttempts  []LoginAttempt  `json:"login_attempts"`
 	SecurityAlerts []SecurityAlert `json:"security_alerts"`
+	AuditLogs      []AuditLog      `json:"audit_logs"`
 }
 
 type Profile struct {
@@ -92,7 +93,26 @@ type SecurityAlert struct {
 	CreatedAt     time.Time   `json:"created_at"`
 }
 
-func User(ctx context.Context, db *database.Database, user *database.User) *UserExport {
+type AuditLog struct {
+	Action        string      `json:"action"`
+	Actor         string      `json:"actor"`
+	TargetType    *string     `json:"target_type"`
+	TargetID      *string     `json:"target_id"`
+	TargetName    *string     `json:"target_name"`
+	ApplicationID *string     `json:"application_id"`
+	ProviderID    *string     `json:"provider_id"`
+	IPAddress     *string     `json:"ip_address"`
+	UserAgent     *string     `json:"user_agent"`
+	Metadata      models.JSON `json:"metadata"`
+	CreatedAt     time.Time   `json:"created_at"`
+}
+
+func User(ctx context.Context, db *database.Database, user *database.User) (*UserExport, error) {
+	logs, err := auditLogs(ctx, db, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &UserExport{
 		ExportedAt: time.Now().UTC(),
 		Profile: Profile{
@@ -112,7 +132,61 @@ func User(ctx context.Context, db *database.Database, user *database.User) *User
 		Authorizations: convert(db.GetAuthorizationCodesByUserID(ctx, user.ID), authorization),
 		LoginAttempts:  convert(db.GetLoginFlowsByUserID(ctx, user.ID), loginAttempt),
 		SecurityAlerts: convert(db.GetSecurityAlertsByUserID(ctx, user.ID), securityAlert),
+		AuditLogs:      logs,
+	}, nil
+}
+
+func auditLogs(ctx context.Context, db *database.Database, userID string) ([]AuditLog, error) {
+	exported := []AuditLog{}
+	filter := database.AuditLogFilter{UserID: &userID, Limit: 1000}
+
+	for {
+		page, err := db.GetAuditLogs(ctx, filter)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, record := range page {
+			exported = append(exported, auditLog(record, userID))
+		}
+
+		if len(page) < filter.Limit {
+			return exported, nil
+		}
+
+		last := page[len(page)-1]
+		filter.Before = &database.AuditLogCursor{CreatedAt: last.CreatedAt, ID: last.ID}
 	}
+}
+
+func auditLog(record database.AuditLog, userID string) AuditLog {
+	log := AuditLog{
+		Action:        record.Action,
+		Actor:         "unknown",
+		TargetType:    record.TargetType,
+		TargetID:      record.TargetID,
+		TargetName:    record.TargetName,
+		ApplicationID: record.Application,
+		ProviderID:    record.Provider,
+		Metadata:      record.Metadata,
+		CreatedAt:     record.CreatedAt,
+	}
+
+	if record.ActorID != nil && *record.ActorID == userID {
+		log.Actor = "you"
+		log.IPAddress = record.Address
+		log.UserAgent = record.UserAgent
+	} else if record.ActorID != nil {
+		log.Actor = "administrator"
+	}
+
+	isOtherUser := record.TargetType != nil && *record.TargetType == "user" && record.TargetID != nil && *record.TargetID != userID
+	if isOtherUser {
+		log.TargetID = nil
+		log.TargetName = nil
+	}
+
+	return log
 }
 
 func convert[T any, R any](records []T, transform func(T) R) []R {

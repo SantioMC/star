@@ -12,11 +12,13 @@ import (
 )
 
 type Settings struct {
-	ID                int    `json:"id"`
-	AllowRegistration bool   `json:"allow_registration" db:"allow_registration"`
-	AllowLogins       bool   `json:"allow_logins" db:"allow_logins"`
-	EmailCodeLength   int    `json:"email_code_length" db:"email_code_length"`
-	PasswordSettings  string `json:"password_settings" db:"password_settings"`
+	ID                 int    `json:"id"`
+	AllowRegistration  bool   `json:"allow_registration" db:"allow_registration"`
+	AllowLogins        bool   `json:"allow_logins" db:"allow_logins"`
+	EmailCodeLength    int    `json:"email_code_length" db:"email_code_length"`
+	AuditRetentionDays *int   `json:"audit_retention_days" db:"audit_retention_days"`
+	AuditAnonymize     bool   `json:"audit_anonymize" db:"audit_anonymize"`
+	PasswordSettings   string `json:"password_settings" db:"password_settings"`
 }
 
 func (s *Settings) GetPasswordSettings() *password.PasswordSetttings {
@@ -52,7 +54,8 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		ctx,
 		`
 		UPDATE settings
-		SET allow_registration = $2, allow_logins = $3, password_settings = $4, email_code_length = $5
+		SET allow_registration = $2, allow_logins = $3, password_settings = $4, email_code_length = $5,
+			audit_retention_days = $6, audit_anonymize = $7
 		WHERE id = $1
 		`,
 		settings.ID,
@@ -60,6 +63,8 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		settings.AllowLogins,
 		settings.PasswordSettings,
 		settings.EmailCodeLength,
+		settings.AuditRetentionDays,
+		settings.AuditAnonymize,
 	)
 
 	return err
@@ -81,7 +86,7 @@ func (db *Database) SaveDefaultSettings(ctx context.Context) error {
 		true,
 		true,
 		passwordSettings,
-		6,
+		8,
 	)
 
 	return err

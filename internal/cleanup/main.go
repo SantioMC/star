@@ -17,6 +17,19 @@ func StartTicker(state *state.StarServer) {
 			Cleanup(state)
 		}
 	}()
+
+	auditTicker := time.NewTicker(time.Hour)
+	PrepareAuditLogs(context.Background(), state)
+
+	go func() {
+		CleanupAuditLogs(context.Background(), state)
+
+		for {
+			<-auditTicker.C
+			PrepareAuditLogs(context.Background(), state)
+			CleanupAuditLogs(context.Background(), state)
+		}
+	}()
 }
 
 func Cleanup(state *state.StarServer) {

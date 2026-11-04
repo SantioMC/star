@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
@@ -173,6 +174,7 @@ func registerUser(ctx fiber.Ctx) error {
 	}
 
 	sendVerificationEmail(star, username, request.Email, email.Code)
+	audit.Log(ctx, audit.UserRegister, audit.By(user))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -244,6 +246,7 @@ func changePassword(ctx fiber.Ctx) error {
 	}
 
 	notifyPasswordChanged(ctx, star, user.ID, star.ClientIP(ctx))
+	audit.Log(ctx, audit.PasswordChange)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -278,6 +281,8 @@ func deletePassword(ctx fiber.Ctx) error {
 	if err := star.Database.DeleteAccountByID(ctx, internalAccount.ID); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.PasswordRemove)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -337,6 +342,8 @@ func patchUser(ctx fiber.Ctx) error {
 		return err
 	}
 
+	before := *user
+
 	if data.Username != nil && *data.Username != user.Name {
 		sanitized, err := username.ValidateUsername(*data.Username, &username.DefaultSettings)
 		if err != nil {
@@ -363,6 +370,8 @@ func patchUser(ctx fiber.Ctx) error {
 	if err := star.Database.UpdateUser(ctx, user); err != nil {
 		return err
 	}
+
+	audit.Log(ctx, audit.UserUpdate, audit.Changes(before, *user))
 
 	return ctx.JSON(populateUser(ctx, user))
 }
@@ -439,11 +448,17 @@ func sendExport(ctx fiber.Ctx, user *database.User) error {
 	}
 
 	slog.Info("user data exported", "user", user.ID, "requester", requesterID)
+	audit.Log(ctx, audit.UserExport, audit.OnUser(user))
 
 	ctx.Set(fiber.HeaderCacheControl, "no-store")
 	ctx.Attachment("star-export-" + user.Name + "-" + time.Now().UTC().Format(time.DateOnly) + ".json")
 
-	return ctx.JSON(export.User(ctx, star.Database, user))
+	exported, err := export.User(ctx, star.Database, user)
+	if err != nil {
+		return err
+	}
+
+	return ctx.JSON(exported)
 }
 
 func adminUpdateUser(ctx fiber.Ctx) error {
@@ -458,6 +473,8 @@ func adminUpdateUser(ctx fiber.Ctx) error {
 	if user == nil {
 		return fiber.NewError(404, "User not found")
 	}
+
+	before := *user
 
 	if data.Username != nil && *data.Username != user.Name {
 		sanitized, err := username.ValidateUsername(*data.Username, &username.DefaultSettings)
@@ -486,8 +503,12 @@ func adminUpdateUser(ctx fiber.Ctx) error {
 		return err
 	}
 
+	if data.Username != nil || data.FirstName != nil || data.LastName != nil {
+		audit.Log(ctx, audit.UserUpdate, audit.OnUser(user), audit.Changes(before, *user))
+	}
+
 	if data.Roles != nil {
-		if err := setUserRoles(ctx, user.ID, *data.Roles); err != nil {
+		if err := setUserRoles(ctx, user, *data.Roles); err != nil {
 			return err
 		}
 	}
@@ -495,7 +516,7 @@ func adminUpdateUser(ctx fiber.Ctx) error {
 	return ctx.JSON(populateUser(ctx, user))
 }
 
-func setUserRoles(ctx fiber.Ctx, userID string, roleIDs []string) error {
+func setUserRoles(ctx fiber.Ctx, user *database.User, roleIDs []string) error {
 	star := common.GetState(ctx)
 
 	requesterID, err := request.GetUserID(ctx)
@@ -503,7 +524,7 @@ func setUserRoles(ctx fiber.Ctx, userID string, roleIDs []string) error {
 		return err
 	}
 
-	if requesterID == userID {
+	if requesterID == user.ID {
 		return fiber.NewError(403, "You are not permitted to modify your own roles")
 	}
 
@@ -517,12 +538,14 @@ func setUserRoles(ctx fiber.Ctx, userID string, roleIDs []string) error {
 		}
 	}
 
-	changed, err := star.Database.SetUserRoles(ctx, userID, requested)
+	changed, err := star.Database.SetUserRoles(ctx, user.ID, requested)
 	if err != nil || !changed {
 		return err
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.UserRolesUpdate, audit.OnUser(user), audit.With("roles", requested))
+
 	return nil
 }
 
@@ -591,6 +614,7 @@ func adminSetPassword(ctx fiber.Ctx) error {
 
 	cache.UpdateRevocations(ctx, star)
 	notifyPasswordChanged(ctx, star, user.ID, "")
+	audit.Log(ctx, audit.PasswordSet, audit.OnUser(user))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -623,6 +647,7 @@ func adminRequirePasswordChange(ctx fiber.Ctx) error {
 
 	cache.UpdateRevocations(ctx, star)
 	slog.Info("password change required", "user", user.ID, "by", requesterID)
+	audit.Log(ctx, audit.PasswordRequireChange, audit.OnUser(user))
 
 	return ctx.JSON(populateUser(ctx, user))
 }
@@ -642,6 +667,7 @@ func adminRequirePasswordChangeForAll(ctx fiber.Ctx) error {
 
 	cache.UpdateRevocations(ctx, star)
 	slog.Warn("password change required for all users", "affected", affected, "by", requesterID)
+	audit.Log(ctx, audit.PasswordRequireAll, audit.With("affected", affected))
 
 	return ctx.JSON(fiber.Map{
 		"affected": affected,
@@ -670,6 +696,7 @@ func adminDeleteUser(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.UserDelete, audit.OnUser(user))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -694,6 +721,8 @@ func adminClearLockout(ctx fiber.Ctx) error {
 	}
 
 	slog.Info("login lockout cleared", "user", user.ID, "by", requesterID)
+	audit.Log(ctx, audit.UserLockoutClear, audit.OnUser(user))
+
 	return ctx.JSON(populateUser(ctx, user))
 }
 
@@ -710,6 +739,7 @@ func adminInvalidateUserSessions(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.SessionRevokeAll, audit.OnUser(user))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

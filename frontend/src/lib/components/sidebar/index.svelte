@@ -4,6 +4,7 @@
   import Icon from "@/components/icon.svelte";
   import type { Snippet } from "svelte";
   import type { ClassValue } from "svelte/elements";
+  import NavGroup from "./nav-group.svelte";
   import NavItem from "./nav-item.svelte";
   import Category from "./category.svelte";
   import { hasPermission, user } from "@/index";
@@ -68,48 +69,99 @@
       <div class="flex flex-col gap-4">
         <div class="flex flex-col gap-0.5">
           <Category>Your Account</Category>
-          <NavItem href="/">Profile</NavItem>
-          <NavItem href="/security">Security</NavItem>
-          <NavItem href="/applications">Applications</NavItem>
+          <NavItem href="/" icon="user">Profile</NavItem>
+          <NavItem href="/security" icon="shield">Security</NavItem>
+          <NavItem href="/applications" icon="apps">Applications</NavItem>
 
           {#if isAdmin}
             <Category>Directory</Category>
-            <NavItem permission="admin:user:read" href="/admin/users">
+            <NavItem
+              permission="admin:user:read"
+              href="/admin/users"
+              icon="users"
+            >
               Users
             </NavItem>
-            <NavItem permission="admin:role:read" href="/admin/roles">
+            <NavItem
+              permission="admin:role:read"
+              href="/admin/roles"
+              icon="user-shield"
+            >
               Roles
             </NavItem>
 
             <Category>Platform</Category>
-            <NavItem permission="admin:metrics:read" href="/admin/overview">
+            <NavItem
+              permission="admin:metrics:read"
+              href="/admin/overview"
+              icon="chart-line"
+            >
               Overview
             </NavItem>
-            <NavItem permission="admin:alert:read" href="/admin/alerts">
-              Security Alerts
-            </NavItem>
-            <NavItem permission="admin:audit:read" href="/admin/audit">
-              Audit Log
-            </NavItem>
-            <NavItem permission="application:read" href="/admin/apps">
-              Applications
-            </NavItem>
-            <NavItem permission="admin:provider:read" href="/admin/providers">
-              Social Providers
-            </NavItem>
-            <NavItem permission="admin:key:read" href="/admin/keys">
-              Signing Keys
-            </NavItem>
-            <NavItem permission="admin:token:read" href="/admin/revocations">
-              Token Revocations
-            </NavItem>
-
+            <NavGroup
+              label="Monitoring"
+              icon="activity"
+              items={[
+                {
+                  href: "/admin/alerts",
+                  label: "Security Alerts",
+                  permission: "admin:alert:read",
+                },
+                {
+                  href: "/admin/audit",
+                  label: "Audit Log",
+                  permission: "admin:audit:read",
+                },
+              ]}
+            />
+            <NavGroup
+              label="Integrations"
+              icon="plug-connected"
+              items={[
+                {
+                  href: "/admin/apps",
+                  label: "Applications",
+                  permission: "application:read",
+                },
+                {
+                  href: "/admin/providers",
+                  label: "Social Providers",
+                  permission: "admin:provider:read",
+                },
+              ]}
+            />
+            <NavGroup
+              label="Keys & Tokens"
+              icon="key"
+              items={[
+                {
+                  href: "/admin/keys",
+                  label: "Signing Keys",
+                  permission: "admin:key:read",
+                },
+                {
+                  href: "/admin/revocations",
+                  label: "Token Revocations",
+                  permission: "admin:token:read",
+                },
+              ]}
+            />
             {#if hasPermission("admin:settings:read")}
-              <Category>Settings</Category>
-              <NavItem href="/admin/settings/access">Access</NavItem>
-              <NavItem href="/admin/settings/email">Email</NavItem>
-              <NavItem href="/admin/settings/passwords">Passwords</NavItem>
-              <NavItem href="/admin/settings/branding">Branding</NavItem>
+              <NavGroup
+                label="Settings"
+                icon="settings"
+                items={[
+                  { href: "/admin/settings/access", label: "Access" },
+                  { href: "/admin/settings/email", label: "Email" },
+                  { href: "/admin/settings/passwords", label: "Passwords" },
+                  { href: "/admin/settings/branding", label: "Branding" },
+                  {
+                    href: "/admin/settings/audit",
+                    label: "Audit Log",
+                    permission: "admin:audit:read",
+                  },
+                ]}
+              />
             {/if}
           {/if}
         </div>

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/emails"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/branding"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
@@ -75,6 +76,8 @@ func requestPasswordReset(ctx fiber.Ctx) error {
 	}
 
 	slog.Info("password reset requested", "user", user.ID)
+	audit.Log(ctx, audit.PasswordResetRequest, audit.By(user))
+
 	go sendPasswordResetEmail(star, user.Name, userEmail.Email, reset.Token, star.ClientIP(ctx))
 
 	return ctx.JSON(success)
@@ -186,6 +189,7 @@ func completePasswordReset(ctx fiber.Ctx) error {
 	ipAddress := star.ClientIP(ctx)
 	slog.Info("password reset completed", "user", reset.UserID, "ip_address", ipAddress)
 	notifyPasswordChanged(ctx, star, reset.UserID, ipAddress)
+	audit.Log(ctx, audit.PasswordReset, audit.ByID(reset.UserID))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,

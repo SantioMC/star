@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/login"
@@ -51,6 +52,7 @@ func invalidateUserSessions(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.SessionRevokeAll)
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -89,6 +91,7 @@ func invalidateUserSession(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.SessionRevoke, audit.With("session", session.FamilyID))
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
@@ -184,5 +187,7 @@ func endUserSession(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.SessionEnd, audit.ByID(current.UserID), audit.With("session", current.FamilyID))
+
 	return ctx.SendStatus(204)
 }
