@@ -37,6 +37,7 @@ export type StarPermission =
   | "admin:user:write"
   | "admin:user:delete"
   | "admin:user:export"
+  | "admin:password:require"
   | "admin:role:read"
   | "admin:role:create"
   | "admin:role:write"
@@ -224,6 +225,15 @@ export const loginBackupCode = async (flow: string, code: string) => {
   return credentialed
     .post(`api/user/login/backup`, {
       json: { flow, code },
+    })
+    .json<LoginResponse>()
+    .catch(orError);
+};
+
+export const loginPassword = async (flow: string, password: string) => {
+  return credentialed
+    .post(`api/user/login/password`, {
+      json: { flow, password },
     })
     .json<LoginResponse>()
     .catch(orError);
@@ -649,6 +659,20 @@ export const adminSetPassword = async (user: string, password: string) => {
       json: { password },
     })
     .json<{ success: boolean }>()
+    .catch(orError);
+};
+
+export const requirePasswordChange = async (user: string) => {
+  return api
+    .post(`api/user/${encodeURIComponent(user)}/password/require-change`)
+    .json<AdminUser>()
+    .catch(orError);
+};
+
+export const requirePasswordChangeForAll = async () => {
+  return api
+    .post(`api/user/password/require-change`)
+    .json<{ affected: number }>()
     .catch(orError);
 };
 
@@ -1103,7 +1127,15 @@ export interface LoginMfaResponse {
   factors: MFAMethod[];
 }
 
-export type LoginResponse = LoginSuccessResponse | LoginMfaResponse;
+export interface LoginPasswordChangeResponse {
+  next: "pass_change";
+  flow: string;
+}
+
+export type LoginResponse =
+  | LoginSuccessResponse
+  | LoginMfaResponse
+  | LoginPasswordChangeResponse;
 
 export interface MfaFactorsResponse {
   factors: MFAMethod[];
@@ -1251,6 +1283,8 @@ export interface AdminUser {
   email_verified: boolean;
   roles: Role[];
   lockout: Lockout | null;
+  has_password: boolean;
+  password_change_required: boolean;
   created_at: string;
 }
 
@@ -1402,6 +1436,7 @@ export type RevocationReason =
   | "code_replayed"
   | "roles_changed"
   | "password_reset"
+  | "password_change_required"
   | "user_deleted"
   | "application_deleted"
   | "manual";

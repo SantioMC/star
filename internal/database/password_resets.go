@@ -97,7 +97,7 @@ func (db *Database) CompletePasswordReset(ctx context.Context, reset *PasswordRe
 
 	updated, err := tx.ExecContext(
 		ctx,
-		`UPDATE accounts SET password = $2, password_alg = $3 WHERE user_id = $1 AND type = 'internal' AND password IS NOT NULL`,
+		`UPDATE accounts SET password = $2, password_alg = $3, password_change_required = FALSE WHERE user_id = $1 AND type = 'internal' AND password IS NOT NULL`,
 		reset.UserID,
 		hashed,
 		alg,

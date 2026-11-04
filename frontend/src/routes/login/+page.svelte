@@ -22,11 +22,13 @@
     import CaptchaStep from "./components/captcha-step.svelte";
     import CredentialsStep from "./components/credentials-step.svelte";
     import MfaStep from "./components/mfa-step.svelte";
+    import PasswordChangeStep from "./components/password-change-step.svelte";
 
     type Step =
         | { kind: "credentials" }
         | { kind: "captcha" }
-        | { kind: "mfa"; flow: string; factors: star.MFAMethod[] };
+        | { kind: "mfa"; flow: string; factors: star.MFAMethod[] }
+        | { kind: "password-change"; flow: string };
 
     const intent = getLoginIntent();
     const knownUsername = $user?.username;
@@ -60,6 +62,12 @@
                         backup_code:
                             "Enter one of the backup codes you saved when setting up two-factor authentication",
                     }[mfaMethod],
+                };
+            case "password-change":
+                return {
+                    title: "Choose a new password",
+                    description:
+                        "You need to set a new password before you can continue",
                 };
         }
 
@@ -151,6 +159,10 @@
                     flow: response.flow,
                     factors: response.factors,
                 };
+                return;
+            case "pass_change":
+                error = "";
+                step = { kind: "password-change", flow: response.flow };
                 return;
             default:
                 return restart(
@@ -257,6 +269,12 @@
             bind:method={mfaMethod}
             flow={step.flow}
             factors={step.factors}
+            onstage={handleStage}
+            oncancel={() => restart()}
+        />
+    {:else if step.kind === "password-change"}
+        <PasswordChangeStep
+            flow={step.flow}
             onstage={handleStage}
             oncancel={() => restart()}
         />

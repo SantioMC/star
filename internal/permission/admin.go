@@ -20,6 +20,11 @@ var PermissionAdminExportUsers = PermissionDefinition{
 	Description: "Allows exporting all personal data of any user",
 }
 
+var PermissionAdminRequirePasswordChange = PermissionDefinition{
+	Name:        "admin:password:require",
+	Description: "Allows signing out every user and requiring them to choose a new password",
+}
+
 var PermissionAdminReadRoles = PermissionDefinition{
 	Name:        "admin:role:read",
 	Description: "Allows viewing roles and their permissions",

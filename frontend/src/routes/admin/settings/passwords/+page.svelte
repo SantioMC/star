@@ -1,9 +1,15 @@
 <script lang="ts">
+    import { goto } from "$app/navigation";
+    import * as star from "$lib/star";
+    import Button from "@/components/button.svelte";
     import Card from "@/components/card.svelte";
+    import ConfirmModal from "@/components/confirm-modal.svelte";
     import Icon from "@/components/icon.svelte";
     import NumberField from "@/components/number-field.svelte";
     import SettingsForm from "@/components/settings-form.svelte";
+    import { clearSession, hasPermission } from "@/index";
     import type { PasswordSettings } from "@/star";
+    import { toast } from "svelte-sonner";
     import { getSettingsContext } from "../context.svelte";
 
     type PolicyKey = keyof PasswordSettings;
@@ -29,6 +35,10 @@
     const policyKeys = [...lengthFields, ...characterFields].map((it) => it.key);
 
     const settings = getSettingsContext();
+
+    const canRequireForAll = hasPermission("admin:password:require");
+
+    let requireForAllModal = $state<ConfirmModal>();
 
     const toInputs = (policy: PasswordSettings) =>
         Object.fromEntries(
@@ -73,6 +83,17 @@
     const discard = () => {
         inputs = toInputs(settings.current!.password_settings);
     };
+
+    const requireForAll = async () => {
+        const result = await star.requirePasswordChangeForAll();
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        clearSession();
+        goto("/login");
+    };
 </script>
 
 {#snippet fieldRow(fields: PolicyField[])}
@@ -114,4 +135,34 @@
             </p>
         {/if}
     </Card>
+
+    {#if canRequireForAll}
+        <Card
+            title="Require Password Change"
+            icon="lock"
+            description="Use this if passwords may have been exposed. Everyone is signed out and every user with a password must choose a new one at their next sign in."
+        >
+            <div class="mt-4">
+                <Button
+                    type="button"
+                    variant="danger"
+                    onclick={() => requireForAllModal?.open()}
+                >
+                    Require for all users
+                </Button>
+            </div>
+        </Card>
+    {/if}
 </SettingsForm>
+
+<ConfirmModal
+    bind:this={requireForAllModal}
+    title="Require password change for all users"
+    confirmLabel="Require password change"
+    onconfirm={requireForAll}
+>
+    Every session and access token on this server is revoked immediately,
+    including yours and those issued to connected applications. Every user with
+    a password must choose a new one at their next sign in. This can not be
+    undone.
+</ConfirmModal>

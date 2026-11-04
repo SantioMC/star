@@ -36,6 +36,7 @@
         code_replayed: "Authorization code replayed",
         roles_changed: "Roles or permissions changed",
         password_reset: "Password reset by an admin",
+        password_change_required: "Password change required by an admin",
         user_deleted: "User deleted",
         application_deleted: "Application deleted",
         manual: "Revoked by an admin",

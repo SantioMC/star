@@ -1,8 +1,6 @@
 package login
 
 import (
-	"time"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/mfa"
@@ -29,22 +27,8 @@ func CreateRequireMFAStage(
 	account *database.Account,
 	mfa []mfa.MFAMethod,
 ) (*RequireMFAStage, error) {
-	id := database.CreateID(database.LoginFlowKey)
-
-	var accountID *string
-	if account != nil {
-		accountID = &account.ID
-	}
-
-	token := database.CreateLoginFlowToken()
-	if err := star.Database.CreateLoginFlow(ctx, &database.LoginFlow{
-		ID:        id,
-		UserID:    user.ID,
-		AccountID: accountID,
-		Token:     token,
-		Stage:     database.StageMFARequired,
-		CreatedAt: time.Now(),
-	}); err != nil {
+	token, err := createFlow(ctx, star, user, account, database.StageMFARequired)
+	if err != nil {
 		return nil, err
 	}
 

@@ -5,8 +5,7 @@
     import AuthShell from "@/components/auth-shell.svelte";
     import Button from "@/components/button.svelte";
     import Icon from "@/components/icon.svelte";
-    import Input from "@/components/input.svelte";
-    import { Label } from "@/components/ui/label";
+    import NewPasswordFields from "@/components/new-password-fields.svelte";
     import { onMount } from "svelte";
 
     let token = $state("");
@@ -121,32 +120,7 @@
         {/if}
 
         <form onsubmit={submit}>
-            <div class="flex flex-col gap-6">
-                <div class="grid gap-2">
-                    <Label for="password" class="select-none">
-                        New Password
-                    </Label>
-                    <Input
-                        bind:value={password}
-                        id="password"
-                        type="password"
-                        autocomplete="new-password"
-                        required
-                    />
-                </div>
-                <div class="grid gap-2">
-                    <Label for="confirm-password" class="select-none">
-                        Confirm Password
-                    </Label>
-                    <Input
-                        bind:value={confirmPassword}
-                        id="confirm-password"
-                        type="password"
-                        autocomplete="new-password"
-                        required
-                    />
-                </div>
-            </div>
+            <NewPasswordFields bind:password bind:confirmPassword />
             <div class="mt-6">
                 <Button type="submit" class="w-full" {loading}>
                     Reset Password

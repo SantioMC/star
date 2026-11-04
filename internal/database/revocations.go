@@ -20,16 +20,17 @@ const (
 type RevocationReason string
 
 const (
-	RevocationReasonSignedOut       RevocationReason = "signed_out"
-	RevocationReasonSessionsCleared RevocationReason = "sessions_cleared"
-	RevocationReasonGrantRevoked    RevocationReason = "grant_revoked"
-	RevocationReasonTokenReplayed   RevocationReason = "token_replayed"
-	RevocationReasonCodeReplayed    RevocationReason = "code_replayed"
-	RevocationReasonRolesChanged    RevocationReason = "roles_changed"
-	RevocationReasonPasswordReset   RevocationReason = "password_reset"
-	RevocationReasonUserDeleted     RevocationReason = "user_deleted"
-	RevocationReasonAppDeleted      RevocationReason = "application_deleted"
-	RevocationReasonManual          RevocationReason = "manual"
+	RevocationReasonSignedOut              RevocationReason = "signed_out"
+	RevocationReasonSessionsCleared        RevocationReason = "sessions_cleared"
+	RevocationReasonGrantRevoked           RevocationReason = "grant_revoked"
+	RevocationReasonTokenReplayed          RevocationReason = "token_replayed"
+	RevocationReasonCodeReplayed           RevocationReason = "code_replayed"
+	RevocationReasonRolesChanged           RevocationReason = "roles_changed"
+	RevocationReasonPasswordReset          RevocationReason = "password_reset"
+	RevocationReasonPasswordChangeRequired RevocationReason = "password_change_required"
+	RevocationReasonUserDeleted            RevocationReason = "user_deleted"
+	RevocationReasonAppDeleted             RevocationReason = "application_deleted"
+	RevocationReasonManual                 RevocationReason = "manual"
 )
 
 const GlobalRevocationSubject = "*"

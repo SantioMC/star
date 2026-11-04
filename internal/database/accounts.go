@@ -17,8 +17,9 @@ type Account struct {
 	ID   string `json:"id"`
 	Type string `json:"type"`
 
-	Password    *string                `json:"password"`
-	PasswordAlg cryptography.Algorithm `json:"password_alg" db:"password_alg"`
+	Password               *string                `json:"password"`
+	PasswordAlg            cryptography.Algorithm `json:"password_alg" db:"password_alg"`
+	PasswordChangeRequired bool                   `json:"password_change_required" db:"password_change_required"`
 
 	UserID     string    `json:"user_id" db:"user_id"`
 	ProviderID *string   `json:"provider_id" db:"provider_id"`
@@ -111,14 +112,15 @@ func (db *Database) insertAccount(ctx context.Context, execer sqlx.ExecerContext
 	_, err := execer.ExecContext(
 		ctx,
 		`
-		INSERT INTO accounts (id, user_id, type, password, password_alg, provider_id, external_id, account_name, account_email, account_avatar, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO accounts (id, user_id, type, password, password_alg, password_change_required, provider_id, external_id, account_name, account_email, account_avatar, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		`,
 		account.ID,
 		account.UserID,
 		account.Type,
 		account.Password,
 		account.PasswordAlg,
+		account.PasswordChangeRequired,
 		account.ProviderID,
 		account.ExternalID,
 		account.Name,
@@ -135,7 +137,7 @@ func (db *Database) UpdateAccount(ctx context.Context, account *Account) error {
 		ctx,
 		`
 		UPDATE accounts
-		SET password = $2, password_alg = $3, account_name = $4, account_email = $5, account_avatar = $6
+		SET password = $2, password_alg = $3, account_name = $4, account_email = $5, account_avatar = $6, password_change_required = $7
 		WHERE id = $1
 		`,
 		account.ID,
@@ -144,9 +146,76 @@ func (db *Database) UpdateAccount(ctx context.Context, account *Account) error {
 		account.Name,
 		account.Email,
 		account.Avatar,
+		account.PasswordChangeRequired,
 	)
 
 	return err
+}
+
+func (db *Database) RequirePasswordChange(ctx context.Context, userID string) (bool, error) {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+
+	defer tx.Rollback()
+
+	updated, err := tx.ExecContext(
+		ctx,
+		`UPDATE accounts SET password_change_required = TRUE WHERE user_id = $1 AND type = 'internal' AND password IS NOT NULL`,
+		userID,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	if affected, err := updated.RowsAffected(); err != nil || affected == 0 {
+		return false, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+		return false, err
+	}
+
+	if err := db.revokeUser(ctx, tx, userID, RevocationReasonPasswordChangeRequired); err != nil {
+		return false, err
+	}
+
+	return true, tx.Commit()
+}
+
+func (db *Database) RequirePasswordChangeForAll(ctx context.Context) (int64, error) {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	defer tx.Rollback()
+
+	updated, err := tx.ExecContext(
+		ctx,
+		`UPDATE accounts SET password_change_required = TRUE WHERE type = 'internal' AND password IS NOT NULL`,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	affected, err := updated.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions`); err != nil {
+		return 0, err
+	}
+
+	if err := db.revokeAll(ctx, tx, RevocationReasonPasswordChangeRequired); err != nil {
+		return 0, err
+	}
+
+	return affected, tx.Commit()
 }
 
 func (db *Database) DeleteAccountByID(ctx context.Context, id string) error {

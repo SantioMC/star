@@ -7,6 +7,11 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
+type LoginFlowPasswordRequest struct {
+	Flow     string `json:"flow" validate:"required,max=64"`
+	Password string `json:"password" validate:"required"`
+}
+
 type RegisterRequirements struct {
 	Username username.Settings `json:"username"`
 }

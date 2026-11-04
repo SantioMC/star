@@ -30,6 +30,7 @@ CREATE TABLE accounts (
 
     password VARCHAR(255),
     password_alg VARCHAR(100),
+    password_change_required BOOLEAN NOT NULL DEFAULT FALSE,
 
     external_id VARCHAR(255),
     account_name VARCHAR(255),

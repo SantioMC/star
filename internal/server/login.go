@@ -12,6 +12,7 @@ import (
 	"github.com/tubblelive/star/internal/login"
 	"github.com/tubblelive/star/internal/mfa"
 	"github.com/tubblelive/star/internal/passkey"
+	"github.com/tubblelive/star/internal/password"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/types"
@@ -22,6 +23,7 @@ func loginRouter(router fiber.Router) {
 	router.Post("/", middleware.RateLimit(10), middleware.RequireCaptcha, loginUser)
 	router.Post("/totp", middleware.RateLimit(10), loginFlowTotp)
 	router.Post("/backup", middleware.RateLimit(10), loginFlowBackupCode)
+	router.Post("/password", middleware.RateLimit(10), loginFlowPassword)
 	router.Post("/passkey/options", middleware.RateLimit(10), passkeyLoginOptions)
 	router.Post("/passkey", middleware.RateLimit(10), loginPasskey)
 
@@ -98,18 +100,12 @@ func continueLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, a
 
 	if len(factors) == 0 {
 		// We have no MFA available, we have completed all factors
-		if err := login.Preverify(ctx, star, user, account); err != nil {
-			return err
-		}
-
-		// All done, allow them through
-		flow, err := login.CreateSuccessfulStage(ctx, star, user, account)
+		stage, err := finishLogin(ctx, star, user, account)
 		if err != nil {
 			return err
 		}
 
-		setSessionCookie(ctx, star, flow.Session)
-		return ctx.JSON(flow)
+		return ctx.JSON(stage)
 	}
 
 	flow, err := login.CreateRequireMFAStage(ctx, star, user, account, factors)
@@ -128,7 +124,7 @@ func loginFlowTotp(ctx fiber.Ctx) error {
 		return err
 	}
 
-	loginFlow, err := pendingMFAFlow(ctx, star, request.Flow)
+	loginFlow, err := pendingFlow(ctx, star, request.Flow, database.StageMFARequired)
 	if err != nil {
 		return err
 	}
@@ -165,7 +161,7 @@ func loginFlowBackupCode(ctx fiber.Ctx) error {
 		return err
 	}
 
-	loginFlow, err := pendingMFAFlow(ctx, star, request.Flow)
+	loginFlow, err := pendingFlow(ctx, star, request.Flow, database.StageMFARequired)
 	if err != nil {
 		return err
 	}
@@ -186,14 +182,62 @@ func loginFlowBackupCode(ctx fiber.Ctx) error {
 	return completeMFAFlow(ctx, star, loginFlow)
 }
 
-func pendingMFAFlow(ctx fiber.Ctx, star *state.StarServer, token string) (*database.LoginFlow, error) {
+func loginFlowPassword(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var request types.LoginFlowPasswordRequest
+	if err := ctx.Bind().Body(&request); err != nil {
+		return err
+	}
+
+	loginFlow, err := pendingFlow(ctx, star, request.Flow, database.StagePasswordChange)
+	if err != nil {
+		return err
+	}
+
+	account := star.Database.GetInternalAccountByUserID(ctx, loginFlow.UserID)
+	if account == nil || account.Password == nil {
+		return login.ErrLoginFlowExpired
+	}
+
+	sanitized, err := password.ValidatePassword(request.Password, star.Settings.Load().GetPasswordSettings())
+	if err != nil {
+		return fiber.NewError(400, err.Error())
+	}
+
+	if cryptography.VerifyHash(sanitized, *account.Password) {
+		return fiber.NewError(400, "Your new password must be different from your current password")
+	}
+
+	hashed, alg := cryptography.HashString(sanitized)
+
+	completed, err := star.Database.CompleteRequiredPasswordChange(ctx, loginFlow, hashed, alg)
+	if err != nil {
+		return err
+	} else if !completed {
+		return login.ErrLoginFlowExpired
+	}
+
+	ipAddress := star.ClientIP(ctx)
+	slog.Info("required password change completed", "user", loginFlow.UserID, "ip_address", ipAddress)
+	notifyPasswordChanged(ctx, star, loginFlow.UserID, ipAddress)
+
+	stage, err := completeUserLogin(ctx, star, loginFlow.UserID, loginFlow.AccountID)
+	if err != nil {
+		return err
+	}
+
+	return ctx.JSON(stage)
+}
+
+func pendingFlow(ctx fiber.Ctx, star *state.StarServer, token string, stage database.LoginFlowStage) (*database.LoginFlow, error) {
 	loginFlow := star.Database.GetLoginStageByToken(ctx, token)
 	if loginFlow == nil || loginFlow.Stage == database.StageCompleted {
 		return nil, fiber.NewError(400, "invalid login flow identifier provided")
 	}
 
-	if loginFlow.Stage != database.StageMFARequired {
-		return nil, fiber.NewError(400, "login flow is not requesting a second factor")
+	if loginFlow.Stage != stage {
+		return nil, fiber.NewError(400, "login flow is not waiting on this step")
 	}
 
 	if loginFlow.Attempts >= 5 || time.Since(loginFlow.CreatedAt) > time.Minute*10 {
@@ -235,7 +279,7 @@ func passkeyLoginOptions(ctx fiber.Ctx) error {
 		})
 	}
 
-	loginFlow, err := pendingMFAFlow(ctx, star, request.Flow)
+	loginFlow, err := pendingFlow(ctx, star, request.Flow, database.StageMFARequired)
 	if err != nil {
 		return err
 	}
@@ -273,7 +317,7 @@ func loginPasskey(ctx fiber.Ctx) error {
 		return ctx.JSON(stage)
 	}
 
-	loginFlow, err := pendingMFAFlow(ctx, star, request.Flow)
+	loginFlow, err := pendingFlow(ctx, star, request.Flow, database.StageMFARequired)
 	if err != nil {
 		return err
 	}
@@ -285,7 +329,7 @@ func loginPasskey(ctx fiber.Ctx) error {
 	return completeMFAFlow(ctx, star, loginFlow)
 }
 
-func completeUserLogin(ctx fiber.Ctx, star *state.StarServer, userID string, accountID *string) (*login.SuccessfulLoginStage, error) {
+func completeUserLogin(ctx fiber.Ctx, star *state.StarServer, userID string, accountID *string) (any, error) {
 	user := star.Database.GetUserByID(ctx, userID)
 	if user == nil {
 		return nil, fiber.NewError(500, "failed to retrieve your user details from database")
@@ -298,9 +342,18 @@ func completeUserLogin(ctx fiber.Ctx, star *state.StarServer, userID string, acc
 		account = star.Database.GetInternalAccountByUserID(ctx, userID)
 	}
 
-	// User has completed totp, let's run some last verifications
+	return finishLogin(ctx, star, user, account)
+}
+
+func finishLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, account *database.Account) (any, error) {
+	// User has completed every factor, let's run some last verifications
 	if err := login.Preverify(ctx, star, user, account); err != nil {
 		return nil, err
+	}
+
+	internal := star.Database.GetInternalAccountByUserID(ctx, user.ID)
+	if internal != nil && internal.PasswordChangeRequired {
+		return login.CreateRequirePasswordChangeStage(ctx, star, user, account)
 	}
 
 	stage, err := login.CreateSuccessfulStage(ctx, star, user, account)

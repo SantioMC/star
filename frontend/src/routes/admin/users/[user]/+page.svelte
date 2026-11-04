@@ -15,7 +15,7 @@
     import RoleSelector from "@/components/role-selector.svelte";
     import * as Avatar from "@/components/ui/avatar";
     import { Label } from "@/components/ui/label";
-    import { hasPermission } from "@/index";
+    import { hasPermission, user as currentUser } from "@/index";
     import { downloadFile, formatTime, simpleDate, titleCase } from "@/utils";
     import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
@@ -43,6 +43,7 @@
     let deleteUserModal = $state<ConfirmModal>();
     let signOutModal = $state<ConfirmModal>();
     let revokeTokensModal = $state<ConfirmModal>();
+    let requirePasswordChangeModal = $state<ConfirmModal>();
     let rolesModal = $state<Modal>();
     let passwordModal = $state<Modal>();
 
@@ -64,6 +65,20 @@
                 label: "Set password",
                 icon: "key",
                 onclick: openPasswordModal,
+            });
+        }
+
+        const canRequirePasswordChange =
+            canWrite &&
+            user?.has_password &&
+            !user.password_change_required &&
+            user.id !== $currentUser?.id;
+
+        if (canRequirePasswordChange) {
+            items.push({
+                label: "Require password change",
+                icon: "lock",
+                onclick: () => requirePasswordChangeModal?.open(),
             });
         }
 
@@ -189,6 +204,19 @@
         toast.success("Successfully changed the user's password");
     };
 
+    const requirePasswordChange = async () => {
+        if (!user) return;
+
+        const result = await star.requirePasswordChange(user.id);
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        user = result;
+        toast.success(`${result.username} must change their password`);
+    };
+
     const unlock = async () => {
         if (!user || unlocking) return;
 
@@ -284,6 +312,9 @@
                 <span>Joined {simpleDate(new Date(user.created_at))}</span>
                 {#if user.lockout?.locked}
                     <Badge tone="danger">locked</Badge>
+                {/if}
+                {#if user.password_change_required}
+                    <Badge tone="warning">password change required</Badge>
                 {/if}
             </div>
         </div>
@@ -488,6 +519,16 @@
             </div>
         </form>
     </Modal>
+
+    <ConfirmModal
+        bind:this={requirePasswordChangeModal}
+        title="Require password change"
+        confirmLabel="Require change"
+        onconfirm={requirePasswordChange}
+    >
+        <span class="text-foreground">{user.username}</span> will be signed out
+        everywhere and must choose a new password the next time they sign in.
+    </ConfirmModal>
 
     <ConfirmModal
         bind:this={signOutModal}

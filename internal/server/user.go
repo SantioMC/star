@@ -38,6 +38,14 @@ func userRouter(router fiber.Router) {
 	router.Post("/password/change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserPasswordWrite), middleware.RequirePermission(permission.PermissionChangePassword), changePassword)
 	router.Delete("/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeUserPasswordWrite), middleware.RequirePermission(permission.PermissionChangePassword), deletePassword)
 	router.Route("/password/reset", passwordResetRouter)
+	router.Post(
+		"/password/require-change",
+		middleware.RequireAuth,
+		middleware.RequireScope(openid.ScopeAdminUsersWrite),
+		middleware.RequireScope(openid.ScopeAdminTokensWrite),
+		middleware.RequirePermission(permission.PermissionAdminRequirePasswordChange),
+		adminRequirePasswordChangeForAll,
+	)
 
 	router.Route("/login", loginRouter)
 
@@ -55,6 +63,7 @@ func userRouter(router fiber.Router) {
 	router.Delete("/:user", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminDeleteUser)
 	router.Delete("/:user/sessions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSessions)
 	router.Post("/:user/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
+	router.Post("/:user/password/require-change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminRequirePasswordChange)
 	router.Delete("/:user/lockout", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminClearLockout)
 }
 
@@ -76,7 +85,9 @@ func populateUser(ctx fiber.Ctx, user *database.User) transformer.AdminUser {
 		slog.Error("failed to get login attempts", "user", user.ID, "err", err)
 	}
 
-	return transformer.TransformAdminUser(user, email, transformed, attempts)
+	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
+
+	return transformer.TransformAdminUser(user, email, transformed, attempts, account)
 }
 
 func getRegisterRequirements(ctx fiber.Ctx) error {
@@ -204,6 +215,7 @@ func changePassword(ctx fiber.Ctx) error {
 		// Update if we have an internal account
 		account.Password = &hashed
 		account.PasswordAlg = alg
+		account.PasswordChangeRequired = false
 
 		if err := star.Database.UpdateAccount(ctx, account); err != nil {
 			return err
@@ -582,6 +594,57 @@ func adminSetPassword(ctx fiber.Ctx) error {
 
 	return ctx.JSON(fiber.Map{
 		"success": true,
+	})
+}
+
+func adminRequirePasswordChange(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	requesterID, err := request.GetUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
+	if user == nil {
+		return fiber.NewError(404, "User not found")
+	}
+
+	if requesterID == user.ID {
+		return fiber.NewError(403, "Use the password change endpoint to update your own password")
+	}
+
+	required, err := star.Database.RequirePasswordChange(ctx, user.ID)
+	if err != nil {
+		return err
+	} else if !required {
+		return fiber.NewError(400, "This user does not have a password to change")
+	}
+
+	cache.UpdateRevocations(ctx, star)
+	slog.Info("password change required", "user", user.ID, "by", requesterID)
+
+	return ctx.JSON(populateUser(ctx, user))
+}
+
+func adminRequirePasswordChangeForAll(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	requesterID, err := request.GetUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	affected, err := star.Database.RequirePasswordChangeForAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	cache.UpdateRevocations(ctx, star)
+	slog.Warn("password change required for all users", "affected", affected, "by", requesterID)
+
+	return ctx.JSON(fiber.Map{
+		"affected": affected,
 	})
 }
 

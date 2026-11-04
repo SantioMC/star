@@ -146,6 +146,52 @@ func (db *Database) UpdateLoginFlow(ctx context.Context, loginFlow *LoginFlow) e
 	return err
 }
 
+func (db *Database) CompleteRequiredPasswordChange(ctx context.Context, loginFlow *LoginFlow, hashed string, alg cryptography.Algorithm) (bool, error) {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+
+	defer tx.Rollback()
+
+	consumed, err := tx.ExecContext(
+		ctx,
+		`DELETE FROM login_flows WHERE id = $1 AND stage = $2`,
+		loginFlow.ID,
+		StagePasswordChange,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	if affected, err := consumed.RowsAffected(); err != nil || affected == 0 {
+		return false, err
+	}
+
+	updated, err := tx.ExecContext(
+		ctx,
+		`
+		UPDATE accounts
+		SET password = $2, password_alg = $3, password_change_required = FALSE
+		WHERE user_id = $1 AND type = 'internal' AND password_change_required
+		`,
+		loginFlow.UserID,
+		hashed,
+		alg,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	if affected, err := updated.RowsAffected(); err != nil || affected == 0 {
+		return false, err
+	}
+
+	return true, tx.Commit()
+}
+
 func (db *Database) DeleteDeadLoginFlows(ctx context.Context) (int64, error) {
 	result, err := db.DB().ExecContext(
 		ctx,
