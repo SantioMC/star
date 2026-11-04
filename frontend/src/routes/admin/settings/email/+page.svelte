@@ -47,7 +47,7 @@
                 bind:value={codeLength}
                 id="emailCodeLength"
                 label="Code Length"
-                min={8}
+                min={6}
                 max={12}
             />
         </div>

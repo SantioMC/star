@@ -1,7 +1,5 @@
 <script lang="ts">
     import { branding } from "@/branding";
-    import { goto } from "$app/navigation";
-    import { page } from "$app/state";
     import * as star from "$lib/star";
     import {
         CLIENT_KIND_DESCRIPTIONS,
@@ -24,7 +22,6 @@
     import Icon from "@/components/icon.svelte";
     import Notice from "@/components/notice.svelte";
     import Input from "@/components/input.svelte";
-    import Menu, { type MenuItem } from "@/components/menu.svelte";
     import Modal from "@/components/modal.svelte";
     import RedirectUri from "@/components/provider/redirect-uri.svelte";
     import ScopeFields from "@/components/scope-fields.svelte";
@@ -32,13 +29,13 @@
     import Select from "@/components/select.svelte";
     import { Label } from "@/components/ui/label";
     import { hasPermission } from "@/index";
-    import { formatTime } from "@/utils";
-    import { onMount } from "svelte";
+    import { getResource } from "@/resource.svelte";
     import { toast } from "svelte-sonner";
 
     const MIN_DURATION = 60;
 
-    let app = $state<star.AdminApplication | null>(null);
+    const resource = getResource<star.AdminApplication>();
+    const app = $derived(resource.current);
 
     let name = $state("");
     let namespace = $state("");
@@ -62,7 +59,6 @@
 
     let builtinExpanded = $state(false);
 
-    let deleteAppModal = $state<ConfirmModal>();
     let rotateSecretModal = $state<ConfirmModal>();
     let addRedirectUriModal = $state<Modal>();
     let addScopeModal = $state<Modal>();
@@ -71,21 +67,6 @@
     const canModify = $derived(
         app?.internal === false && hasPermission("application:write"),
     );
-
-    const menuItems = $derived.by(() => {
-        const items: MenuItem[] = [];
-
-        if (app?.internal === false && hasPermission("application:delete")) {
-            items.push({
-                label: "Delete application",
-                icon: "trash",
-                danger: true,
-                onclick: () => deleteAppModal?.open(),
-            });
-        }
-
-        return items;
-    });
 
     const resetForm = (data: star.AdminApplication) => {
         name = data.name;
@@ -104,18 +85,10 @@
         if (!app) return;
 
         const data = await star.getApplication(app.id);
-        if (data) app = data;
+        if (data) resource.current = data;
     };
 
-    onMount(async () => {
-        if (!hasPermission("application:read")) return goto("/");
-
-        const data = await star.getApplication(page.params.app!);
-        if (!data) return goto("/admin/apps");
-
-        app = data;
-        resetForm(data);
-    });
+    resetForm(resource.current!);
 
     const parseDuration = (value: string, label: string): number | null => {
         const parsed = Number(value);
@@ -166,19 +139,6 @@
         if (result.client_secret) secretModal?.show(result.client_secret);
 
         toast.success("Successfully updated application");
-    };
-
-    const deleteApp = async () => {
-        if (!app) return;
-
-        const result = await star.deleteApplication(app.id);
-        if ("error" in result) {
-            toast.error(result.message);
-            return false;
-        }
-
-        toast.success(`Deleted ${app.name}`);
-        goto("/admin/apps");
     };
 
     const rotateSecret = async () => {
@@ -273,37 +233,6 @@
 </script>
 
 {#if app}
-    <div class="flex flex-row items-center gap-4">
-        <div
-            class="flex size-14 shrink-0 items-center justify-center rounded-full bg-background-200"
-        >
-            <Icon icon="package" class="text-2xl text-muted" />
-        </div>
-
-        <div class="min-w-0 flex-1">
-            <h1 class="leading-8 text-2xl font-semibold truncate">
-                {app.name}
-            </h1>
-            <div
-                class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted mt-0.5"
-            >
-                <span class="font-mono text-xs">{app.id}</span>
-                <Badge tone={app.kind === "confidential" ? "info" : "neutral"}>
-                    {app.kind}
-                </Badge>
-                {#if app.internal}
-                    <Badge tone="primary">built-in</Badge>
-                {/if}
-                {#if app.development_mode}
-                    <Badge tone="warning">development</Badge>
-                {/if}
-                <span>Created {formatTime(new Date(app.created_at))}</span>
-            </div>
-        </div>
-
-        <Menu items={menuItems} label="Application actions" />
-    </div>
-
     {#if app.internal}
         <Notice icon="lock" title="Built-in application.">
             This application is managed by {$branding.name} and can not be modified or
@@ -704,15 +633,4 @@
     {/if}
 
     <ClientSecretModal bind:this={secretModal} />
-
-    <ConfirmModal
-        bind:this={deleteAppModal}
-        title="Delete application"
-        confirmLabel="Delete application"
-        confirmText={app.name}
-        onconfirm={deleteApp}
-    >
-        Deleting <span class="text-foreground">{app.name}</span> invalidates all of
-        its sessions and breaks every login that uses it. This action can not be reversed.
-    </ConfirmModal>
 {/if}

@@ -88,6 +88,9 @@
             <NavItem permission="admin:alert:read" href="/admin/alerts">
               Security Alerts
             </NavItem>
+            <NavItem permission="admin:audit:read" href="/admin/audit">
+              Audit Log
+            </NavItem>
             <NavItem permission="application:read" href="/admin/apps">
               Applications
             </NavItem>

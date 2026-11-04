@@ -55,7 +55,9 @@ export type StarPermission =
   | "admin:token:revoke"
   | "admin:metrics:read"
   | "admin:alert:read"
-  | "admin:alert:resolve";
+  | "admin:alert:resolve"
+  | "admin:audit:read"
+  | "admin:audit:write";
 
 // Scopes issued by star itself, purely for typescript typings
 export type StarScope =
@@ -96,7 +98,9 @@ export type StarScope =
   | "star:admin:tokens:write"
   | "star:admin:metrics:read"
   | "star:admin:alerts:read"
-  | "star:admin:alerts:write";
+  | "star:admin:alerts:write"
+  | "star:admin:audit:read"
+  | "star:admin:audit:write";
 
 export const api = ky.extend({
   prefixUrl: API_URL,
@@ -909,6 +913,49 @@ export const resolveSecurityAlert = async (id: string) => {
     .catch(orError);
 };
 
+export const getDiscovery = async () => {
+  return ky
+    .get(getDiscoveryURL())
+    .json<DiscoveryDocument>()
+    .catch(() => null);
+};
+
+export const getAuditLogs = async (filter: AuditLogFilter) => {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(filter)) {
+    if (value) searchParams.set(key, value);
+  }
+
+  return api
+    .get(`api/audit?${searchParams.toString()}`)
+    .json<AuditLogPage>()
+    .catch(orError);
+};
+
+export const getAuditActions = async () => {
+  return api
+    .get("api/audit/actions")
+    .json<AuditActionDefinition[]>()
+    .catch(() => [] as AuditActionDefinition[]);
+};
+
+export const getAuditSettings = async () => {
+  return api
+    .get("api/audit/settings")
+    .json<AuditSettings>()
+    .catch(() => null);
+};
+
+export const updateAuditSettings = async (
+  changes: UpdateAuditSettingsRequest,
+) => {
+  return api
+    .patch("api/audit/settings", { json: changes })
+    .json<AuditSettings>()
+    .catch(orError);
+};
+
 export const getServerSettings = async () => {
   return api
     .get("api/settings")
@@ -1465,4 +1512,66 @@ export interface SecurityAlert {
   created_at: string;
   resolved_at: string | null;
   resolved_by: string | null;
+}
+
+export interface DiscoveryDocument {
+  issuer: string;
+  jwks_uri: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  userinfo_endpoint: string;
+  revocation_endpoint: string;
+  introspection_endpoint: string;
+}
+
+export type AuditSeverity = "info" | "notice" | "critical";
+
+export interface AuditActionDefinition {
+  name: string;
+  label: string;
+  category: string;
+  severity: AuditSeverity;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  target_type: string | null;
+  target_id: string | null;
+  target_name: string | null;
+  application_id: string | null;
+  provider_id: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AuditLogPage {
+  items: AuditLog[];
+  next: string | null;
+}
+
+export interface AuditLogFilter {
+  user?: string;
+  application?: string;
+  provider?: string;
+  query?: string;
+  category?: string;
+  action?: string;
+  since?: string;
+  until?: string;
+  before?: string;
+}
+
+export interface AuditSettings {
+  retention_days: number | null;
+  anonymize: boolean;
+}
+
+export interface UpdateAuditSettingsRequest {
+  retention_days?: number;
+  anonymize?: boolean;
 }
