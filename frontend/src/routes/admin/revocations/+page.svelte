@@ -40,6 +40,7 @@
         user_deleted: "User deleted",
         user_suspended: "User suspended",
         application_deleted: "Application deleted",
+        application_access_changed: "Application access changed",
         manual: "Revoked by an admin",
     };
 

@@ -95,6 +95,10 @@ func introspectRefreshToken(ctx fiber.Ctx, star *state.StarServer, application *
 		return introspectionResponse{Active: false}
 	}
 
+	if !star.Database.UserCanAccessApplication(ctx, session.UserID, application) {
+		return introspectionResponse{Active: false}
+	}
+
 	return introspectionResponse{
 		Active:    true,
 		Scope:     strings.Join(session.Scopes, " "),

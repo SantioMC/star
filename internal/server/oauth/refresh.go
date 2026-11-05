@@ -78,6 +78,10 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for no longer exists")
 	}
 
+	if !star.Database.UserCanAccessApplication(ctx, user.ID, sessionApp) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for can not access this application")
+	}
+
 	if star.Revocations.Revoked(time.Now().Unix(), current.FamilyID) {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This refresh token has been revoked")
 	}

@@ -139,6 +139,16 @@
                 return signIn();
             }
 
+            if (authCode.message === "application_access_denied") {
+                if (prompted("none")) {
+                    return redirect({ error: "access_denied" });
+                }
+
+                return fail(
+                    `Your account does not have access to ${application.name}`,
+                );
+            }
+
             if (authCode.message === "consent_required") {
                 if (prompted("none")) {
                     return redirect({ error: "consent_required" });

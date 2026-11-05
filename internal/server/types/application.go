@@ -24,6 +24,8 @@ type UpdateApplicationRequest struct {
 	DevelopmentMode  *bool           `json:"development_mode" validate:"omitempty"`
 	PrivilegedScopes *bool           `json:"privileged_scopes" validate:"omitempty"`
 	SigningAlgorithm *string         `json:"signing_algorithm" validate:"omitempty"`
+	RoleRestricted   *bool           `json:"role_restricted" validate:"omitempty"`
+	Roles            []string        `json:"roles" validate:"omitempty,max=64"`
 }
 
 type ApplicationSecretResponse struct {

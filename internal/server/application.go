@@ -57,8 +57,9 @@ func getApplications(ctx fiber.Ctx) error {
 
 	applications := star.Database.GetApplications(ctx)
 	scopes := star.Database.GetAllApplicationScopes(ctx)
+	bindings := star.Database.GetAllApplicationRoleBindings(ctx)
 
-	return ctx.JSON(transformer.TransformApplications(applications, scopes))
+	return ctx.JSON(transformer.TransformApplications(applications, scopes, bindings))
 }
 
 func getApplication(ctx fiber.Ctx) error {
@@ -70,7 +71,9 @@ func getApplication(ctx fiber.Ctx) error {
 	}
 
 	scopes := star.Database.GetApplicationScopes(ctx, application.ID)
-	return ctx.JSON(transformer.TransformApplication(*application, scopes))
+	roles := star.Database.GetApplicationRoleIDs(ctx, application.ID)
+
+	return ctx.JSON(transformer.TransformApplication(*application, scopes, roles))
 }
 
 func rotateApplicationSecret(ctx fiber.Ctx) error {
@@ -366,16 +369,64 @@ func updateApplication(ctx fiber.Ctx) error {
 		application.SigningAlgorithm = algorithm
 	}
 
-	if err := star.Database.UpdateApplication(ctx, application); err != nil {
+	if request.RoleRestricted != nil {
+		application.RoleRestricted = *request.RoleRestricted
+	}
+
+	options := []audit.Option{onApplication(application), audit.Changes(before, *application)}
+
+	if request.RoleRestricted != nil || request.Roles != nil {
+		roles, err := resolveApplicationRoles(ctx, star, application, request.Roles)
+		if err != nil {
+			return err
+		}
+
+		if err := star.Database.UpdateApplicationWithRoles(ctx, application, roles); err != nil {
+			return err
+		}
+
+		cache.UpdateRevocations(ctx, star)
+		options = append(options, audit.With("roles", roles))
+	} else if err := star.Database.UpdateApplication(ctx, application); err != nil {
 		return err
 	}
 
-	audit.Log(ctx, audit.ApplicationUpdate, onApplication(application), audit.Changes(before, *application))
+	audit.Log(ctx, audit.ApplicationUpdate, options...)
 
 	return ctx.JSON(types.ApplicationSecretResponse{
 		ID:           application.ID,
 		ClientSecret: clientSecret,
 	})
+}
+
+func resolveApplicationRoles(
+	ctx fiber.Ctx,
+	star *state.StarServer,
+	application *database.Application,
+	requested []string,
+) ([]string, error) {
+	if requested == nil {
+		requested = star.Database.GetApplicationRoleIDs(ctx, application.ID)
+	}
+
+	roles := slices.Compact(slices.Sorted(slices.Values(requested)))
+
+	for _, id := range roles {
+		role := star.Database.GetRoleByID(ctx, id)
+		if role == nil {
+			return nil, fiber.NewError(400, "Unknown role: "+id)
+		}
+
+		if role.IsDefault() {
+			return nil, fiber.NewError(400, "The default role applies to every user and can not restrict an application")
+		}
+	}
+
+	if application.RoleRestricted && len(roles) == 0 {
+		return nil, fiber.NewError(400, "At least one role is required to restrict an application")
+	}
+
+	return roles, nil
 }
 
 func modifiableApplication(ctx fiber.Ctx) (*database.Application, error) {
@@ -560,6 +611,10 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 
 	if !oauth.AllowedRedirectURI(application, request.RedirectURI) {
 		return fiber.NewError(400, "Redirect URI is not allowed for this application")
+	}
+
+	if !star.Database.UserCanAccessApplication(ctx, user.ID, application) {
+		return fiber.NewError(403, "application_access_denied")
 	}
 
 	challenge := ""

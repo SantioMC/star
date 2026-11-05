@@ -61,6 +61,10 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for no longer exists")
 	}
 
+	if !star.Database.UserCanAccessApplication(ctx, user.ID, application) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for can not access this application")
+	}
+
 	resolution := openid.ResolveScopes(ctx, star.Database, application, authCode.Scopes)
 	if len(resolution.Granted) == 0 {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidScope, "None of the scopes granted by this authorization code are available anymore")

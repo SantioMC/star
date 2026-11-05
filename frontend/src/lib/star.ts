@@ -1363,6 +1363,8 @@ export interface AppChanges {
   development_mode?: boolean;
   privileged_scopes?: boolean;
   signing_algorithm?: SigningAlgorithm;
+  role_restricted?: boolean;
+  roles?: string[];
 }
 
 export interface ApplicationSecretResponse {
@@ -1508,6 +1510,8 @@ export interface AdminApplication {
   development_mode: boolean;
   privileged_scopes: boolean;
   signing_algorithm: SigningAlgorithm;
+  role_restricted: boolean;
+  roles: string[];
   scopes: ApplicationScope[];
   builtin_scopes?: BuiltinScope[];
   created_at: string;
@@ -1593,6 +1597,7 @@ export type RevocationReason =
   | "user_deleted"
   | "user_suspended"
   | "application_deleted"
+  | "application_access_changed"
   | "manual";
 
 export interface TokenRevocation {

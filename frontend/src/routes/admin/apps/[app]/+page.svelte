@@ -24,12 +24,14 @@
     import Input from "@/components/input.svelte";
     import Modal from "@/components/modal.svelte";
     import RedirectUri from "@/components/provider/redirect-uri.svelte";
+    import RoleSelector from "@/components/role-selector.svelte";
     import ScopeFields from "@/components/scope-fields.svelte";
     import ScopeItem from "@/components/scope-item.svelte";
     import Select from "@/components/select.svelte";
     import { Label } from "@/components/ui/label";
     import { hasPermission } from "@/index";
     import { getResource } from "@/resource.svelte";
+    import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
 
     const MIN_DURATION = 60;
@@ -59,6 +61,10 @@
 
     let builtinExpanded = $state(false);
 
+    let roleRestricted = $state(resource.current!.role_restricted);
+    let accessRoles = $state<star.Role[]>([]);
+    let savingAccess = $state(false);
+
     let rotateSecretModal = $state<ConfirmModal>();
     let addRedirectUriModal = $state<Modal>();
     let addScopeModal = $state<Modal>();
@@ -67,6 +73,18 @@
     const canModify = $derived(
         app?.internal === false && hasPermission("application:write"),
     );
+
+    const canReadRoles = hasPermission("admin:role:read");
+    const canManageAccess = $derived(canModify && canReadRoles);
+
+    onMount(async () => {
+        if (!app || !canReadRoles) return;
+
+        const assigned = app.roles;
+        const roles = await star.getAllRoles();
+
+        accessRoles = roles.filter((role) => assigned.includes(role.id));
+    });
 
     const resetForm = (data: star.AdminApplication) => {
         name = data.name;
@@ -139,6 +157,24 @@
         if (result.client_secret) secretModal?.show(result.client_secret);
 
         toast.success("Successfully updated application");
+    };
+
+    const saveAccess = async () => {
+        if (!app || savingAccess) return;
+
+        savingAccess = true;
+        const result = await star.updateApplication(app.id, {
+            role_restricted: roleRestricted,
+            roles: accessRoles.map((role) => role.id),
+        });
+        savingAccess = false;
+
+        if ("error" in result) {
+            return toast.error(result.message);
+        }
+
+        await refresh();
+        toast.success("Successfully updated access");
     };
 
     const rotateSecret = async () => {
@@ -391,6 +427,63 @@
             {/if}
         {/if}
     </Card>
+
+    {#if !app.internal}
+        <Card
+            title="Access"
+            icon="lock"
+            description="Control which users are able to sign in to this application."
+            class="flex flex-col gap-4"
+        >
+            {#if app.role_restricted && app.roles.length === 0}
+                <Notice icon="alert-triangle" title="No roles assigned.">
+                    Every role allowed to access this application was deleted,
+                    nobody can sign in until a new one is selected.
+                </Notice>
+            {/if}
+
+            <fieldset disabled={!canManageAccess} class="flex flex-col gap-4">
+                <label
+                    class="flex items-start gap-3 rounded-lg border border-background-200 p-3 transition-colors has-checked:border-primary/40 has-checked:bg-hover has-enabled:cursor-pointer has-enabled:hover:bg-hover"
+                >
+                    <Checkbox class="mt-0.5" bind:checked={roleRestricted} />
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm select-none">
+                            Restrict to specific roles
+                        </span>
+                        <span class="text-sm text-muted select-none">
+                            Only users with at least one of the selected roles
+                            can sign in. Anyone else is signed out of this
+                            application when saved.
+                        </span>
+                    </div>
+                </label>
+
+                {#if roleRestricted}
+                    {#if canReadRoles}
+                        <RoleSelector bind:roles={accessRoles} />
+                    {:else}
+                        <p class="text-sm text-muted">
+                            {app.roles.length} role(s) selected, viewing them requires
+                            permission to read roles.
+                        </p>
+                    {/if}
+                {/if}
+            </fieldset>
+
+            {#if canManageAccess}
+                <div class="flex items-center gap-2 justify-end">
+                    <Button
+                        loading={savingAccess}
+                        disabled={roleRestricted && accessRoles.length === 0}
+                        onclick={saveAccess}
+                    >
+                        Save access
+                    </Button>
+                </div>
+            {/if}
+        </Card>
+    {/if}
 
     <Card title="Application Settings" icon="settings">
         <form onsubmit={updateApp} class="mt-6">

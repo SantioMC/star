@@ -9,6 +9,7 @@ type AdminApplication struct {
 	database.Application
 	HasClientSecret bool                        `json:"has_client_secret"`
 	Scopes          []database.ApplicationScope `json:"scopes"`
+	Roles           []string                    `json:"roles"`
 	BuiltinScopes   []openid.ScopeDefinition    `json:"builtin_scopes,omitempty"`
 }
 
@@ -20,28 +21,42 @@ func builtinScopes(application database.Application) []openid.ScopeDefinition {
 	return openid.BuiltinScopes
 }
 
-func TransformApplication(application database.Application, scopes []database.ApplicationScope) AdminApplication {
+func TransformApplication(application database.Application, scopes []database.ApplicationScope, roles []string) AdminApplication {
 	if scopes == nil {
 		scopes = []database.ApplicationScope{}
+	}
+
+	if roles == nil {
+		roles = []string{}
 	}
 
 	return AdminApplication{
 		Application:     application,
 		HasClientSecret: application.ClientSecret != nil,
 		Scopes:          scopes,
+		Roles:           roles,
 		BuiltinScopes:   builtinScopes(application),
 	}
 }
 
-func TransformApplications(applications []database.Application, scopes []database.ApplicationScope) []AdminApplication {
+func TransformApplications(
+	applications []database.Application,
+	scopes []database.ApplicationScope,
+	bindings []database.ApplicationRoleBinding,
+) []AdminApplication {
 	grouped := make(map[string][]database.ApplicationScope, len(applications))
 	for _, scope := range scopes {
 		grouped[scope.ApplicationID] = append(grouped[scope.ApplicationID], scope)
 	}
 
+	roles := make(map[string][]string, len(applications))
+	for _, binding := range bindings {
+		roles[binding.ApplicationID] = append(roles[binding.ApplicationID], binding.RoleID)
+	}
+
 	transformed := make([]AdminApplication, len(applications))
 	for idx, application := range applications {
-		transformed[idx] = TransformApplication(application, grouped[application.ID])
+		transformed[idx] = TransformApplication(application, grouped[application.ID], roles[application.ID])
 	}
 
 	return transformed

@@ -31,6 +31,7 @@ const (
 	RevocationReasonUserDeleted            RevocationReason = "user_deleted"
 	RevocationReasonUserSuspended          RevocationReason = "user_suspended"
 	RevocationReasonAppDeleted             RevocationReason = "application_deleted"
+	RevocationReasonAppAccessChanged       RevocationReason = "application_access_changed"
 	RevocationReasonManual                 RevocationReason = "manual"
 )
 

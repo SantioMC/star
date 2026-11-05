@@ -16,6 +16,7 @@ import (
 type ApplicationKind string
 
 const ApplicationKey = "app"
+const ApplicationRoleBindingKey = "arb"
 
 const (
 	ApplicationKindPublic       ApplicationKind = "public"
@@ -54,7 +55,15 @@ type Application struct {
 	DevelopmentMode  bool               `json:"development_mode" db:"development_mode"`
 	PrivilegedScopes bool               `json:"privileged_scopes" db:"privileged_scopes"`
 	SigningAlgorithm KeyAlgorithm       `json:"signing_algorithm" db:"signing_algorithm"`
+	RoleRestricted   bool               `json:"role_restricted" db:"role_restricted"`
 	CreatedAt        time.Time          `json:"created_at" db:"created_at"`
+}
+
+type ApplicationRoleBinding struct {
+	ID            string    `json:"id"`
+	ApplicationID string    `json:"application_id" db:"application_id"`
+	RoleID        string    `json:"role_id" db:"role_id"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
 func CreateApplicationSecret() string {
@@ -170,7 +179,11 @@ func (db *Database) CreateApplication(ctx context.Context, application *Applicat
 }
 
 func (db *Database) UpdateApplication(ctx context.Context, application *Application) error {
-	_, err := db.DB().ExecContext(
+	return db.updateApplication(ctx, db.DB(), application)
+}
+
+func (db *Database) updateApplication(ctx context.Context, execer sqlx.ExecerContext, application *Application) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
 		UPDATE applications
@@ -178,7 +191,7 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		client_secret = $5, internal = $6, token_duration = $7,
 		session_duration = $8, redirect_uris = $9, development_mode = $10,
 		kind = $11, namespace = $12, consent = $13, privileged_scopes = $14,
-		signing_algorithm = $15
+		signing_algorithm = $15, role_restricted = $16
 		WHERE id = $1
 		`,
 		application.ID,
@@ -196,9 +209,138 @@ func (db *Database) UpdateApplication(ctx context.Context, application *Applicat
 		application.Consent,
 		application.PrivilegedScopes,
 		application.SigningAlgorithm,
+		application.RoleRestricted,
 	)
 
 	return err
+}
+
+func (db *Database) UpdateApplicationWithRoles(ctx context.Context, application *Application, roleIDs []string) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if err := db.updateApplication(ctx, tx, application); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM application_role_bindings WHERE application_id = $1`, application.ID); err != nil {
+		return err
+	}
+
+	for _, roleID := range roleIDs {
+		_, err := tx.ExecContext(
+			ctx,
+			`
+			INSERT INTO application_role_bindings (
+				id, application_id, role_id, created_at
+			) VALUES ($1, $2, $3, $4)
+			`,
+			CreateID(ApplicationRoleBindingKey),
+			application.ID,
+			roleID,
+			time.Now(),
+		)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	if application.RoleRestricted {
+		err = db.revoke(
+			ctx,
+			tx,
+			RevocationKindSession,
+			RevocationReasonAppAccessChanged,
+			`
+			DELETE FROM sessions
+			WHERE application_id = $1 AND user_id NOT IN (
+				SELECT role_bindings.user_id FROM role_bindings
+				INNER JOIN application_role_bindings ON role_bindings.role_id = application_role_bindings.role_id
+				WHERE application_role_bindings.application_id = $1
+			)
+			RETURNING family_id AS subject, user_id
+			`,
+			application.ID,
+		)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (db *Database) GetApplicationRoleIDs(ctx context.Context, applicationID string) []string {
+	bindings, err := list[ApplicationRoleBinding](
+		ctx,
+		db.DB(),
+		`SELECT * FROM application_role_bindings WHERE application_id = $1`,
+		applicationID,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []string{}
+	} else if err != nil {
+		slog.Error("failed to get application roles", "err", err, "application", applicationID)
+		return []string{}
+	}
+
+	roleIDs := make([]string, len(bindings))
+	for idx, binding := range bindings {
+		roleIDs[idx] = binding.RoleID
+	}
+
+	return roleIDs
+}
+
+func (db *Database) GetAllApplicationRoleBindings(ctx context.Context) []ApplicationRoleBinding {
+	bindings, err := list[ApplicationRoleBinding](
+		ctx,
+		db.DB(),
+		`SELECT * FROM application_role_bindings`,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return []ApplicationRoleBinding{}
+	} else if err != nil {
+		slog.Error("failed to get all application role bindings", "err", err)
+		return []ApplicationRoleBinding{}
+	}
+
+	return bindings
+}
+
+func (db *Database) UserCanAccessApplication(ctx context.Context, userID string, application *Application) bool {
+	if !application.RoleRestricted {
+		return true
+	}
+
+	exists, err := sqlx.OneContext[bool](
+		ctx,
+		db.DB(),
+		`
+		SELECT EXISTS (
+			SELECT 1 FROM application_role_bindings
+			INNER JOIN role_bindings ON application_role_bindings.role_id = role_bindings.role_id
+			WHERE application_role_bindings.application_id = $1 AND role_bindings.user_id = $2
+		)
+		`,
+		application.ID,
+		userID,
+	)
+
+	if err != nil {
+		slog.Error("failed to check application access", "err", err, "user", userID, "application", application.ID)
+		return false
+	}
+
+	return exists
 }
 
 func (db *Database) DeleteApplicationByID(ctx context.Context, id string) error {
