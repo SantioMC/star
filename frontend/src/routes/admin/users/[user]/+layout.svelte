@@ -19,6 +19,7 @@
     import { downloadFile, formatTime, simpleDate } from "@/utils";
     import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
+    import ImpersonateModal from "./components/impersonate-modal.svelte";
     import SuspendModal from "./components/suspend-modal.svelte";
     import UnsuspendModal from "./components/unsuspend-modal.svelte";
 
@@ -30,11 +31,13 @@
     const canSuspend = hasPermission("admin:user:suspend");
     const canRevokeTokens = hasPermission("admin:token:revoke");
     const canReadAudit = hasPermission("admin:audit:read");
+    const canImpersonate = hasPermission("admin:user:impersonate");
 
     const context = new Resource<star.AdminUser>();
     setResource(context);
 
     const user = $derived(context.current);
+    const manageable = $derived(user?.manageable);
 
     let newPassword = $state("");
     let confirmPassword = $state("");
@@ -47,6 +50,7 @@
     let passwordModal = $state<Modal>();
     let suspendModal = $state<SuspendModal>();
     let unsuspendModal = $state<UnsuspendModal>();
+    let impersonateModal = $state<ImpersonateModal>();
 
     const tabs = $derived.by(() => {
         if (!user) return [];
@@ -109,7 +113,7 @@
     const menuItems = $derived.by(() => {
         const items: MenuItem[] = [];
 
-        if (canWrite) {
+        if (canWrite && manageable) {
             items.push({
                 label: "Set password",
                 icon: "key",
@@ -120,6 +124,7 @@
 
         const canRequirePasswordChange =
             canWrite &&
+            manageable &&
             user?.has_password &&
             !user.password_change_required &&
             user.id !== $currentUser?.id;
@@ -142,7 +147,22 @@
             });
         }
 
-        if (canDelete) {
+        const canImpersonateUser =
+            canImpersonate &&
+            manageable &&
+            !user?.suspension &&
+            user?.id !== $currentUser?.id;
+
+        if (canImpersonateUser) {
+            items.push({
+                label: "Impersonate",
+                icon: "spy",
+                group: "access",
+                onclick: () => impersonateModal?.open(),
+            });
+        }
+
+        if (canDelete && manageable) {
             items.push({
                 label: "Sign out all sessions",
                 icon: "logout",
@@ -151,7 +171,7 @@
             });
         }
 
-        if (canRevokeTokens) {
+        if (canRevokeTokens && manageable) {
             items.push({
                 label: "Revoke access tokens",
                 icon: "ban",
@@ -160,14 +180,14 @@
             });
         }
 
-        if (canSuspend && user?.suspension) {
+        if (canSuspend && manageable && user?.suspension) {
             items.push({
                 label: "Unsuspend user",
                 icon: "user-check",
                 group: "moderation",
                 onclick: () => unsuspendModal?.open(),
             });
-        } else if (canSuspend && user?.id !== $currentUser?.id) {
+        } else if (canSuspend && manageable && user?.id !== $currentUser?.id) {
             items.push({
                 label: "Suspend user",
                 icon: "user-off",
@@ -177,7 +197,7 @@
             });
         }
 
-        if (canDelete) {
+        if (canDelete && manageable) {
             items.push({
                 label: "Delete user",
                 icon: "trash",
@@ -339,7 +359,7 @@
             {suspension.reason}
 
             {#snippet actions()}
-                {#if canSuspend}
+                {#if canSuspend && manageable}
                     <Button
                         variant="secondary"
                         onclick={() => unsuspendModal?.open()}
@@ -354,6 +374,8 @@
     <Tabs items={tabs} label="User sections" />
 
     {@render children()}
+
+    <ImpersonateModal bind:this={impersonateModal} {user} />
 
     <SuspendModal
         bind:this={suspendModal}

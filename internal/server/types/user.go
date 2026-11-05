@@ -6,6 +6,15 @@ import (
 	"github.com/tubblelive/star/internal/username"
 )
 
+type ImpersonateUserRequest struct {
+	ApplicationID string `json:"application_id" validate:"required"`
+}
+
+type ImpersonateUserResponse struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 type LoginRequest struct {
 	Username string `json:"username" validate:"required"`
 	Password string `json:"password" validate:"required"`

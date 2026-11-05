@@ -165,5 +165,6 @@ export interface JWTDetails {
   naf: number;
   nbf: number;
   scope?: string;
+  imp?: string;
   "urn:star:iam:permissions": string;
 }

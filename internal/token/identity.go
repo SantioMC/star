@@ -4,6 +4,7 @@ import (
 	"maps"
 
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/state"
 )
 
@@ -24,6 +25,10 @@ func CreateIDToken(
 	fields["aud"] = application.ClientID
 	fields["azp"] = application.ClientID
 	fields["auth_time"] = session.AuthenticatedAt.Unix()
+
+	if session.ImpersonatorID != nil {
+		fields[openid.ImpersonatorClaim] = *session.ImpersonatorID
+	}
 
 	if nonce != nil {
 		fields["nonce"] = *nonce

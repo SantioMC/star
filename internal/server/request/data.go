@@ -35,6 +35,26 @@ func GetUserID(ctx fiber.Ctx) (string, error) {
 	return jwt.Subject, nil
 }
 
+func GetWeight(ctx fiber.Ctx) (int, error) {
+	if weight, ok := ctx.Locals(common.RequestWeightKey).(int); ok {
+		return weight, nil
+	}
+
+	star := common.GetState(ctx)
+	userID, err := GetUserID(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	weight, err := star.Database.GetUserWeight(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+
+	ctx.Locals(common.RequestWeightKey, weight)
+	return weight, nil
+}
+
 func GetUser(ctx fiber.Ctx) (*database.User, error) {
 	value := ctx.Locals(common.UserKey)
 	if value != nil {

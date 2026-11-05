@@ -38,17 +38,24 @@
     let deleteRoleModal = $state<ConfirmModal>();
 
     const canEditDetails = $derived(
-        hasPermission("admin:role:write") && role != null && !role.internal,
+        hasPermission("admin:role:write") &&
+            role != null &&
+            role.manageable &&
+            !role.internal,
     );
 
     const canEditPermissions = $derived(
         hasPermission("admin:role:write") &&
             role != null &&
+            role.manageable &&
             (!role.internal || role.default),
     );
 
     const canDelete = $derived(
-        hasPermission("admin:role:delete") && role != null && !role.internal,
+        hasPermission("admin:role:delete") &&
+            role != null &&
+            role.manageable &&
+            !role.internal,
     );
 
     const menuItems = $derived.by(() => {

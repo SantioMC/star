@@ -14,10 +14,12 @@
     import { formatTime, titleCase } from "@/utils";
     import { toast } from "svelte-sonner";
 
-    const canWrite = hasPermission("admin:user:write");
-
     const context = getResource<star.AdminUser>();
     const user = $derived(context.current);
+
+    const canWrite = $derived(
+        hasPermission("admin:user:write") && user?.manageable,
+    );
 
     let username = $state("");
     let firstName = $state("");

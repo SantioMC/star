@@ -34,11 +34,18 @@ func RefreshSession(
 		return nil, err
 	}
 
+	if current.ImpersonatorID != nil {
+		if err := CheckImpersonation(ctx, server, *current.ImpersonatorID, current.UserID); err != nil {
+			return nil, err
+		}
+	}
+
 	session := buildSession(
 		ctx,
 		server,
 		current.FamilyID,
 		current.UserID,
+		current.ImpersonatorID,
 		current.AccountID,
 		current.ApplicationID,
 		current.Scopes,

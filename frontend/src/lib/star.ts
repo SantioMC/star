@@ -37,6 +37,7 @@ export type StarPermission =
   | "admin:user:write"
   | "admin:user:delete"
   | "admin:user:export"
+  | "admin:user:impersonate"
   | "admin:password:require"
   | "admin:role:read"
   | "admin:role:create"
@@ -86,6 +87,7 @@ export type StarScope =
   | "star:admin:users:read"
   | "star:admin:users:write"
   | "star:admin:users:delete"
+  | "star:admin:users:impersonate"
   | "star:admin:roles:read"
   | "star:admin:roles:write"
   | "star:admin:providers:read"
@@ -709,6 +711,38 @@ export const unsuspendUser = async (user: string, reason: string) => {
     .catch(orError);
 };
 
+export const getImpersonationApplications = async (
+  user: string,
+  page: number,
+  query: string,
+  limit: number,
+) => {
+  const searchParams = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+
+  if (query) {
+    searchParams.set("query", query);
+  }
+
+  return api
+    .get(
+      `api/user/${encodeURIComponent(user)}/impersonate/applications?${searchParams.toString()}`,
+    )
+    .json<SharedApplication[]>()
+    .catch(orError);
+};
+
+export const impersonateUser = async (user: string, applicationId: string) => {
+  return api
+    .post(`api/user/${encodeURIComponent(user)}/impersonate`, {
+      json: { application_id: applicationId },
+    })
+    .json<ImpersonationResponse>()
+    .catch(orError);
+};
+
 export const adminSetPassword = async (user: string, password: string) => {
   return api
     .post(`api/user/${encodeURIComponent(user)}/password`, {
@@ -852,6 +886,13 @@ export const updateRole = async (id: string, changes: UpdateRoleRequest) => {
   return api
     .patch(`api/role/${encodeURIComponent(id)}`, { json: changes })
     .json<Role>()
+    .catch(orError);
+};
+
+export const reorderRoles = async (roles: string[]) => {
+  return api
+    .post("api/role/order", { json: { roles } })
+    .json<Role[]>()
     .catch(orError);
 };
 
@@ -1330,6 +1371,8 @@ export interface Role {
   description: string;
   internal: boolean;
   default: boolean;
+  weight: number;
+  manageable: boolean;
   permissions: string[];
   created_at: string;
 }
@@ -1411,7 +1454,20 @@ export interface AdminUser {
   suspension: UserSuspension | null;
   has_password: boolean;
   password_change_required: boolean;
+  manageable: boolean;
   created_at: string;
+}
+
+export interface SharedApplication {
+  id: string;
+  name: string;
+  url: string;
+  authorized: boolean;
+}
+
+export interface ImpersonationResponse {
+  url: string;
+  expires_at: string;
 }
 
 export interface UserSuspension {
@@ -1473,6 +1529,7 @@ export interface Session {
   browser: string | "Unknown";
   status: "active" | "rotated";
   device: string;
+  impersonator_id: string | null;
   created_at: string;
   expires_at: string;
 }

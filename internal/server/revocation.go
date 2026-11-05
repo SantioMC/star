@@ -51,6 +51,8 @@ func createTokenRevocation(ctx fiber.Ctx) error {
 		err = star.Database.RevokeAllTokens(ctx, database.RevocationReasonManual)
 	} else if user := star.Database.GetUserByID(ctx, *data.User); user == nil {
 		return fiber.NewError(404, "User not found")
+	} else if err := requireManagement(ctx, user); err != nil {
+		return err
 	} else {
 		err = star.Database.RevokeUserTokens(ctx, user.ID, database.RevocationReasonManual)
 		action = audit.TokenRevoke

@@ -93,6 +93,8 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired refresh token")
 	} else if errors.Is(err, session.ErrUserSuspended) {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for is suspended")
+	} else if errors.Is(err, session.ErrImpersonationDenied) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The impersonator of this session is no longer permitted to impersonate this user")
 	} else if err != nil {
 		return err
 	}

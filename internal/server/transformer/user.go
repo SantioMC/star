@@ -62,6 +62,7 @@ type AdminUser struct {
 	Suspension             *database.UserSuspension `json:"suspension"`
 	HasPassword            bool                     `json:"has_password"`
 	PasswordChangeRequired bool                     `json:"password_change_required"`
+	Manageable             bool                     `json:"manageable"`
 	CreatedAt              time.Time                `json:"created_at"`
 }
 
@@ -92,11 +93,17 @@ func TransformAdminUser(
 	attempts *database.LoginAttempts,
 	account *database.Account,
 	suspension *database.UserSuspension,
+	reach int,
 ) AdminUser {
 	var primaryEmail *string
 
 	if email != nil {
 		primaryEmail = &email.Email
+	}
+
+	weight := database.DefaultRoleWeight
+	for _, role := range roles {
+		weight = max(weight, role.Weight)
 	}
 
 	return AdminUser{
@@ -112,6 +119,7 @@ func TransformAdminUser(
 		Suspension:             suspension,
 		HasPassword:            account != nil && account.Password != nil,
 		PasswordChangeRequired: account != nil && account.PasswordChangeRequired,
+		Manageable:             weight <= reach,
 		CreatedAt:              user.CreatedAt,
 	}
 }

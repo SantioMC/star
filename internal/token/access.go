@@ -10,6 +10,7 @@ import (
 
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/state"
 )
 
@@ -36,6 +37,7 @@ var protectedClaims = []string{
 	"auth_time",
 	"nonce",
 	"scope",
+	openid.ImpersonatorClaim,
 }
 
 func Create(
@@ -78,6 +80,12 @@ func Create(
 	fields["client_id"] = options.Application.ClientID
 	fields["auth_time"] = session.AuthenticatedAt.Unix()
 
+	subjects := []string{session.UserID, database.GlobalRevocationSubject}
+	if session.ImpersonatorID != nil {
+		fields[openid.ImpersonatorClaim] = *session.ImpersonatorID
+		subjects = append(subjects, *session.ImpersonatorID)
+	}
+
 	if len(options.Scope) > 0 {
 		fields["scope"] = strings.Join(options.Scope, " ")
 	}
@@ -87,7 +95,7 @@ func Create(
 		return "", ErrSessionRevoked
 	}
 
-	if server.Revocations.Revoked(issuedAt.Unix(), session.UserID, database.GlobalRevocationSubject) {
+	if server.Revocations.Revoked(issuedAt.Unix(), subjects...) {
 		issuedAt = issuedAt.Add(time.Second)
 	}
 

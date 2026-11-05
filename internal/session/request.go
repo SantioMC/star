@@ -39,6 +39,12 @@ func CreateSession(
 		return nil, err
 	}
 
+	if options.ImpersonatorID != nil {
+		if err := CheckImpersonation(ctx, server, *options.ImpersonatorID, options.User.ID); err != nil {
+			return nil, err
+		}
+	}
+
 	var accountID *string
 	if options.Account != nil {
 		accountID = &options.Account.ID
@@ -59,6 +65,7 @@ func CreateSession(
 		server,
 		database.CreateID(database.SessionFamilyKey),
 		options.User.ID,
+		options.ImpersonatorID,
 		accountID,
 		applicationID,
 		pq.StringArray(options.Scopes),
@@ -78,6 +85,7 @@ func buildSession(
 	server *state.StarServer,
 	familyID string,
 	userId string,
+	impersonatorId *string,
 	accountId *string,
 	applicationId string,
 	scopes pq.StringArray,
@@ -92,10 +100,15 @@ func buildSession(
 		slog.Warn("failed to get geolocation data", "err", err, "ip", address)
 	}
 
+	if impersonatorId != nil {
+		duration = min(duration, time.Until(authenticatedAt.Add(time.Hour)))
+	}
+
 	return &database.Session{
 		ID:              database.CreateID(database.SessionKey),
 		FamilyID:        familyID,
 		UserID:          userId,
+		ImpersonatorID:  impersonatorId,
 		AccountID:       accountId,
 		Address:         address,
 		UserAgent:       userAgent,

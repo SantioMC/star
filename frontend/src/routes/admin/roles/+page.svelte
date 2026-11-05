@@ -15,9 +15,12 @@
     import { hasPermission } from "@/index";
     import { simpleDate, titleCase } from "@/utils";
     import { onMount } from "svelte";
+    import { flip } from "svelte/animate";
+    import { prefersReducedMotion } from "svelte/motion";
     import { toast } from "svelte-sonner";
 
     const canCreate = hasPermission("admin:role:create");
+    const canReorder = hasPermission("admin:role:write");
 
     let roles = $state<star.Role[]>([]);
     let loaded = $state(false);
@@ -27,6 +30,12 @@
     let name = $state("");
     let description = $state("");
     let creating = $state(false);
+
+    let rows = $state<HTMLTableSectionElement>();
+    let dragging = $state<string | null>(null);
+    let saving = $state(false);
+    let snapshot: star.Role[] = [];
+    let releasing = false;
 
     const filteredRoles = $derived.by(() => {
         const search = query.trim().toLowerCase();
@@ -76,7 +85,114 @@
         const count = role.permissions.length;
         return `${count} permission${count === 1 ? "" : "s"}`;
     };
+
+    const movable = (role: star.Role) =>
+        canReorder && role.manageable && !role.internal && !query.trim();
+
+    const moveRole = (from: number, to: number) => {
+        const reordered = [...roles];
+        const [role] = reordered.splice(from, 1);
+
+        reordered.splice(to, 0, role);
+        roles = reordered;
+    };
+
+    const saveOrder = async (previous: star.Role[]) => {
+        const unchanged = roles.every(
+            (role, index) => role.id === previous[index].id,
+        );
+
+        if (unchanged) return;
+
+        const order = roles
+            .filter((role) => !role.internal)
+            .map((role) => role.id);
+
+        saving = true;
+        const result = await star.reorderRoles(order);
+        saving = false;
+
+        if ("error" in result) {
+            roles = previous;
+            return toast.error(result.message);
+        }
+
+        roles = result;
+    };
+
+    const startDrag = (event: PointerEvent, role: star.Role) => {
+        if (saving) return;
+
+        event.preventDefault();
+
+        snapshot = roles;
+        dragging = role.id;
+    };
+
+    const drag = (event: PointerEvent) => {
+        if (!dragging || !rows) return;
+
+        const from = roles.findIndex((role) => role.id === dragging);
+        const elements = [...rows.querySelectorAll("tr")];
+        const to = elements.findIndex((row) => {
+            const box = row.getBoundingClientRect();
+            return event.clientY >= box.top && event.clientY <= box.bottom;
+        });
+
+        if (to === -1 || to === from || !movable(roles[to])) return;
+
+        const box = elements[to].getBoundingClientRect();
+        const middle = box.top + box.height / 2;
+        const crossed =
+            to > from ? event.clientY > middle : event.clientY < middle;
+
+        if (crossed) moveRole(from, to);
+    };
+
+    const endDrag = () => {
+        if (!dragging) return;
+
+        dragging = null;
+        releasing = true;
+        setTimeout(() => (releasing = false));
+
+        saveOrder(snapshot);
+    };
+
+    const openRole = (role: star.Role) => {
+        if (releasing) return;
+
+        goto(resolve("/admin/roles/[role]", { role: role.id }));
+    };
+
+    const cancelDrag = () => {
+        dragging = null;
+        roles = snapshot;
+    };
+
+    const nudge = (event: KeyboardEvent, role: star.Role) => {
+        const direction = { ArrowUp: -1, ArrowDown: 1 }[event.key];
+        if (!direction || saving) return;
+
+        event.preventDefault();
+
+        const from = roles.findIndex((it) => it.id === role.id);
+        const target = roles[from + direction];
+
+        if (!target || !movable(target)) return;
+
+        const previous = roles;
+
+        moveRole(from, from + direction);
+        saveOrder(previous);
+    };
 </script>
+
+<svelte:window
+    onpointermove={drag}
+    onpointerup={endDrag}
+    onpointercancel={cancelDrag}
+/>
 
 <PageHeader
     title="Roles & Permissions"
@@ -98,6 +214,9 @@
     <table class="w-full text-sm">
         <thead>
             <tr class="hover:bg-transparent">
+                {#if canReorder}
+                    <th class="w-px"><span class="sr-only">Reorder</span></th>
+                {/if}
                 <th class="px-3 text-xs font-medium text-muted select-none">
                     Role
                 </th>
@@ -113,13 +232,43 @@
                 </th>
             </tr>
         </thead>
-        <tbody>
+        <tbody bind:this={rows}>
             {#each filteredRoles as role (role.id)}
                 <tr
-                    class="cursor-pointer hover:bg-hover"
-                    onclick={() =>
-                        goto(resolve("/admin/roles/[role]", { role: role.id }))}
+                    animate:flip={{
+                        duration: prefersReducedMotion.current ? 0 : 150,
+                    }}
+                    class={[
+                        dragging ? "cursor-grabbing" : "cursor-pointer",
+                        !dragging && "hover:bg-hover",
+                        dragging === role.id && "bg-hover! select-none",
+                    ]}
+                    onclick={() => openRole(role)}
                 >
+                    {#if canReorder}
+                        <td
+                            class="relative w-10 p-0! cursor-default"
+                            onclick={(event) => event.stopPropagation()}
+                        >
+                            {#if movable(role)}
+                                <button
+                                    type="button"
+                                    aria-label="Reorder {role.name}, use the arrow keys to move it"
+                                    class={[
+                                        "absolute inset-0.5 flex touch-none items-center justify-center rounded-md text-lg text-muted transition-colors hover:text-foreground",
+                                        dragging
+                                            ? "cursor-grabbing"
+                                            : "cursor-grab",
+                                    ]}
+                                    onpointerdown={(event) =>
+                                        startDrag(event, role)}
+                                    onkeydown={(event) => nudge(event, role)}
+                                >
+                                    <Icon icon="grip-vertical" />
+                                </button>
+                            {/if}
+                        </td>
+                    {/if}
                     <td class="px-3 py-2.5">
                         <div class="flex items-center gap-2">
                             <a
@@ -152,7 +301,7 @@
                 </tr>
             {:else}
                 <tr class="hover:bg-transparent">
-                    <td colspan="3" class="py-10 text-center text-muted">
+                    <td colspan="4" class="py-10 text-center text-muted">
                         {#if !loaded}
                             Loading roles...
                         {:else if query}

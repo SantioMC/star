@@ -41,24 +41,25 @@ const (
 	ScopeApplicationsWrite  = "star:applications:write"
 	ScopeApplicationsDelete = "star:applications:delete"
 
-	ScopeAdminUsersRead      = "star:admin:users:read"
-	ScopeAdminUsersWrite     = "star:admin:users:write"
-	ScopeAdminUsersDelete    = "star:admin:users:delete"
-	ScopeAdminRolesRead      = "star:admin:roles:read"
-	ScopeAdminRolesWrite     = "star:admin:roles:write"
-	ScopeAdminProvidersRead  = "star:admin:providers:read"
-	ScopeAdminProvidersWrite = "star:admin:providers:write"
-	ScopeAdminSettingsRead   = "star:admin:settings:read"
-	ScopeAdminSettingsWrite  = "star:admin:settings:write"
-	ScopeAdminKeysRead       = "star:admin:keys:read"
-	ScopeAdminKeysWrite      = "star:admin:keys:write"
-	ScopeAdminTokensRead     = "star:admin:tokens:read"
-	ScopeAdminTokensWrite    = "star:admin:tokens:write"
-	ScopeAdminMetricsRead    = "star:admin:metrics:read"
-	ScopeAdminAlertsRead     = "star:admin:alerts:read"
-	ScopeAdminAlertsWrite    = "star:admin:alerts:write"
-	ScopeAdminAuditRead      = "star:admin:audit:read"
-	ScopeAdminAuditWrite     = "star:admin:audit:write"
+	ScopeAdminUsersRead        = "star:admin:users:read"
+	ScopeAdminUsersWrite       = "star:admin:users:write"
+	ScopeAdminUsersDelete      = "star:admin:users:delete"
+	ScopeAdminUsersImpersonate = "star:admin:users:impersonate"
+	ScopeAdminRolesRead        = "star:admin:roles:read"
+	ScopeAdminRolesWrite       = "star:admin:roles:write"
+	ScopeAdminProvidersRead    = "star:admin:providers:read"
+	ScopeAdminProvidersWrite   = "star:admin:providers:write"
+	ScopeAdminSettingsRead     = "star:admin:settings:read"
+	ScopeAdminSettingsWrite    = "star:admin:settings:write"
+	ScopeAdminKeysRead         = "star:admin:keys:read"
+	ScopeAdminKeysWrite        = "star:admin:keys:write"
+	ScopeAdminTokensRead       = "star:admin:tokens:read"
+	ScopeAdminTokensWrite      = "star:admin:tokens:write"
+	ScopeAdminMetricsRead      = "star:admin:metrics:read"
+	ScopeAdminAlertsRead       = "star:admin:alerts:read"
+	ScopeAdminAlertsWrite      = "star:admin:alerts:write"
+	ScopeAdminAuditRead        = "star:admin:audit:read"
+	ScopeAdminAuditWrite       = "star:admin:audit:write"
 )
 
 type ScopeDefinition struct {
@@ -176,6 +177,11 @@ var BuiltinScopes = []ScopeDefinition{
 	{
 		Name:        ScopeAdminUsersDelete,
 		Description: "Delete users and their sessions",
+		Restricted:  true,
+	},
+	{
+		Name:        ScopeAdminUsersImpersonate,
+		Description: "Impersonate users within the server",
 		Restricted:  true,
 	},
 	{

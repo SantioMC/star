@@ -66,6 +66,8 @@ func userRouter(router fiber.Router) {
 	router.Delete("/:user/sessions/:session", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersDelete), middleware.RequirePermission(permission.PermissionAdminDeleteUsers), adminInvalidateUserSession)
 	router.Post("/:user/password", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminSetPassword)
 	router.Post("/:user/password/require-change", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminRequirePasswordChange)
+	router.Get("/:user/impersonate/applications", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersImpersonate), middleware.RequirePermission(permission.PermissionAdminImpersonateUsers), getImpersonationApplications)
+	router.Post("/:user/impersonate", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersImpersonate), middleware.RequirePermission(permission.PermissionAdminImpersonateUsers), impersonateUser)
 	router.Delete("/:user/lockout", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), adminClearLockout)
 	router.Get("/:user/suspensions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUserSuspensions)
 	router.Post("/:user/suspend", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminSuspendUsers), adminSuspendUser)
@@ -79,10 +81,16 @@ func populateUser(ctx fiber.Ctx, user *database.User) transformer.AdminUser {
 	email := star.Database.GetPrimaryEmail(ctx, user.ID)
 	roles := star.Database.GetUserRoles(ctx, user.ID)
 
+	reach, err := request.GetWeight(ctx)
+	if err != nil {
+		slog.Error("failed to get requester weight", "err", err)
+		reach = database.DefaultRoleWeight
+	}
+
 	transformed := make([]transformer.AdminRole, len(roles))
 	for idx, role := range roles {
 		permissions := star.Database.GetRolePermissions(ctx, role.ID)
-		transformed[idx] = transformer.TransformRole(role, permissions)
+		transformed[idx] = transformer.TransformRole(role, permissions, reach)
 	}
 
 	attempts, err := star.Database.GetLoginAttempts(ctx, user.ID)
@@ -97,7 +105,27 @@ func populateUser(ctx fiber.Ctx, user *database.User) transformer.AdminUser {
 
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
 
-	return transformer.TransformAdminUser(user, email, transformed, attempts, account, suspension)
+	return transformer.TransformAdminUser(user, email, transformed, attempts, account, suspension, reach)
+}
+
+func requireManagement(ctx fiber.Ctx, user *database.User) error {
+	star := common.GetState(ctx)
+
+	reach, err := request.GetWeight(ctx)
+	if err != nil {
+		return err
+	}
+
+	weight, err := star.Database.GetUserWeight(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	if weight > reach {
+		return fiber.NewError(403, "You are not permitted to manage a user with a higher role than your own")
+	}
+
+	return nil
 }
 
 func getRegisterRequirements(ctx fiber.Ctx) error {
@@ -485,6 +513,10 @@ func adminUpdateUser(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "User not found")
 	}
 
+	if err := requireManagement(ctx, user); err != nil {
+		return err
+	}
+
 	before := *user
 
 	if data.Username != nil && *data.Username != user.Name {
@@ -539,6 +571,11 @@ func setUserRoles(ctx fiber.Ctx, user *database.User, roleIDs []string) error {
 		return fiber.NewError(403, "You are not permitted to modify your own roles")
 	}
 
+	reach, err := request.GetWeight(ctx)
+	if err != nil {
+		return err
+	}
+
 	requested := slices.Compact(slices.Sorted(slices.Values(roleIDs)))
 	for _, roleID := range requested {
 		role := star.Database.GetRoleByID(ctx, roleID)
@@ -546,6 +583,8 @@ func setUserRoles(ctx fiber.Ctx, user *database.User, roleIDs []string) error {
 			return fiber.NewError(400, "Unknown role: "+roleID)
 		} else if role.IsDefault() {
 			return fiber.NewError(400, "The default role is already applied to every user")
+		} else if role.Weight > reach {
+			return fiber.NewError(403, "You are not permitted to assign a role higher than your own")
 		}
 	}
 
@@ -575,6 +614,10 @@ func adminSetPassword(ctx fiber.Ctx) error {
 
 	if requesterID == user.ID {
 		return fiber.NewError(403, "Use the password change endpoint to update your own password")
+	}
+
+	if err := requireManagement(ctx, user); err != nil {
+		return err
 	}
 
 	var data types.AdminSetPasswordRequest
@@ -649,6 +692,10 @@ func adminRequirePasswordChange(ctx fiber.Ctx) error {
 		return fiber.NewError(403, "Use the password change endpoint to update your own password")
 	}
 
+	if err := requireManagement(ctx, user); err != nil {
+		return err
+	}
+
 	required, err := star.Database.RequirePasswordChange(ctx, user.ID)
 	if err != nil {
 		return err
@@ -702,6 +749,10 @@ func adminDeleteUser(ctx fiber.Ctx) error {
 		return fiber.NewError(403, "You are not permitted to delete your own user")
 	}
 
+	if err := requireManagement(ctx, user); err != nil {
+		return err
+	}
+
 	if err := star.Database.DeleteUser(ctx, user.ID); err != nil {
 		return err
 	}
@@ -725,6 +776,10 @@ func adminClearLockout(ctx fiber.Ctx) error {
 	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
 	if user == nil {
 		return fiber.NewError(404, "User not found")
+	}
+
+	if err := requireManagement(ctx, user); err != nil {
+		return err
 	}
 
 	if err := star.Database.ClearLoginAttempts(ctx, user.ID); err != nil {
@@ -778,6 +833,10 @@ func adminInvalidateUserSessions(ctx fiber.Ctx) error {
 		return fiber.NewError(404, "User not found")
 	}
 
+	if err := requireManagement(ctx, user); err != nil {
+		return err
+	}
+
 	if err := star.Database.RevokeUserSessions(ctx, user.ID, database.RevocationReasonSessionsCleared); err != nil {
 		return err
 	}
@@ -796,6 +855,10 @@ func adminInvalidateUserSession(ctx fiber.Ctx) error {
 	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
 	if user == nil {
 		return fiber.NewError(404, "User not found")
+	}
+
+	if err := requireManagement(ctx, user); err != nil {
+		return err
 	}
 
 	session := star.Database.GetSessionByFamily(ctx, ctx.Params("session"))

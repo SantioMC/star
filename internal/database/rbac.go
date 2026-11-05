@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"math"
 	"slices"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/vinovest/sqlx"
 )
 
@@ -19,11 +21,18 @@ const PermissionBindingKey = "pb"
 const SuperadminRoleName = "superadmin"
 const DefaultRoleName = "default"
 
+const SuperadminRoleWeight = math.MaxInt32
+const DefaultRoleWeight = math.MinInt32
+
+var ErrRoleOrderOutdated = errors.New("the role order does not match the current roles")
+var ErrRoleOrderForbidden = errors.New("the role order moves a role outside of the requester's reach")
+
 type Role struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Internal    bool      `json:"internal"`
+	Weight      int       `json:"weight"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
 
@@ -133,13 +142,14 @@ func (db *Database) insertRole(ctx context.Context, execer sqlx.ExecerContext, r
 		ctx,
 		`
 		INSERT INTO roles (
-			id, name, description, internal, created_at
-		) VALUES ($1, $2, $3, $4, $5)
+			id, name, description, internal, weight, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6)
 		`,
 		role.ID,
 		role.Name,
 		role.Description,
 		role.Internal,
+		role.Weight,
 		role.CreatedAt,
 	)
 
@@ -329,6 +339,7 @@ func (db *Database) GetUserRoles(ctx context.Context, userId string) []Role {
 		SELECT roles.* FROM roles
 		INNER JOIN role_bindings ON roles.id = role_bindings.role_id
 		WHERE role_bindings.user_id = $1
+		ORDER BY roles.weight DESC
 		`,
 		userId,
 	)
@@ -343,11 +354,26 @@ func (db *Database) GetUserRoles(ctx context.Context, userId string) []Role {
 	return roles
 }
 
+func (db *Database) GetUserWeight(ctx context.Context, userID string) (int, error) {
+	return sqlx.OneContext[int](
+		ctx,
+		db.DB(),
+		`
+		SELECT COALESCE(MAX(weight), $2::INTEGER) FROM roles
+		WHERE id IN (SELECT role_id FROM role_bindings WHERE user_id = $1)
+		OR (name = $3 AND internal)
+		`,
+		userID,
+		DefaultRoleWeight,
+		DefaultRoleName,
+	)
+}
+
 func (db *Database) GetRoles(ctx context.Context) []Role {
 	roles, err := list[Role](
 		ctx,
 		db.DB(),
-		`SELECT * FROM roles ORDER BY created_at DESC`,
+		`SELECT * FROM roles ORDER BY weight DESC`,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -488,8 +514,15 @@ func (db *Database) CreateRoleWithPermissions(ctx context.Context, role *Role, p
 
 	defer tx.Rollback()
 
-	if err := db.insertRole(ctx, tx, role); err != nil {
+	weight, err := sqlx.OneContext[int](ctx, tx, `SELECT COALESCE(MIN(weight) - 1, 0) FROM roles WHERE NOT internal`)
+	if err != nil {
 		return err
+	}
+
+	role.Weight = weight
+
+	if err := db.insertRole(ctx, tx, role); err != nil {
+		return duplicate(err)
 	}
 
 	if err := db.insertPermissionBindings(ctx, tx, role.ID, permissions); err != nil {
@@ -545,6 +578,63 @@ func (db *Database) DeleteRoleWithRevocation(ctx context.Context, role *Role) er
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM roles WHERE id = $1`, role.ID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (db *Database) ReorderRoles(ctx context.Context, roleIDs []string, reach int) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	current, err := list[Role](ctx, tx, `SELECT * FROM roles WHERE NOT internal ORDER BY weight DESC FOR UPDATE`)
+	if err != nil {
+		return err
+	}
+
+	if len(current) != len(roleIDs) {
+		return ErrRoleOrderOutdated
+	}
+
+	previous := make(map[string]int, len(current))
+	for _, role := range current {
+		previous[role.ID] = role.Weight
+	}
+
+	weights := make([]int64, len(roleIDs))
+	for position, roleID := range roleIDs {
+		weight, known := previous[roleID]
+		if !known {
+			return ErrRoleOrderOutdated
+		}
+
+		delete(previous, roleID)
+
+		next := current[position].Weight
+		if weight != next && (weight > reach || next > reach) {
+			return ErrRoleOrderForbidden
+		}
+
+		weights[position] = int64(next)
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`
+		UPDATE roles SET weight = ordered.weight
+		FROM unnest($1::VARCHAR[], $2::INTEGER[]) AS ordered(id, weight)
+		WHERE roles.id = ordered.id
+		`,
+		pq.StringArray(roleIDs),
+		pq.Int64Array(weights),
+	)
+
+	if err != nil {
 		return err
 	}
 

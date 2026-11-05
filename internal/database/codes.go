@@ -17,8 +17,9 @@ const AuthCodeKey = "code"
 type AuthorizationCode struct {
 	ID string `json:"id"`
 
-	UserID        string `json:"user_id" db:"user_id"`
-	ApplicationID string `json:"application_id" db:"application_id"`
+	UserID         string  `json:"user_id" db:"user_id"`
+	ImpersonatorID *string `json:"impersonator_id" db:"impersonator_id"`
+	ApplicationID  string  `json:"application_id" db:"application_id"`
 
 	Code        string `json:"code"`
 	RedirectURI string `json:"redirect_uri" db:"redirect_uri"`
@@ -85,8 +86,8 @@ func (db *Database) CreateAuthorizationCode(ctx context.Context, code *Authoriza
 		`
 		INSERT INTO authorization_codes (
 			id, user_id, application_id, code, redirect_uri, scopes, state, nonce,
-			code_challenge, code_challenge_method, authenticated_at, created_at, expires_at, redeemed_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			code_challenge, code_challenge_method, authenticated_at, created_at, expires_at, redeemed_at, impersonator_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		`,
 		code.ID,
 		code.UserID,
@@ -102,6 +103,7 @@ func (db *Database) CreateAuthorizationCode(ctx context.Context, code *Authoriza
 		code.CreatedAt,
 		code.ExpiresAt,
 		code.RedeemedAt,
+		code.ImpersonatorID,
 	)
 
 	return err

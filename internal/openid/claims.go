@@ -10,6 +10,7 @@ import (
 
 const RolesClaim = "urn:star:iam:roles"
 const PermissionsClaim = "urn:star:iam:permissions"
+const ImpersonatorClaim = "imp"
 
 func UserClaims(
 	ctx context.Context,

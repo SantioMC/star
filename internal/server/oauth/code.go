@@ -75,6 +75,7 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 	newSession, err := session.CreateSession(ctx, star, &session.Options{
 		User:            user,
 		Application:     application,
+		ImpersonatorID:  authCode.ImpersonatorID,
 		Scopes:          granted,
 		Duration:        application.SessionDuration.Duration(),
 		AuthenticatedAt: authCode.AuthenticatedAt,
@@ -82,6 +83,8 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 
 	if errors.Is(err, session.ErrUserSuspended) {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for is suspended")
+	} else if errors.Is(err, session.ErrImpersonationDenied) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The impersonator of this authorization code is no longer permitted to impersonate this user")
 	} else if err != nil {
 		return err
 	}

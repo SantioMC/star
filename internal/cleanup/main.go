@@ -36,6 +36,7 @@ func Cleanup(state *state.StarServer) {
 	ctx := context.Background()
 	CleanupSessions(ctx, state)
 	CleanupAuthCodes(ctx, state)
+	CleanupImpersonations(ctx, state)
 	CleanupLoginFlows(ctx, state)
 	CleanupPasskeyChallenges(ctx, state)
 	CleanupPasswordResets(ctx, state)

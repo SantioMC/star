@@ -13,7 +13,7 @@ var BuiltinPermissions = []PermissionDefinition{
 	PermissionEnrollMFA, PermissionDeleteMFA,
 	PermissionDeleteSessions, PermissionExportSelf,
 	PermissionBypassNoLogin,
-	PermissionAdminReadUsers, PermissionAdminWriteUsers, PermissionAdminDeleteUsers, PermissionAdminExportUsers, PermissionAdminSuspendUsers, PermissionAdminRequirePasswordChange,
+	PermissionAdminReadUsers, PermissionAdminWriteUsers, PermissionAdminDeleteUsers, PermissionAdminExportUsers, PermissionAdminSuspendUsers, PermissionAdminImpersonateUsers, PermissionAdminRequirePasswordChange,
 	PermissionAdminReadRoles, PermissionAdminCreateRoles, PermissionAdminWriteRoles, PermissionAdminDeleteRoles,
 	PermissionAdminReadProviders, PermissionAdminCreateProviders, PermissionAdminWriteProviders, PermissionAdminDeleteProviders,
 	PermissionAdminReadSettings, PermissionAdminWriteSettings,

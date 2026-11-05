@@ -34,6 +34,10 @@ func RequireAuth(ctx fiber.Ctx) error {
 		return unauthorized(ctx, "This token is not permitted to access this application")
 	}
 
+	if jwt.Impersonator != "" && ctx.Method() != fiber.MethodGet && ctx.Method() != fiber.MethodHead {
+		return fiber.NewError(403, "This action is not available while impersonating a user")
+	}
+
 	ctx.Locals(common.RequestAuthJWTKey, jwt)
 	return ctx.Next()
 }

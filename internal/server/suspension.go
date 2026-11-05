@@ -69,6 +69,10 @@ func adminSuspendUser(ctx fiber.Ctx) error {
 		return fiber.NewError(403, "You are not permitted to suspend your own user")
 	}
 
+	if err := requireManagement(ctx, user); err != nil {
+		return err
+	}
+
 	var data types.SuspendUserRequest
 	if err := ctx.Bind().Body(&data); err != nil {
 		return err
@@ -116,6 +120,10 @@ func adminUnsuspendUser(ctx fiber.Ctx) error {
 	user := star.Database.GetUserByID(ctx, ctx.Params("user"))
 	if user == nil {
 		return fiber.NewError(404, "User not found")
+	}
+
+	if err := requireManagement(ctx, user); err != nil {
+		return err
 	}
 
 	var data types.UnsuspendUserRequest

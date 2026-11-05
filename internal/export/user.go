@@ -62,6 +62,7 @@ type MFA struct {
 type Session struct {
 	ID              string    `json:"id"`
 	ApplicationID   string    `json:"application_id"`
+	ImpersonatorID  *string   `json:"impersonator_id"`
 	IPAddress       string    `json:"ip_address"`
 	UserAgent       string    `json:"user_agent"`
 	Device          string    `json:"device"`
@@ -268,6 +269,7 @@ func session(record database.Session) Session {
 	return Session{
 		ID:              record.ID,
 		ApplicationID:   record.ApplicationID,
+		ImpersonatorID:  record.ImpersonatorID,
 		IPAddress:       record.Address,
 		UserAgent:       record.UserAgent,
 		Device:          record.Device,

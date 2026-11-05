@@ -188,7 +188,7 @@ func verifyJWT(state *state.StarServer, signature *jose.JSONWebSignature, public
 		return nil, errors.New("token has no audience")
 	}
 
-	if state.Revocations.Revoked(claims.IssuedAt, claims.SessionID, claims.Subject, database.GlobalRevocationSubject) {
+	if state.Revocations.Revoked(claims.IssuedAt, claims.SessionID, claims.Subject, claims.Impersonator, database.GlobalRevocationSubject) {
 		return nil, errors.New("token has been revoked")
 	}
 
@@ -214,16 +214,17 @@ func (audience *Audience) UnmarshalJSON(data []byte) error {
 }
 
 type AccessTokenJWT struct {
-	ExpiresAt   int64    `json:"exp"`
-	NotBefore   int64    `json:"nbf"`
-	IssuedAt    int64    `json:"iat"`
-	TokenID     string   `json:"jti"`
-	Subject     string   `json:"sub"`
-	Audience    Audience `json:"aud"`
-	Issuer      string   `json:"iss"`
-	ClientID    string   `json:"client_id"`
-	SessionID   string   `json:"sid"`
-	Scope       string   `json:"scope"`
-	Permissions string   `json:"urn:star:iam:permissions"`
-	Roles       []string `json:"urn:star:iam:roles"`
+	ExpiresAt    int64    `json:"exp"`
+	NotBefore    int64    `json:"nbf"`
+	IssuedAt     int64    `json:"iat"`
+	TokenID      string   `json:"jti"`
+	Subject      string   `json:"sub"`
+	Audience     Audience `json:"aud"`
+	Issuer       string   `json:"iss"`
+	ClientID     string   `json:"client_id"`
+	SessionID    string   `json:"sid"`
+	Scope        string   `json:"scope"`
+	Impersonator string   `json:"imp"`
+	Permissions  string   `json:"urn:star:iam:permissions"`
+	Roles        []string `json:"urn:star:iam:roles"`
 }

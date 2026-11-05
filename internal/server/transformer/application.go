@@ -13,6 +13,28 @@ type AdminApplication struct {
 	BuiltinScopes   []openid.ScopeDefinition    `json:"builtin_scopes,omitempty"`
 }
 
+type SharedApplication struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	URL        string `json:"url"`
+	Authorized bool   `json:"authorized"`
+}
+
+func TransformSharedApplications(applications []database.SharedApplication) []SharedApplication {
+	transformed := make([]SharedApplication, len(applications))
+
+	for idx, application := range applications {
+		transformed[idx] = SharedApplication{
+			ID:         application.ID,
+			Name:       application.Name,
+			URL:        application.ApplicationURL,
+			Authorized: application.Authorized,
+		}
+	}
+
+	return transformed
+}
+
 func builtinScopes(application database.Application) []openid.ScopeDefinition {
 	if !application.Internal || application.Namespace != openid.StarNamespace {
 		return nil

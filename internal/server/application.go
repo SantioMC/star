@@ -613,7 +613,17 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "Redirect URI is not allowed for this application")
 	}
 
-	if !star.Database.UserCanAccessApplication(ctx, user.ID, application) {
+	subject := user
+	impersonation := star.Database.GetImpersonation(ctx, user.ID, jwt.SessionID, application.ID)
+
+	if impersonation != nil {
+		subject, err = resolveImpersonation(ctx, user.ID, impersonation.UserID, application)
+		if err != nil {
+			return err
+		}
+	}
+
+	if !star.Database.UserCanAccessApplication(ctx, subject.ID, application) {
 		return fiber.NewError(403, "application_access_denied")
 	}
 
@@ -641,11 +651,11 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 	validScopes := resolution.Names()
 	grant := star.Database.GetApplicationGrant(ctx, user.ID, application.ID)
 
-	if !request.Consent && oauth.RequiresConsent(application, grant, validScopes) {
+	if impersonation == nil && !request.Consent && oauth.RequiresConsent(application, grant, validScopes) {
 		return fiber.NewError(fiber.StatusPreconditionRequired, "consent_required")
 	}
 
-	if !application.Internal {
+	if impersonation == nil && !application.Internal {
 		merged := oauth.MergeGrantScopes(grant, validScopes)
 
 		err := star.Database.SaveApplicationGrant(ctx, &database.ApplicationGrant{
@@ -675,9 +685,24 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		codeChallengeMethod = &s256
 	}
 
+	var impersonatorID *string = nil
+
+	if impersonation != nil {
+		claimed, err := star.Database.ClaimImpersonation(ctx, impersonation.ID)
+		if err != nil {
+			return err
+		} else if !claimed {
+			return fiber.NewError(409, "This impersonation has already been used")
+		}
+
+		impersonatorID = &user.ID
+		authenticatedAt = time.Now()
+	}
+
 	authCode := database.AuthorizationCode{
 		ID:                  database.CreateID(database.AuthCodeKey),
-		UserID:              user.ID,
+		UserID:              subject.ID,
+		ImpersonatorID:      impersonatorID,
 		ApplicationID:       request.ApplicationID,
 		Code:                cryptography.CreateSecureString(64),
 		RedirectURI:         request.RedirectURI,
@@ -695,7 +720,11 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		return err
 	}
 
-	audit.Log(ctx, audit.GrantAuthorize, onApplication(application), audit.With("scopes", validScopes))
+	if impersonation != nil {
+		audit.Log(ctx, audit.UserImpersonateSignIn, onApplication(application), audit.OnUser(subject), audit.With("scopes", validScopes))
+	} else {
+		audit.Log(ctx, audit.GrantAuthorize, onApplication(application), audit.With("scopes", validScopes))
+	}
 
 	return ctx.JSON(types.CreateApplicationAuthorizationResponse{
 		Code:           authCode.Code,

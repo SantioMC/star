@@ -12,12 +12,12 @@ import (
 )
 
 func seedRBAC(ctx context.Context, star *state.StarServer) error {
-	superadmin, superadminCreated, err := seedRole(ctx, star, database.SuperadminRoleName, "The default super admin role")
+	superadmin, superadminCreated, err := seedRole(ctx, star, database.SuperadminRoleName, "The default super admin role", database.SuperadminRoleWeight)
 	if err != nil {
 		return err
 	}
 
-	defaultRole, defaultCreated, err := seedRole(ctx, star, database.DefaultRoleName, "Permissions granted to every user")
+	defaultRole, defaultCreated, err := seedRole(ctx, star, database.DefaultRoleName, "Permissions granted to every user", database.DefaultRoleWeight)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func seedRBAC(ctx context.Context, star *state.StarServer) error {
 	return nil
 }
 
-func seedRole(ctx context.Context, star *state.StarServer, name string, description string) (*database.Role, bool, error) {
+func seedRole(ctx context.Context, star *state.StarServer, name string, description string, weight int) (*database.Role, bool, error) {
 	existing := star.Database.GetRoleByName(ctx, name)
 	if existing != nil && !existing.Internal {
 		slog.Warn("a non built-in role is using a reserved name, it will not be managed by star", "role", existing.ID, "name", name)
@@ -74,6 +74,7 @@ func seedRole(ctx context.Context, star *state.StarServer, name string, descript
 		Name:        name,
 		Description: description,
 		Internal:    true,
+		Weight:      weight,
 		CreatedAt:   time.Now(),
 	}
 

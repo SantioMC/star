@@ -6,6 +6,10 @@ type CreateRoleRequest struct {
 	Permissions []string `json:"permissions" validate:"omitempty"`
 }
 
+type ReorderRolesRequest struct {
+	Roles []string `json:"roles" validate:"required"`
+}
+
 type UpdateRoleRequest struct {
 	Name        *string   `json:"name" validate:"omitempty,min=1,max=64"`
 	Description *string   `json:"description" validate:"omitempty,max=255"`

@@ -12,11 +12,13 @@ type AdminRole struct {
 	Description string    `json:"description"`
 	Internal    bool      `json:"internal"`
 	Default     bool      `json:"default"`
+	Weight      int       `json:"weight"`
+	Manageable  bool      `json:"manageable"`
 	Permissions []string  `json:"permissions"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-func TransformRole(role database.Role, permissions []database.Permission) AdminRole {
+func TransformRole(role database.Role, permissions []database.Permission, reach int) AdminRole {
 	names := make([]string, len(permissions))
 	for idx, permission := range permissions {
 		names[idx] = permission.Name
@@ -28,6 +30,8 @@ func TransformRole(role database.Role, permissions []database.Permission) AdminR
 		Description: role.Description,
 		Internal:    role.Internal,
 		Default:     role.IsDefault(),
+		Weight:      role.Weight,
+		Manageable:  role.Weight <= reach,
 		Permissions: names,
 		CreatedAt:   role.CreatedAt,
 	}

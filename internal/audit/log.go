@@ -76,6 +76,10 @@ func (entry *record) resolveActor(ctx fiber.Ctx, star *state.StarServer) {
 		if entry.Application == nil {
 			entry.Application = applicationID(ctx, star, jwt.ClientID)
 		}
+
+		if jwt.Impersonator != "" {
+			entry.set("impersonator", jwt.Impersonator)
+		}
 	}
 
 	if entry.anonymize || entry.ActorID == nil || entry.ActorName != nil {

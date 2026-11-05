@@ -26,6 +26,7 @@ type Session struct {
 	ID              string         `json:"id"`
 	FamilyID        string         `json:"family_id" db:"family_id"`
 	UserID          string         `json:"user_id" db:"user_id"`
+	ImpersonatorID  *string        `json:"impersonator_id" db:"impersonator_id"`
 	AccountID       *string        `json:"account_id" db:"account_id"`
 	ApplicationID   string         `json:"application_id" db:"application_id"`
 	Address         string         `json:"ip_address" db:"ip_address"`
@@ -192,8 +193,8 @@ func (db *Database) insertSession(ctx context.Context, execer sqlx.ExecerContext
 		INSERT INTO sessions (
 			id, family_id, user_id, account_id, application_id,
 			ip_address, user_agent, geolocation, device,
-			token, scopes, status, authenticated_at, created_at, updated_at, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			token, scopes, status, authenticated_at, created_at, updated_at, expires_at, impersonator_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		`,
 		session.ID,
 		session.FamilyID,
@@ -211,6 +212,7 @@ func (db *Database) insertSession(ctx context.Context, execer sqlx.ExecerContext
 		session.CreatedAt,
 		time.Now(),
 		session.ExpiresAt,
+		session.ImpersonatorID,
 	)
 
 	return err

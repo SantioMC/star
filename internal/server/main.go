@@ -25,11 +25,12 @@ import (
 
 func CreateServer(star *state.StarServer) (*fiber.App, error) {
 	app := fiber.New(fiber.Config{
-		AppName:      "Star Authorization Server",
-		ServerHeader: "Star",
-		BodyLimit:    1024 * 1024 * 10,
-		ProxyHeader:  star.Config.Proxy.Header,
-		TrustProxy:   star.Config.Proxy.Enabled,
+		AppName:        "Star Authorization Server",
+		ServerHeader:   "Star",
+		BodyLimit:      1024 * 1024 * 10,
+		ReadBufferSize: 1024 * 16,
+		ProxyHeader:    star.Config.Proxy.Header,
+		TrustProxy:     star.Config.Proxy.Enabled,
 		TrustProxyConfig: fiber.TrustProxyConfig{
 			Proxies: star.Config.Proxy.Trusted,
 		},

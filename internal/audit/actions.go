@@ -60,9 +60,13 @@ const (
 	UserSuspend      Action = "user.suspend"
 	UserUnsuspend    Action = "user.unsuspend"
 
-	RoleCreate Action = "role.create"
-	RoleUpdate Action = "role.update"
-	RoleDelete Action = "role.delete"
+	UserImpersonate       Action = "user.impersonate"
+	UserImpersonateSignIn Action = "user.impersonate_sign_in"
+
+	RoleCreate  Action = "role.create"
+	RoleUpdate  Action = "role.update"
+	RoleDelete  Action = "role.delete"
+	RoleReorder Action = "role.reorder"
 
 	ApplicationCreate       Action = "application.create"
 	ApplicationUpdate       Action = "application.update"
@@ -137,10 +141,13 @@ var Definitions = []Definition{
 	{UserLockoutClear, "Sign in lockout cleared", "Users", SeverityNotice},
 	{UserSuspend, "User suspended", "Users", SeverityCritical},
 	{UserUnsuspend, "User unsuspended", "Users", SeverityCritical},
+	{UserImpersonate, "User impersonation started", "Users", SeverityCritical},
+	{UserImpersonateSignIn, "Signed in to application as impersonated user", "Users", SeverityCritical},
 
 	{RoleCreate, "Role created", "Roles", SeverityNotice},
 	{RoleUpdate, "Role updated", "Roles", SeverityCritical},
 	{RoleDelete, "Role deleted", "Roles", SeverityCritical},
+	{RoleReorder, "Role order changed", "Roles", SeverityCritical},
 
 	{ApplicationCreate, "Application created", "Applications", SeverityNotice},
 	{ApplicationUpdate, "Application updated", "Applications", SeverityNotice},

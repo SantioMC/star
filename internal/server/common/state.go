@@ -8,6 +8,7 @@ import (
 var StarKey = "server.state"
 var UserKey = "request.user"
 var RequestAuthJWTKey = "request.auth.jwt"
+var RequestWeightKey = "request.weight"
 
 func GetState(ctx fiber.Ctx) *state.StarServer {
 	data, ok := ctx.Locals(StarKey).(*state.StarServer)

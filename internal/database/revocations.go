@@ -120,7 +120,7 @@ func (db *Database) RevokeUserSessions(ctx context.Context, userID string, reaso
 
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1 OR impersonator_id = $1`, userID); err != nil {
 		return err
 	}
 

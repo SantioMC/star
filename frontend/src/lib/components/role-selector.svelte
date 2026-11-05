@@ -15,7 +15,7 @@
 
     onMount(async () => {
         const available = await star.getAllRoles();
-        allRoles = available.filter((role) => !role.default);
+        allRoles = available.filter((role) => !role.default && role.manageable);
     });
 
     const toggle = (role: star.Role, checked: boolean) => {

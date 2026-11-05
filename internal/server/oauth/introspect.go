@@ -13,18 +13,19 @@ import (
 )
 
 type introspectionResponse struct {
-	Active    bool     `json:"active"`
-	Scope     string   `json:"scope,omitempty"`
-	ClientID  string   `json:"client_id,omitempty"`
-	TokenType string   `json:"token_type,omitempty"`
-	ExpiresAt int64    `json:"exp,omitempty"`
-	IssuedAt  int64    `json:"iat,omitempty"`
-	NotBefore int64    `json:"nbf,omitempty"`
-	Subject   string   `json:"sub,omitempty"`
-	Audience  []string `json:"aud,omitempty"`
-	Issuer    string   `json:"iss,omitempty"`
-	TokenID   string   `json:"jti,omitempty"`
-	SessionID string   `json:"sid,omitempty"`
+	Active       bool     `json:"active"`
+	Scope        string   `json:"scope,omitempty"`
+	ClientID     string   `json:"client_id,omitempty"`
+	TokenType    string   `json:"token_type,omitempty"`
+	ExpiresAt    int64    `json:"exp,omitempty"`
+	IssuedAt     int64    `json:"iat,omitempty"`
+	NotBefore    int64    `json:"nbf,omitempty"`
+	Subject      string   `json:"sub,omitempty"`
+	Audience     []string `json:"aud,omitempty"`
+	Issuer       string   `json:"iss,omitempty"`
+	TokenID      string   `json:"jti,omitempty"`
+	SessionID    string   `json:"sid,omitempty"`
+	Impersonator string   `json:"imp,omitempty"`
 }
 
 func Introspect(ctx fiber.Ctx) error {
@@ -70,18 +71,19 @@ func introspectAccessToken(star *state.StarServer, application *database.Applica
 	}
 
 	return introspectionResponse{
-		Active:    true,
-		Scope:     jwt.Scope,
-		ClientID:  jwt.ClientID,
-		TokenType: "Bearer",
-		ExpiresAt: jwt.ExpiresAt,
-		IssuedAt:  jwt.IssuedAt,
-		NotBefore: jwt.NotBefore,
-		Subject:   jwt.Subject,
-		Audience:  jwt.Audience,
-		Issuer:    jwt.Issuer,
-		TokenID:   jwt.TokenID,
-		SessionID: jwt.SessionID,
+		Active:       true,
+		Scope:        jwt.Scope,
+		ClientID:     jwt.ClientID,
+		TokenType:    "Bearer",
+		ExpiresAt:    jwt.ExpiresAt,
+		IssuedAt:     jwt.IssuedAt,
+		NotBefore:    jwt.NotBefore,
+		Subject:      jwt.Subject,
+		Audience:     jwt.Audience,
+		Issuer:       jwt.Issuer,
+		TokenID:      jwt.TokenID,
+		SessionID:    jwt.SessionID,
+		Impersonator: jwt.Impersonator,
 	}
 }
 
@@ -99,7 +101,7 @@ func introspectRefreshToken(ctx fiber.Ctx, star *state.StarServer, application *
 		return introspectionResponse{Active: false}
 	}
 
-	return introspectionResponse{
+	response := introspectionResponse{
 		Active:    true,
 		Scope:     strings.Join(session.Scopes, " "),
 		ClientID:  application.ClientID,
@@ -110,4 +112,10 @@ func introspectRefreshToken(ctx fiber.Ctx, star *state.StarServer, application *
 		Issuer:    star.Config.ServerURL,
 		SessionID: session.FamilyID,
 	}
+
+	if session.ImpersonatorID != nil {
+		response.Impersonator = *session.ImpersonatorID
+	}
+
+	return response
 }

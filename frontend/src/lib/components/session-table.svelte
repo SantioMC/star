@@ -1,5 +1,6 @@
 <script lang="ts">
     import { tooltip } from "@/tooltip";
+    import Badge from "@/components/badge.svelte";
     import Icon from "@/components/icon.svelte";
     import type { Session } from "@/star";
     import { getIcon, relativeTime } from "@/utils";
@@ -30,6 +31,9 @@
                         <span {@attach tooltip(session.user_agent)}>
                             {session.geolocation ?? session.ip_address}
                         </span>
+                        {#if session.impersonator_id}
+                            <Badge tone="warning">impersonated</Badge>
+                        {/if}
                         {@render badge?.(session)}
                     </div>
                     <p class="text-muted text-xs mt-0.5">

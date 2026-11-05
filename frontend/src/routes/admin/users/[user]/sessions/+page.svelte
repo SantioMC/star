@@ -7,6 +7,7 @@
     import Pagination from "@/components/pagination.svelte";
     import SessionTable from "@/components/session-table.svelte";
     import { getJWT, hasPermission } from "@/index";
+    import { getResource } from "@/resource.svelte";
     import * as star from "@/star";
     import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
@@ -18,7 +19,10 @@
     let pendingSession = $state<string | null>(null);
 
     const currentSession = getJWT()?.sid;
-    const canDelete = hasPermission("admin:user:delete");
+    const context = getResource<star.AdminUser>();
+    const canDelete = $derived(
+        hasPermission("admin:user:delete") && context.current?.manageable,
+    );
 
     let latestRequest = 0;
 
