@@ -20,7 +20,8 @@ COPY migrations/ migrations/
 COPY frontend/embed.go frontend/embed.go
 COPY --from=frontend /app/frontend/build frontend/build
 
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /star ./cmd
+ARG VERSION=unknown
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/tubblelive/star/internal/version.Current=${VERSION}" -o /star ./cmd
 
 FROM gcr.io/distroless/static-debian13:nonroot
 

@@ -1,14 +1,13 @@
 package server
 
 import (
-	"runtime/debug"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
 	"github.com/tubblelive/star/internal/server/types"
+	"github.com/tubblelive/star/internal/version"
 )
 
 func metricsRouter(router fiber.Router) {
@@ -38,17 +37,12 @@ func getMetrics(ctx fiber.Ctx) error {
 		return err
 	}
 
-	version := "unknown"
-	if info, ok := debug.ReadBuildInfo(); ok {
-		version = info.Main.Version
-	}
-
 	return ctx.JSON(types.MetricsResponse{
 		Users:          users,
 		ActiveSessions: sessions,
 		Applications:   applications,
 		OpenAlerts:     alerts,
-		Version:        version,
+		Version:        version.Current,
 		StartedAt:      star.StartedAt,
 	})
 }
