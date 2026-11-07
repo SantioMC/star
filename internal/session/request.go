@@ -101,6 +101,15 @@ func CreateSession(
 	return session, nil
 }
 
+func Locate(ctx fiber.Ctx, server *state.StarServer, address string) *string {
+	location, err := server.GeoService.GetLocation(ctx, address)
+	if err != nil {
+		slog.Warn("failed to get geolocation data", "err", err, "ip", address)
+	}
+
+	return location
+}
+
 func buildSession(
 	ctx fiber.Ctx,
 	server *state.StarServer,
@@ -116,10 +125,7 @@ func buildSession(
 	address := server.ClientIP(ctx)
 	userAgent := ctx.Get(fiber.HeaderUserAgent)
 
-	location, err := server.GeoService.GetLocation(ctx, address)
-	if err != nil {
-		slog.Warn("failed to get geolocation data", "err", err, "ip", address)
-	}
+	location := Locate(ctx, server, address)
 
 	if impersonatorId != nil {
 		duration = min(duration, time.Until(authenticatedAt.Add(time.Hour)))

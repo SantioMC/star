@@ -119,6 +119,10 @@ func (db *Database) CompletePasswordReset(ctx context.Context, reset *PasswordRe
 		return false, err
 	}
 
+	if err := db.revokeAuthorizations(ctx, tx, &reset.UserID); err != nil {
+		return false, err
+	}
+
 	if err := db.revokeUser(ctx, tx, reset.UserID, RevocationReasonPasswordReset); err != nil {
 		return false, err
 	}

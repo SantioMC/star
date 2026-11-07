@@ -3,6 +3,8 @@
     import ChangePasswordCard from "./components/change-password-card.svelte";
     import MultiFactorCard from "./components/multi-factor-card.svelte";
     import SessionsCard from "./components/sessions-card.svelte";
+
+    let passwordChanges = $state(0);
 </script>
 
 <PageHeader
@@ -10,6 +12,8 @@
     description="Protect and secure your account"
 />
 
-<ChangePasswordCard />
+<ChangePasswordCard onchanged={() => passwordChanges++} />
 <MultiFactorCard />
-<SessionsCard />
+{#key passwordChanges}
+    <SessionsCard />
+{/key}

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/server/common"
 )
@@ -40,6 +41,12 @@ func Application(ctx fiber.Ctx) error {
 		requested = []string{openid.ScopeOpenID}
 	}
 
+	return ctx.JSON(NewPublicApplication(ctx, application, requested))
+}
+
+func NewPublicApplication(ctx fiber.Ctx, application *database.Application, requested []string) PublicApplication {
+	star := common.GetState(ctx)
+
 	resolution := openid.ResolveScopes(ctx, star.Database, application, requested)
 	scopes := make([]PublicScope, len(resolution.Granted))
 
@@ -56,11 +63,11 @@ func Application(ctx fiber.Ctx) error {
 		}
 	}
 
-	return ctx.JSON(PublicApplication{
+	return PublicApplication{
 		ID:            application.ID,
 		Name:          application.Name,
 		URL:           application.ApplicationURL,
 		Scopes:        scopes,
 		InvalidScopes: resolution.Invalid,
-	})
+	}
 }

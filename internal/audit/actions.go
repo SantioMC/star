@@ -51,6 +51,9 @@ const (
 	GrantRevoke    Action = "grant.revoke"
 	GrantAuthorize Action = "grant.authorize"
 
+	DeviceApprove Action = "device.approve"
+	DeviceDeny    Action = "device.deny"
+
 	UserRegister     Action = "user.register"
 	UserUpdate       Action = "user.update"
 	UserDelete       Action = "user.delete"
@@ -139,6 +142,8 @@ var Definitions = []Definition{
 	{GrantCreate, "Application authorized", "Authorizations", SeverityInfo},
 	{GrantRevoke, "Application access revoked", "Authorizations", SeverityInfo},
 	{GrantAuthorize, "Signed in to application", "Authorizations", SeverityInfo},
+	{DeviceApprove, "Device sign in approved", "Authorizations", SeverityNotice},
+	{DeviceDeny, "Device sign in denied", "Authorizations", SeverityInfo},
 
 	{UserRegister, "Account registered", "Users", SeverityInfo},
 	{UserUpdate, "Profile updated", "Users", SeverityInfo},

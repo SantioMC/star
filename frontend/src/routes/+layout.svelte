@@ -16,6 +16,7 @@
         "/forgot-password",
         "/reset-password",
         "/oauth/authorize",
+        "/device",
     ];
 
     let ready = $state(false);

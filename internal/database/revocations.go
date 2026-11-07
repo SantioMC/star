@@ -27,6 +27,7 @@ const (
 	RevocationReasonCodeReplayed           RevocationReason = "code_replayed"
 	RevocationReasonRolesChanged           RevocationReason = "roles_changed"
 	RevocationReasonPasswordReset          RevocationReason = "password_reset"
+	RevocationReasonPasswordChanged        RevocationReason = "password_changed"
 	RevocationReasonPasswordChangeRequired RevocationReason = "password_change_required"
 	RevocationReasonUserDeleted            RevocationReason = "user_deleted"
 	RevocationReasonUserSuspended          RevocationReason = "user_suspended"
@@ -125,11 +126,67 @@ func (db *Database) RevokeUserSessions(ctx context.Context, userID string, reaso
 		return err
 	}
 
+	if err := db.revokeAuthorizations(ctx, tx, &userID); err != nil {
+		return err
+	}
+
 	if err := db.revokeUser(ctx, tx, userID, reason); err != nil {
 		return err
 	}
 
 	return tx.Commit()
+}
+
+func (db *Database) RevokeOtherUserSessions(ctx context.Context, userID string, keepFamilyID string) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if err := db.revokeOtherSessions(ctx, tx, userID, keepFamilyID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (db *Database) revokeOtherSessions(ctx context.Context, execer sqlx.ExecerContext, userID string, keepFamilyID string) error {
+	if err := db.revokeAuthorizations(ctx, execer, &userID); err != nil {
+		return err
+	}
+
+	return db.revoke(
+		ctx,
+		execer,
+		RevocationKindSession,
+		RevocationReasonPasswordChanged,
+		`DELETE FROM sessions WHERE (user_id = $1 OR impersonator_id = $1) AND family_id <> $2 RETURNING family_id AS subject, user_id`,
+		userID,
+		keepFamilyID,
+	)
+}
+
+func (db *Database) revokeAuthorizations(ctx context.Context, execer sqlx.ExecerContext, userID *string) error {
+	_, err := execer.ExecContext(
+		ctx,
+		`DELETE FROM authorization_codes WHERE redeemed_at IS NULL AND ($1::VARCHAR IS NULL OR user_id = $1 OR impersonator_id = $1)`,
+		userID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	_, err = execer.ExecContext(
+		ctx,
+		`DELETE FROM device_authorizations WHERE redeemed_at IS NULL AND status = $1 AND ($2::VARCHAR IS NULL OR user_id = $2)`,
+		DeviceAuthorizationApproved,
+		userID,
+	)
+
+	return err
 }
 
 func (db *Database) RevokeUserTokens(ctx context.Context, userID string, reason RevocationReason) error {

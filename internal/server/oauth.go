@@ -11,7 +11,14 @@ func oauthRouter(router fiber.Router) {
 
 	router.Get("/authorize", authorizeHandler)
 	router.Get("/application/:client_id", tokenLimiter, applicationHandler)
-	router.Post("/token", tokenLimiter, tokenHandler)
+	router.Post(
+		"/token",
+		middleware.SkipWhen(oauth.IsDevicePoll, tokenLimiter),
+		middleware.PollRateLimit(600, oauth.DevicePollAddress, oauth.SlowDown),
+		middleware.PollRateLimit(30, oauth.DevicePollKey, oauth.SlowDown),
+		tokenHandler,
+	)
+	router.Post("/device_authorization", middleware.RateLimit(30), deviceAuthorizationHandler)
 	router.Post("/revoke", tokenLimiter, revokeHandler)
 	router.Post("/introspect", middleware.RateLimit(300), introspectHandler)
 }
@@ -26,6 +33,10 @@ func applicationHandler(ctx fiber.Ctx) error {
 
 func tokenHandler(ctx fiber.Ctx) error {
 	return oauth.Token(ctx)
+}
+
+func deviceAuthorizationHandler(ctx fiber.Ctx) error {
+	return oauth.DeviceAuthorization(ctx)
 }
 
 func revokeHandler(ctx fiber.Ctx) error {

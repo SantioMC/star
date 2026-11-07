@@ -16,7 +16,7 @@ type tokenResponse struct {
 	IDToken      string `json:"id_token,omitempty"`
 }
 
-func writeTokenResponse(ctx fiber.Ctx, response tokenResponse) error {
+func writeTokenResponse(ctx fiber.Ctx, response any) error {
 	ctx.Set(fiber.HeaderCacheControl, "no-store")
 	ctx.Set("Pragma", "no-cache")
 
@@ -59,9 +59,11 @@ func Token(ctx fiber.Ctx) error {
 		return authorizationCodeGrant(ctx, form, application)
 	case "refresh_token":
 		return refreshTokenGrant(ctx, form, application)
+	case DeviceCodeGrantType:
+		return deviceCodeGrant(ctx, form, application)
 	case "":
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidRequest, "Missing grant_type")
 	default:
-		return writeTokenError(ctx, 400, Oauth2ErrorUnsupportedGrantType, "Only the authorization_code and refresh_token grant types are supported")
+		return writeTokenError(ctx, 400, Oauth2ErrorUnsupportedGrantType, "Only the authorization_code, refresh_token and device_code grant types are supported")
 	}
 }

@@ -397,6 +397,27 @@ export const getOAuthAuthCode = async (
     .catch(orError);
 };
 
+export const verifyDeviceCode = async (userCode: string) => {
+  return api
+    .post(`api/device/verify`, {
+      json: { user_code: userCode },
+    })
+    .json<DeviceVerification>()
+    .catch(orError);
+};
+
+export const decideDeviceAuthorization = async (
+  userCode: string,
+  approve: boolean,
+) => {
+  return api
+    .post(`api/device/decision`, {
+      json: { user_code: userCode, approve },
+    })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
 // Stubbed - endpoint not yet implemented in the new API
 export const getUserinfo = async (): Promise<UserinfoResponse | null> => {
   return api
@@ -1234,6 +1255,14 @@ export interface PublicApplication {
   invalid_scopes: string[];
 }
 
+export interface DeviceVerification {
+  user_code: string;
+  device: string;
+  geolocation: string | null;
+  expires_at: string;
+  application: PublicApplication;
+}
+
 export interface PublicScope {
   scope: string;
   description: string;
@@ -1502,6 +1531,7 @@ export interface AppChanges {
   session_duration?: number;
   redirect_uris?: string[];
   development_mode?: boolean;
+  device_flow?: boolean;
   privileged_scopes?: boolean;
   signing_algorithm?: SigningAlgorithm;
   role_restricted?: boolean;
@@ -1712,6 +1742,7 @@ export interface AdminApplication {
   session_duration: number;
   redirect_uris: string[];
   development_mode: boolean;
+  device_flow: boolean;
   privileged_scopes: boolean;
   signing_algorithm: SigningAlgorithm;
   role_restricted: boolean;
@@ -1799,6 +1830,7 @@ export type RevocationReason =
   | "code_replayed"
   | "roles_changed"
   | "password_reset"
+  | "password_changed"
   | "password_change_required"
   | "user_deleted"
   | "user_suspended"
@@ -1838,6 +1870,7 @@ export interface DiscoveryDocument {
   jwks_uri: string;
   authorization_endpoint: string;
   token_endpoint: string;
+  device_authorization_endpoint: string;
   userinfo_endpoint: string;
   revocation_endpoint: string;
   introspection_endpoint: string;

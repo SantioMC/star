@@ -22,6 +22,7 @@ type UpdateApplicationRequest struct {
 	SessionDuration  *models.Seconds `json:"session_duration" validate:"omitempty"`
 	RedirectURIs     []string        `json:"redirect_uris" validate:"omitempty,max=32"`
 	DevelopmentMode  *bool           `json:"development_mode" validate:"omitempty"`
+	DeviceFlow       *bool           `json:"device_flow" validate:"omitempty"`
 	PrivilegedScopes *bool           `json:"privileged_scopes" validate:"omitempty"`
 	SigningAlgorithm *string         `json:"signing_algorithm" validate:"omitempty"`
 	RoleRestricted   *bool           `json:"role_restricted" validate:"omitempty"`

@@ -356,6 +356,10 @@ func updateApplication(ctx fiber.Ctx) error {
 		application.DevelopmentMode = *request.DevelopmentMode
 	}
 
+	if request.DeviceFlow != nil {
+		application.DeviceFlow = *request.DeviceFlow
+	}
+
 	if request.PrivilegedScopes != nil {
 		application.PrivilegedScopes = *request.PrivilegedScopes
 	}
@@ -580,6 +584,39 @@ func deleteApplicationScope(ctx fiber.Ctx) error {
 	})
 }
 
+func sessionAuthenticatedAt(ctx fiber.Ctx, star *state.StarServer, sessionID string, userID string) time.Time {
+	current := star.Database.GetSessionByFamily(ctx, sessionID)
+	if current == nil {
+		slog.Warn("issuing an authorization for a session that no longer exists", "session", sessionID, "user", userID)
+		return time.Now()
+	}
+
+	return current.AuthenticatedAt
+}
+
+func saveApplicationGrant(ctx fiber.Ctx, star *state.StarServer, application *database.Application, user *database.User, grant *database.ApplicationGrant, scopes []string) error {
+	merged := oauth.MergeGrantScopes(grant, scopes)
+
+	err := star.Database.SaveApplicationGrant(ctx, &database.ApplicationGrant{
+		ID:            database.CreateID(database.ApplicationGrantKey),
+		UserID:        user.ID,
+		ApplicationID: application.ID,
+		Scopes:        pq.StringArray(merged),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if grant == nil || len(merged) != len(grant.Scopes) {
+		audit.Log(ctx, audit.GrantCreate, onApplication(application), audit.With("scopes", merged))
+	}
+
+	return nil
+}
+
 func createAppAuthorization(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	user, err := request.GetUser(ctx)
@@ -592,12 +629,7 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 		return err
 	}
 
-	authenticatedAt := time.Now()
-	if current := star.Database.GetSessionByFamily(ctx, jwt.SessionID); current != nil {
-		authenticatedAt = current.AuthenticatedAt
-	} else {
-		slog.Warn("issuing an authorization code for a session that no longer exists", "session", jwt.SessionID, "user", user.ID)
-	}
+	authenticatedAt := sessionAuthenticatedAt(ctx, star, jwt.SessionID, user.ID)
 
 	var request types.CreateApplicationAuthorizationRequest
 	if err := ctx.Bind().Body(&request); err != nil {
@@ -656,23 +688,8 @@ func createAppAuthorization(ctx fiber.Ctx) error {
 	}
 
 	if impersonation == nil && !application.Internal {
-		merged := oauth.MergeGrantScopes(grant, validScopes)
-
-		err := star.Database.SaveApplicationGrant(ctx, &database.ApplicationGrant{
-			ID:            database.CreateID(database.ApplicationGrantKey),
-			UserID:        user.ID,
-			ApplicationID: application.ID,
-			Scopes:        pq.StringArray(merged),
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
-		})
-
-		if err != nil {
+		if err := saveApplicationGrant(ctx, star, application, user, grant, validScopes); err != nil {
 			return err
-		}
-
-		if grant == nil || len(merged) != len(grant.Scopes) {
-			audit.Log(ctx, audit.GrantCreate, onApplication(application), audit.With("scopes", merged))
 		}
 	}
 

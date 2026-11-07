@@ -313,6 +313,16 @@ func changePassword(ctx fiber.Ctx) error {
 		}
 	}
 
+	jwt, err := request.GetJWT(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := star.Database.RevokeOtherUserSessions(ctx, user.ID, jwt.SessionID); err != nil {
+		return err
+	}
+
+	cache.UpdateRevocations(ctx, star)
 	notifyPasswordChanged(ctx, star, user.ID, star.ClientIP(ctx))
 	audit.Log(ctx, audit.PasswordChange)
 

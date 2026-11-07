@@ -197,6 +197,10 @@ func (db *Database) RequirePasswordChange(ctx context.Context, userID string) (b
 		return false, err
 	}
 
+	if err := db.revokeAuthorizations(ctx, tx, &userID); err != nil {
+		return false, err
+	}
+
 	if err := db.revokeUser(ctx, tx, userID, RevocationReasonPasswordChangeRequired); err != nil {
 		return false, err
 	}
@@ -227,6 +231,10 @@ func (db *Database) RequirePasswordChangeForAll(ctx context.Context) (int64, err
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions`); err != nil {
+		return 0, err
+	}
+
+	if err := db.revokeAuthorizations(ctx, tx, nil); err != nil {
 		return 0, err
 	}
 

@@ -108,6 +108,7 @@ func (db *Database) RevokeApplicationGrant(ctx context.Context, userID string, a
 	statements := []string{
 		`DELETE FROM application_grants WHERE user_id = $1 AND application_id = $2`,
 		`DELETE FROM authorization_codes WHERE user_id = $1 AND application_id = $2`,
+		`DELETE FROM device_authorizations WHERE user_id = $1 AND application_id = $2`,
 	}
 
 	for _, statement := range statements {

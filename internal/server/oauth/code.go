@@ -1,22 +1,13 @@
 package oauth
 
 import (
-	"errors"
-	"log/slog"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/tubblelive/star/internal/birthday"
-	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
-	"github.com/tubblelive/star/internal/openid"
-	"github.com/tubblelive/star/internal/security"
 	"github.com/tubblelive/star/internal/server/common"
-	"github.com/tubblelive/star/internal/session"
 	"github.com/tubblelive/star/internal/state"
-	"github.com/tubblelive/star/internal/token"
 )
 
 func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *database.Application) error {
@@ -57,90 +48,20 @@ func authorizationCodeGrant(ctx fiber.Ctx, form url.Values, application *databas
 		return err
 	}
 
-	user := star.Database.GetUserByID(ctx, authCode.UserID)
-	if user == nil {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for no longer exists")
-	}
-
-	if !star.Database.UserCanAccessApplication(ctx, user.ID, application) {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for can not access this application")
-	}
-
-	resolution := openid.ResolveScopes(ctx, star.Database, application, authCode.Scopes)
-	if len(resolution.Granted) == 0 {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidScope, "None of the scopes granted by this authorization code are available anymore")
-	}
-
-	granted := resolution.Names()
-
-	newSession, err := session.CreateSession(ctx, star, &session.Options{
-		User:            user,
-		Application:     application,
-		ImpersonatorID:  authCode.ImpersonatorID,
-		Scopes:          granted,
-		Duration:        application.SessionDuration.Duration(),
-		AuthenticatedAt: authCode.AuthenticatedAt,
+	return redeemGrant(ctx, application, &issuedGrant{
+		label:           "authorization code",
+		userID:          authCode.UserID,
+		impersonatorID:  authCode.ImpersonatorID,
+		scopes:          authCode.Scopes,
+		nonce:           authCode.Nonce,
+		authenticatedAt: authCode.AuthenticatedAt,
+		redeem: func(familyID string) (bool, error) {
+			return star.Database.RedeemAuthorizationCode(ctx, authCode.ID, familyID)
+		},
+		replayed: func() error {
+			return revokeReplayedCode(ctx, star, star.Database.GetAuthorizationCodeByID(ctx, authCode.ID))
+		},
 	})
-
-	if errors.Is(err, session.ErrUserSuspended) {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for is suspended")
-	} else if errors.Is(err, birthday.ErrAgeRestricted) {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this authorization code was issued for does not meet the age requirement")
-	} else if errors.Is(err, session.ErrImpersonationDenied) {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The impersonator of this authorization code is no longer permitted to impersonate this user")
-	} else if err != nil {
-		return err
-	}
-
-	redeemed, err := star.Database.RedeemAuthorizationCode(ctx, authCode.ID, newSession.FamilyID)
-	if err != nil {
-		return err
-	}
-
-	if !redeemed {
-		if err := star.Database.DeleteSessionByID(ctx, newSession.ID); err != nil {
-			slog.Error("failed to delete session after losing authorization code redemption race", "err", err, "session", newSession.ID)
-		}
-
-		return revokeReplayedCode(ctx, star, star.Database.GetAuthorizationCodeByID(ctx, authCode.ID))
-	}
-
-	claims := openid.UserClaims(ctx, star.Database, user, granted, star.Settings.Load().TrackBirthdays)
-	accessToken, err := token.Create(ctx, star, newSession, &token.Options{
-		Application: application,
-		Duration:    application.TokenDuration.Duration(),
-		Scope:       granted,
-		Audience:    resolution.Audiences(application.ID, star.DefaultApp.Load().ID),
-		Claims:      claims,
-	})
-
-	if errors.Is(err, token.ErrSessionRevoked) {
-		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This authorization code has been revoked")
-	} else if err != nil {
-		return err
-	}
-
-	response := tokenResponse{
-		AccessToken: string(accessToken),
-		TokenType:   "Bearer",
-		ExpiresIn:   int64(application.TokenDuration.Duration().Seconds()),
-		Scope:       strings.Join(granted, " "),
-	}
-
-	if openid.HasScope(granted, openid.ScopeOfflineAccess) {
-		response.RefreshToken = newSession.Token
-	}
-
-	if openid.HasScope(granted, openid.ScopeOpenID) {
-		idToken, err := token.CreateIDToken(star, newSession, application, claims, authCode.Nonce)
-		if err != nil {
-			return err
-		}
-
-		response.IDToken = string(idToken)
-	}
-
-	return writeTokenResponse(ctx, response)
 }
 
 func verifyPKCE(ctx fiber.Ctx, application *database.Application, authCode *database.AuthorizationCode, verifier string) (bool, error) {
@@ -176,30 +97,13 @@ func revokeReplayedCode(ctx fiber.Ctx, star *state.StarServer, authCode *databas
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This authorization code has already been redeemed")
 	}
 
-	slog.Warn("authorization code replay detected, revoking the previously issued session", "code", authCode.ID, "application", authCode.ApplicationID)
-
-	if authCode.FamilyID != nil {
-		err := star.Database.RevokeSessionFamily(ctx, authCode.UserID, *authCode.FamilyID, database.RevocationReasonCodeReplayed)
-		if err != nil {
-			slog.Error("failed to revoke session for replayed authorization code", "err", err, "session", *authCode.FamilyID)
-		}
-
-		cache.UpdateRevocations(ctx, star)
-	}
-
-	security.Report(star, ctx, &database.SecurityAlert{
-		Kind:        database.SecurityAlertAuthorizationCodeUsed,
-		Severity:    database.SecurityAlertSeverityHigh,
-		Message:     "An authorization code was redeemed more than once, the session issued from it has been revoked",
-		UserID:      &authCode.UserID,
-		Application: &authCode.ApplicationID,
-		Data: map[string]any{
-			"code":       authCode.ID,
-			"session":    authCode.FamilyID,
-			"ip_address": star.ClientIP(ctx),
-			"user_agent": ctx.UserAgent(),
-		},
+	return revokeReplayedGrant(ctx, star, &grantReplay{
+		kind:          database.SecurityAlertAuthorizationCodeUsed,
+		label:         "authorization code",
+		message:       "An authorization code was redeemed more than once, the session issued from it has been revoked",
+		id:            authCode.ID,
+		userID:        authCode.UserID,
+		applicationID: authCode.ApplicationID,
+		familyID:      authCode.FamilyID,
 	})
-
-	return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "This authorization code has already been redeemed")
 }

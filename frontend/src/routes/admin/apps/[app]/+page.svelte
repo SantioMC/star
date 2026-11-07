@@ -45,6 +45,7 @@
     let kind = $state<ClientKind>("public");
     let consent = $state<star.ApplicationConsent>("default");
     let developmentMode = $state(false);
+    let deviceFlow = $state(false);
     let privilegedScopes = $state(false);
     let signingAlgorithm = $state<star.SigningAlgorithm>("ES512");
     let tokenDuration = $state("");
@@ -93,6 +94,7 @@
         kind = data.kind;
         consent = data.consent;
         developmentMode = data.development_mode;
+        deviceFlow = data.device_flow;
         privilegedScopes = data.privileged_scopes;
         signingAlgorithm = data.signing_algorithm;
         tokenDuration = data.token_duration.toString();
@@ -141,6 +143,7 @@
             kind,
             consent,
             development_mode: developmentMode,
+            device_flow: deviceFlow,
             privileged_scopes: privilegedScopes,
             signing_algorithm: signingAlgorithm,
             token_duration: token,
@@ -612,6 +615,24 @@
                 </label>
 
                 {#if !app.internal}
+                    <label
+                        class="flex items-start gap-3 rounded-lg border border-background-200 p-3 transition-colors has-checked:border-primary/40 has-checked:bg-hover has-enabled:cursor-pointer has-enabled:hover:bg-hover"
+                    >
+                        <Checkbox class="mt-0.5" bind:checked={deviceFlow} />
+                        <div class="flex flex-col gap-0.5">
+                            <span class="text-sm select-none">
+                                Allow device sign in
+                            </span>
+                            <span class="text-sm text-muted select-none">
+                                Lets devices without a browser, such as TVs and
+                                command line tools, sign in by showing users a
+                                code to enter. Only enable this for applications
+                                that need it, these codes are a common phishing
+                                target.
+                            </span>
+                        </div>
+                    </label>
+
                     <label
                         class="flex items-start gap-3 rounded-lg border border-background-200 p-3 transition-colors has-checked:border-red-400/40 has-checked:bg-red-400/5 has-enabled:cursor-pointer has-enabled:hover:bg-hover"
                     >

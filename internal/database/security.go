@@ -19,6 +19,7 @@ const SecurityAlertKey = "sec"
 const (
 	SecurityAlertASessionReused        SecurityAlertKind = "authentication.session.already_rotated"
 	SecurityAlertAuthorizationCodeUsed SecurityAlertKind = "authorization.code.already_used"
+	SecurityAlertDeviceCodeUsed        SecurityAlertKind = "authorization.device_code.already_used"
 	SecurityAlertPasskeyCloned         SecurityAlertKind = "authentication.passkey.possibly_cloned"
 	SecurityAlertMFABruteForce         SecurityAlertKind = "authentication.mfa.repeated_failures"
 	SecurityAlertPasswordBruteForce    SecurityAlertKind = "authentication.password.repeated_failures"

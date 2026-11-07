@@ -26,6 +26,10 @@
                       value: discovery.authorization_endpoint,
                   },
                   { label: "Token URL", value: discovery.token_endpoint },
+                  {
+                      label: "Device Authorization URL",
+                      value: discovery.device_authorization_endpoint,
+                  },
                   { label: "Userinfo URL", value: discovery.userinfo_endpoint },
                   {
                       label: "Revocation URL",

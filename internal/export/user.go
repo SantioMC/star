@@ -11,19 +11,20 @@ import (
 )
 
 type UserExport struct {
-	ExportedAt     time.Time       `json:"exported_at"`
-	Profile        Profile         `json:"profile"`
-	Emails         []Email         `json:"emails"`
-	Accounts       []Account       `json:"accounts"`
-	Roles          []string        `json:"roles"`
-	Permissions    []string        `json:"permissions"`
-	MFA            MFA             `json:"mfa"`
-	Sessions       []Session       `json:"sessions"`
-	Authorizations []Authorization `json:"authorizations"`
-	LoginAttempts  []LoginAttempt  `json:"login_attempts"`
-	SecurityAlerts []SecurityAlert `json:"security_alerts"`
-	Suspensions    []Suspension    `json:"suspensions"`
-	AuditLogs      []AuditLog      `json:"audit_logs"`
+	ExportedAt           time.Time             `json:"exported_at"`
+	Profile              Profile               `json:"profile"`
+	Emails               []Email               `json:"emails"`
+	Accounts             []Account             `json:"accounts"`
+	Roles                []string              `json:"roles"`
+	Permissions          []string              `json:"permissions"`
+	MFA                  MFA                   `json:"mfa"`
+	Sessions             []Session             `json:"sessions"`
+	Authorizations       []Authorization       `json:"authorizations"`
+	DeviceAuthorizations []DeviceAuthorization `json:"device_authorizations"`
+	LoginAttempts        []LoginAttempt        `json:"login_attempts"`
+	SecurityAlerts       []SecurityAlert       `json:"security_alerts"`
+	Suspensions          []Suspension          `json:"suspensions"`
+	AuditLogs            []AuditLog            `json:"audit_logs"`
 }
 
 type Profile struct {
@@ -79,6 +80,16 @@ type Authorization struct {
 	ApplicationID string     `json:"application_id"`
 	RedirectURI   string     `json:"redirect_uri"`
 	Scopes        []string   `json:"scopes"`
+	CreatedAt     time.Time  `json:"created_at"`
+	RedeemedAt    *time.Time `json:"redeemed_at"`
+}
+
+type DeviceAuthorization struct {
+	ApplicationID string     `json:"application_id"`
+	Status        string     `json:"status"`
+	Scopes        []string   `json:"scopes"`
+	Device        string     `json:"device"`
+	Geolocation   *string    `json:"geolocation"`
 	CreatedAt     time.Time  `json:"created_at"`
 	RedeemedAt    *time.Time `json:"redeemed_at"`
 }
@@ -139,17 +150,18 @@ func User(ctx context.Context, db *database.Database, user *database.User) (*Use
 			Birthday:       user.Birthday,
 			CreatedAt:      user.CreatedAt,
 		},
-		Emails:         convert(db.GetEmailsByUserID(ctx, user.ID), email),
-		Accounts:       convert(db.GetAccountsByUserID(ctx, user.ID), account),
-		Roles:          convert(db.GetUserRoles(ctx, user.ID), roleName),
-		Permissions:    convert(db.GetUserPermissions(ctx, user.ID), permissionName),
-		MFA:            mfa(ctx, db, user.ID),
-		Sessions:       convert(db.GetUserSessions(ctx, user.ID), session),
-		Authorizations: convert(db.GetAuthorizationCodesByUserID(ctx, user.ID), authorization),
-		LoginAttempts:  convert(db.GetLoginFlowsByUserID(ctx, user.ID), loginAttempt),
-		SecurityAlerts: convert(db.GetSecurityAlertsByUserID(ctx, user.ID), securityAlert),
-		Suspensions:    convert(suspensions, suspension),
-		AuditLogs:      logs,
+		Emails:               convert(db.GetEmailsByUserID(ctx, user.ID), email),
+		Accounts:             convert(db.GetAccountsByUserID(ctx, user.ID), account),
+		Roles:                convert(db.GetUserRoles(ctx, user.ID), roleName),
+		Permissions:          convert(db.GetUserPermissions(ctx, user.ID), permissionName),
+		MFA:                  mfa(ctx, db, user.ID),
+		Sessions:             convert(db.GetUserSessions(ctx, user.ID), session),
+		Authorizations:       convert(db.GetAuthorizationCodesByUserID(ctx, user.ID), authorization),
+		DeviceAuthorizations: convert(db.GetDeviceAuthorizationsByUserID(ctx, user.ID), deviceAuthorization),
+		LoginAttempts:        convert(db.GetLoginFlowsByUserID(ctx, user.ID), loginAttempt),
+		SecurityAlerts:       convert(db.GetSecurityAlertsByUserID(ctx, user.ID), securityAlert),
+		Suspensions:          convert(suspensions, suspension),
+		AuditLogs:            logs,
 	}, nil
 }
 
@@ -289,6 +301,18 @@ func authorization(record database.AuthorizationCode) Authorization {
 		ApplicationID: record.ApplicationID,
 		RedirectURI:   record.RedirectURI,
 		Scopes:        record.Scopes,
+		CreatedAt:     record.CreatedAt,
+		RedeemedAt:    record.RedeemedAt,
+	}
+}
+
+func deviceAuthorization(record database.DeviceAuthorization) DeviceAuthorization {
+	return DeviceAuthorization{
+		ApplicationID: record.ApplicationID,
+		Status:        string(record.Status),
+		Scopes:        record.Scopes,
+		Device:        record.Device,
+		Geolocation:   record.Geolocation,
 		CreatedAt:     record.CreatedAt,
 		RedeemedAt:    record.RedeemedAt,
 	}

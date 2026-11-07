@@ -53,6 +53,7 @@ type Application struct {
 	SessionDuration  models.Seconds     `json:"session_duration" db:"session_duration"`
 	RedirectURIs     pq.StringArray     `json:"redirect_uris" db:"redirect_uris"`
 	DevelopmentMode  bool               `json:"development_mode" db:"development_mode"`
+	DeviceFlow       bool               `json:"device_flow" db:"device_flow"`
 	PrivilegedScopes bool               `json:"privileged_scopes" db:"privileged_scopes"`
 	SigningAlgorithm KeyAlgorithm       `json:"signing_algorithm" db:"signing_algorithm"`
 	RoleRestricted   bool               `json:"role_restricted" db:"role_restricted"`
@@ -191,7 +192,7 @@ func (db *Database) updateApplication(ctx context.Context, execer sqlx.ExecerCon
 		client_secret = $5, internal = $6, token_duration = $7,
 		session_duration = $8, redirect_uris = $9, development_mode = $10,
 		kind = $11, namespace = $12, consent = $13, privileged_scopes = $14,
-		signing_algorithm = $15, role_restricted = $16
+		signing_algorithm = $15, role_restricted = $16, device_flow = $17
 		WHERE id = $1
 		`,
 		application.ID,
@@ -210,6 +211,7 @@ func (db *Database) updateApplication(ctx context.Context, execer sqlx.ExecerCon
 		application.PrivilegedScopes,
 		application.SigningAlgorithm,
 		application.RoleRestricted,
+		application.DeviceFlow,
 	)
 
 	return err

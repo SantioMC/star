@@ -16,6 +16,9 @@ const (
 	Oauth2ErrorInvalidScope            Oauth2Error = "invalid_scope"
 	Oauth2ErrorServerError             Oauth2Error = "server_error"
 	Oauth2ErrorTemporarilyUnavailable  Oauth2Error = "temporarily_unavailable"
+	Oauth2ErrorAuthorizationPending    Oauth2Error = "authorization_pending"
+	Oauth2ErrorSlowDown                Oauth2Error = "slow_down"
+	Oauth2ErrorExpiredToken            Oauth2Error = "expired_token"
 )
 
 type errorResponse struct {

@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/birthday"
+	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/login"
@@ -224,6 +225,8 @@ func loginFlowPassword(ctx fiber.Ctx) error {
 	} else if !completed {
 		return login.ErrLoginFlowExpired
 	}
+
+	cache.UpdateRevocations(ctx, star)
 
 	ipAddress := star.ClientIP(ctx)
 	slog.Info("required password change completed", "user", loginFlow.UserID, "ip_address", ipAddress)

@@ -180,6 +180,10 @@ func (db *Database) CompleteRequiredPasswordChange(ctx context.Context, loginFlo
 		return false, err
 	}
 
+	if err := db.revokeOtherSessions(ctx, tx, loginFlow.UserID, ""); err != nil {
+		return false, err
+	}
+
 	return true, tx.Commit()
 }
 

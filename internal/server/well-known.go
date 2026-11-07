@@ -52,7 +52,7 @@ func getOpenIDConfiguration(ctx fiber.Ctx) error {
 		IntrospectionEndpoint: fmt.Sprintf("%s/oauth/introspect", star.Config.ServerURL),
 		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post"},
 		UserinfoEndpoint:                  fmt.Sprintf("%s/oidc/userinfo", star.Config.ServerURL),
-		DeviceAuthorizationEndpoint:       "",
+		DeviceAuthorizationEndpoint:       fmt.Sprintf("%s/oauth/device_authorization", star.Config.ServerURL),
 		RegistrationEndpoint:              "",
 		ScopesSupported:                   openid.SupportedScopes(),
 		ResponseTypesSupported:            oauth.SupportedResponseTypes,

@@ -6,6 +6,8 @@
     import { toast } from "svelte-sonner";
     import * as star from "@/star";
 
+    const { onchanged }: { onchanged: () => void } = $props();
+
     let currentPassword = $state("");
     let newPassword = $state("");
     let confirmPassword = $state("");
@@ -39,7 +41,11 @@
         newPassword = "";
         confirmPassword = "";
 
-        toast.success("Your password has been updated");
+        toast.success(
+            "Your password has been updated, your other sessions were signed out",
+        );
+
+        onchanged();
     };
 </script>
 

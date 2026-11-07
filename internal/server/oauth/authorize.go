@@ -23,6 +23,7 @@ var SupportedResponseModes = []string{
 var SupportedGrantTypes = []string{
 	"authorization_code",
 	"refresh_token",
+	DeviceCodeGrantType,
 }
 
 func authorizationError(ctx fiber.Ctx, err string) error {
