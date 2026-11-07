@@ -31,6 +31,7 @@ const (
 	RevocationReasonPasswordChangeRequired RevocationReason = "password_change_required"
 	RevocationReasonUserDeleted            RevocationReason = "user_deleted"
 	RevocationReasonUserSuspended          RevocationReason = "user_suspended"
+	RevocationReasonUserTypeChanged        RevocationReason = "user_type_changed"
 	RevocationReasonAppDeleted             RevocationReason = "application_deleted"
 	RevocationReasonAppAccessChanged       RevocationReason = "application_access_changed"
 	RevocationReasonConnectionRemoved      RevocationReason = "connection_removed"
@@ -122,19 +123,23 @@ func (db *Database) RevokeUserSessions(ctx context.Context, userID string, reaso
 
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1 OR impersonator_id = $1`, userID); err != nil {
-		return err
-	}
-
-	if err := db.revokeAuthorizations(ctx, tx, &userID); err != nil {
-		return err
-	}
-
-	if err := db.revokeUser(ctx, tx, userID, reason); err != nil {
+	if err := db.revokeUserSessions(ctx, tx, userID, reason); err != nil {
 		return err
 	}
 
 	return tx.Commit()
+}
+
+func (db *Database) revokeUserSessions(ctx context.Context, execer sqlx.ExecerContext, userID string, reason RevocationReason) error {
+	if _, err := execer.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = $1 OR impersonator_id = $1`, userID); err != nil {
+		return err
+	}
+
+	if err := db.revokeAuthorizations(ctx, execer, &userID); err != nil {
+		return err
+	}
+
+	return db.revokeUser(ctx, execer, userID, reason)
 }
 
 func (db *Database) RevokeOtherUserSessions(ctx context.Context, userID string, keepFamilyID string) error {

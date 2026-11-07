@@ -714,12 +714,20 @@ export const getMetrics = async () => {
     .catch((_) => null);
 };
 
-export const getAllUsers = async (page: number = 1, query: string = "") => {
+export const getAllUsers = async (
+  page: number = 1,
+  query: string = "",
+  type: UserType | "" = "",
+) => {
   const searchParams = new URLSearchParams();
   searchParams.set("page", page.toString());
 
   if (query) {
     searchParams.set("query", query);
+  }
+
+  if (type) {
+    searchParams.set("type", type);
   }
 
   return api
@@ -766,6 +774,10 @@ export const createInvite = async (data: CreateInviteRequest) => {
     .post(`api/invite`, { json: data })
     .json<InviteLink>()
     .catch(orError);
+};
+
+export const createUser = async (data: CreateUserRequest) => {
+  return api.post(`api/user`, { json: data }).json<AdminUser>().catch(orError);
 };
 
 export const regenerateInvite = async (user: string, expiresIn: number) => {
@@ -1552,6 +1564,7 @@ export interface UserChanges {
 
 export interface AdminUserChanges extends UserChanges {
   roles?: string[];
+  type?: UserType;
 }
 
 export interface User {
@@ -1571,9 +1584,17 @@ export interface User {
   created_at: string;
 }
 
+export type UserType = "regular" | "service";
+
+export interface CreateUserRequest {
+  username: string;
+  type: UserType;
+}
+
 export interface AdminUser {
   id: string;
   username: string;
+  type: UserType;
   first_name: string | null;
   last_name: string | null;
   profile_picture: string;
@@ -1834,6 +1855,7 @@ export type RevocationReason =
   | "password_change_required"
   | "user_deleted"
   | "user_suspended"
+  | "user_type_changed"
   | "application_deleted"
   | "application_access_changed"
   | "connection_removed"

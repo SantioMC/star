@@ -63,6 +63,9 @@ const (
 	UserSuspend      Action = "user.suspend"
 	UserUnsuspend    Action = "user.unsuspend"
 
+	UserCreate     Action = "user.create"
+	UserTypeChange Action = "user.type_change"
+
 	UserInvite           Action = "user.invite"
 	UserInviteRegenerate Action = "user.invite_regenerate"
 	UserInviteEmail      Action = "user.invite_email"
@@ -153,6 +156,8 @@ var Definitions = []Definition{
 	{UserLockoutClear, "Sign in lockout cleared", "Users", SeverityNotice},
 	{UserSuspend, "User suspended", "Users", SeverityCritical},
 	{UserUnsuspend, "User unsuspended", "Users", SeverityCritical},
+	{UserCreate, "User created", "Users", SeverityNotice},
+	{UserTypeChange, "User type changed", "Users", SeverityCritical},
 	{UserInvite, "User invited", "Users", SeverityNotice},
 	{UserInviteRegenerate, "User invite link regenerated", "Users", SeverityNotice},
 	{UserInviteEmail, "User invite emailed", "Users", SeverityInfo},

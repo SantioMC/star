@@ -30,6 +30,10 @@ func RefreshSession(
 		return nil, ErrSessionExpired
 	}
 
+	if err := rejectService(ctx, server, current.UserID); err != nil {
+		return nil, err
+	}
+
 	if err := rejectSuspended(ctx, server, current.UserID); err != nil {
 		return nil, err
 	}

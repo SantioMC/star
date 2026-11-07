@@ -3,6 +3,7 @@ package types
 import (
 	"time"
 
+	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/models"
 	"github.com/tubblelive/star/internal/username"
 )
@@ -53,6 +54,11 @@ type CreateInviteRequest struct {
 	LastName  *string `json:"last_name" validate:"omitempty,max=255"`
 	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
 	ExpiresIn int     `json:"expires_in" validate:"required,min=1,max=168"`
+}
+
+type CreateUserRequest struct {
+	Username string            `json:"username" validate:"required"`
+	Type     database.UserType `json:"type" validate:"required,oneof=service"`
 }
 
 type RegenerateInviteRequest struct {
@@ -129,6 +135,8 @@ type AdminUpdateUserRequest struct {
 	LastName  *string   `json:"last_name" validate:"omitempty,max=255"`
 	Birthday  *string   `json:"birthday" validate:"omitempty,max=10"`
 	Roles     *[]string `json:"roles" validate:"omitempty"`
+
+	Type *database.UserType `json:"type" validate:"omitempty,oneof=regular service"`
 }
 
 type SuspendUserRequest struct {

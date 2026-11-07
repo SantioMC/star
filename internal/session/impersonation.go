@@ -13,6 +13,10 @@ func CheckImpersonation(ctx fiber.Ctx, server *state.StarServer, impersonatorID 
 		return ErrImpersonationDenied
 	}
 
+	if err := rejectService(ctx, server, userID); err != nil {
+		return err
+	}
+
 	if err := rejectSuspended(ctx, server, impersonatorID); err != nil {
 		return err
 	}

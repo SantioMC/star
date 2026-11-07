@@ -40,6 +40,7 @@
         password_change_required: "Password change required by an admin",
         user_deleted: "User deleted",
         user_suspended: "User suspended",
+        user_type_changed: "User type changed",
         application_deleted: "Application deleted",
         application_access_changed: "Application access changed",
         connection_removed: "Social connection removed",

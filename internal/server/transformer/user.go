@@ -54,6 +54,7 @@ type PublicUser struct {
 type AdminUser struct {
 	ID                     string                   `json:"id"`
 	Username               string                   `json:"username"`
+	Type                   database.UserType        `json:"type"`
 	FirstName              *string                  `json:"first_name"`
 	LastName               *string                  `json:"last_name"`
 	ProfilePicture         string                   `json:"profile_picture"`
@@ -114,6 +115,7 @@ func TransformAdminUser(
 	return AdminUser{
 		ID:                     user.ID,
 		Username:               user.Name,
+		Type:                   user.Type,
 		FirstName:              user.FirstName,
 		LastName:               user.LastName,
 		ProfilePicture:         picture.GetProfilePicture(user, primaryEmail),

@@ -10,6 +10,7 @@
     import Pagination from "@/components/pagination.svelte";
     import PageHeader from "@/components/page-header.svelte";
     import SearchInput from "@/components/search-input.svelte";
+    import Select, { type SelectOption } from "@/components/select.svelte";
     import * as Avatar from "@/components/ui/avatar";
     import { hasPermission } from "@/index";
     import * as star from "@/star";
@@ -27,15 +28,27 @@
     let users = $state<star.AdminUser[]>([]);
     let loaded = $state(false);
     let query = $state("");
+    let type = $state<star.UserType | "">("");
     let page = $state(1);
     let searchTask: ReturnType<typeof setTimeout> | null = null;
+
+    const typeOptions: SelectOption<star.UserType | "">[] = [
+        { value: "", label: "All" },
+        { value: "regular", label: "Regular Users" },
+        { value: "service", label: "Service Accounts" },
+    ];
 
     const hasNextPage = $derived(users.length >= PAGE_SIZE);
 
     const load = async () => {
         loaded = false;
-        users = await star.getAllUsers(page, query.trim());
+        users = await star.getAllUsers(page, query.trim(), type);
         loaded = true;
+    };
+
+    const handleType = () => {
+        page = 1;
+        load();
     };
 
     onMount(() => {
@@ -80,11 +93,19 @@
     {/snippet}
 </PageHeader>
 
-<SearchInput
-    bind:value={query}
-    oninput={handleSearch}
-    placeholder="Search by username or email"
-/>
+<div class="flex flex-col gap-2 sm:flex-row">
+    <SearchInput
+        bind:value={query}
+        oninput={handleSearch}
+        placeholder="Search by username or email"
+    />
+    <Select
+        bind:value={type}
+        options={typeOptions}
+        onchange={handleType}
+        class="sm:w-48"
+    />
+</div>
 
 <Card class="p-2 sm:p-3">
     <table class="w-full text-sm">
@@ -145,7 +166,9 @@
                             {#if user.invite}
                                 <Badge tone="info" class="ml-1">invited</Badge>
                             {/if}
-                            {#if !user.email_verified}
+                            {#if user.type === "service"}
+                                <Badge tone="info" class="ml-1">service</Badge>
+                            {:else if !user.email_verified}
                                 <Badge tone="warning" class="ml-1">
                                     unverified
                                 </Badge>

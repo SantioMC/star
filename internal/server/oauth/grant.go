@@ -69,6 +69,8 @@ func redeemGrant(ctx fiber.Ctx, application *database.Application, grant *issued
 
 	if errors.Is(err, session.ErrUserSuspended) {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this "+grant.label+" was issued for is suspended")
+	} else if errors.Is(err, session.ErrServiceAccount) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this "+grant.label+" was issued for is a service account")
 	} else if errors.Is(err, birthday.ErrAgeRestricted) {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this "+grant.label+" was issued for does not meet the age requirement")
 	} else if errors.Is(err, session.ErrImpersonationDenied) {

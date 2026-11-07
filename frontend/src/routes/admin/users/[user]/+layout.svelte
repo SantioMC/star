@@ -50,6 +50,7 @@
     let signOutModal = $state<ConfirmModal>();
     let revokeTokensModal = $state<ConfirmModal>();
     let requirePasswordChangeModal = $state<ConfirmModal>();
+    let convertModal = $state<ConfirmModal>();
     let passwordModal = $state<Modal>();
     let suspendModal = $state<SuspendModal>();
     let unsuspendModal = $state<UnsuspendModal>();
@@ -96,6 +97,10 @@
         const items: { label: string; tone: BadgeTone }[] = [];
         if (!user) return items;
 
+        if (user.type === "service") {
+            items.push({ label: "service", tone: "info" });
+        }
+
         if (user.invite) {
             items.push({ label: "invited", tone: "info" });
         }
@@ -122,7 +127,9 @@
     const menuItems = $derived.by(() => {
         const items: MenuItem[] = [];
 
-        if (canWrite && manageable && !user?.invite) {
+        const isService = user?.type === "service";
+
+        if (canWrite && manageable && !user?.invite && !isService) {
             items.push({
                 label: "Set password",
                 icon: "key",
@@ -147,6 +154,23 @@
             });
         }
 
+        const canConvert =
+            canWrite &&
+            manageable &&
+            !user?.invite &&
+            user?.id !== $currentUser?.id;
+
+        if (canConvert) {
+            items.push({
+                label: isService
+                    ? "Convert to regular user"
+                    : "Convert to service account",
+                icon: isService ? "user" : "robot",
+                group: "account",
+                onclick: () => convertModal?.open(),
+            });
+        }
+
         if (canExport) {
             items.push({
                 label: "Export data",
@@ -161,6 +185,7 @@
             manageable &&
             !user?.suspension &&
             !user?.invite &&
+            !isService &&
             user?.id !== $currentUser?.id;
 
         if (canImpersonateUser) {
@@ -266,6 +291,21 @@
 
         context.current = result;
         toast.success(`${result.username} must change their password`);
+    };
+
+    const convertUser = async () => {
+        if (!user) return;
+
+        const type = user.type === "service" ? "regular" : "service";
+
+        const result = await star.modifyUser(user.id, { type });
+        if ("error" in result) {
+            toast.error(result.message);
+            return false;
+        }
+
+        context.current = result;
+        toast.success(`Converted ${result.username}`);
     };
 
     const exportData = async () => {
@@ -497,6 +537,27 @@
     >
         <span class="text-foreground">{user.username}</span> will be signed out
         everywhere and must choose a new password the next time they sign in.
+    </ConfirmModal>
+
+    <ConfirmModal
+        bind:this={convertModal}
+        title={user.type === "service"
+            ? "Convert to regular user"
+            : "Convert to service account"}
+        confirmLabel="Convert"
+        onconfirm={convertUser}
+    >
+        {#if user.type === "service"}
+            <span class="text-foreground">{user.username}</span> will be able to
+            sign in with any credentials on this account.
+            {#if !user.has_password}
+                They have no password yet, so set one after converting.
+            {/if}
+        {:else}
+            <span class="text-foreground">{user.username}</span> will be signed
+            out everywhere, and will not be able to sign in again. Their
+            credentials are kept in case they are converted back.
+        {/if}
     </ConfirmModal>
 
     <ConfirmModal

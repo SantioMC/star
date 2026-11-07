@@ -33,6 +33,8 @@ func userRouter(router fiber.Router) {
 		getAllUsers,
 	)
 
+	router.Post("/", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminWriteUsers), createUser)
+
 	router.Get("/register", getRegisterRequirements)
 	router.Post("/register", middleware.RequireCaptcha, registerUser)
 
@@ -247,6 +249,38 @@ func registerUser(ctx fiber.Ctx) error {
 		"success":               true,
 		"verification_required": !email.Verified,
 	})
+}
+
+func createUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var data types.CreateUserRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	name, err := username.ValidateUsername(data.Username, &username.DefaultSettings)
+	if err != nil {
+		return fiber.NewError(400, err.Error())
+	}
+
+	user := &database.User{
+		ID:        database.CreateID(database.UserKey),
+		Name:      name,
+		Type:      data.Type,
+		CreatedAt: time.Now(),
+	}
+
+	err = star.Database.CreateUser(ctx, user)
+	if errors.Is(err, database.ErrDuplicate) {
+		return fiber.NewError(400, "username already taken")
+	} else if err != nil {
+		return err
+	}
+
+	audit.Log(ctx, audit.UserCreate, audit.OnUser(user), audit.With("type", user.Type))
+
+	return ctx.JSON(populateUser(ctx, user))
 }
 
 func changePassword(ctx fiber.Ctx) error {
@@ -478,12 +512,13 @@ func getAllUsers(ctx fiber.Ctx) error {
 	}
 
 	query := ctx.Query("query")
+	userType := database.UserType(ctx.Query("type"))
 
 	var users []database.User
 	if query != "" {
-		users = star.Database.SearchUsers(ctx, query, page, limit)
+		users = star.Database.SearchUsers(ctx, query, userType, page, limit)
 	} else {
-		users = star.Database.GetUsers(ctx, page, limit)
+		users = star.Database.GetUsers(ctx, userType, page, limit)
 	}
 
 	transformed := make([]transformer.AdminUser, len(users))
@@ -619,7 +654,48 @@ func adminUpdateUser(ctx fiber.Ctx) error {
 		}
 	}
 
+	if data.Type != nil {
+		if err := setUserType(ctx, user, *data.Type); err != nil {
+			return err
+		}
+	}
+
 	return ctx.JSON(populateUser(ctx, user))
+}
+
+func setUserType(ctx fiber.Ctx, user *database.User, userType database.UserType) error {
+	star := common.GetState(ctx)
+
+	if user.Type == userType {
+		return nil
+	}
+
+	requesterID, err := request.GetUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	if requesterID == user.ID {
+		return fiber.NewError(403, "You are not permitted to change your own account type")
+	}
+
+	invite, err := star.Database.GetUserInvite(ctx, user.ID)
+	if err != nil {
+		return err
+	} else if invite != nil {
+		return fiber.NewError(400, "This user has a pending invite, their account type can not be changed")
+	}
+
+	if err := star.Database.SetUserType(ctx, user.ID, userType); err != nil {
+		return err
+	}
+
+	cache.UpdateRevocations(ctx, star)
+	audit.Log(ctx, audit.UserTypeChange, audit.OnUser(user), audit.With("from", user.Type), audit.With("to", userType))
+
+	user.Type = userType
+
+	return nil
 }
 
 func setUserRoles(ctx fiber.Ctx, user *database.User, roleIDs []string) error {
@@ -683,6 +759,10 @@ func adminSetPassword(ctx fiber.Ctx) error {
 		return err
 	}
 
+	if user.Type == database.UserTypeService {
+		return fiber.NewError(400, "Service accounts can not have a password")
+	}
+
 	invite, err := star.Database.GetUserInvite(ctx, user.ID)
 	if err != nil {
 		return err
@@ -704,16 +784,16 @@ func adminSetPassword(ctx fiber.Ctx) error {
 
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
 	if account == nil {
-		email := star.Database.GetPrimaryEmail(ctx, user.ID)
-		if email == nil {
-			return fiber.NewError(400, "This user has no primary email to create an internal account with")
+		var address *string
+		if email := star.Database.GetPrimaryEmail(ctx, user.ID); email != nil {
+			address = &email.Email
 		}
 
 		account = &database.Account{
 			ID:          database.CreateID(database.AccountKey),
 			Type:        "internal",
 			UserID:      user.ID,
-			Email:       &email.Email,
+			Email:       address,
 			Name:        &user.Name,
 			Password:    &hashed,
 			PasswordAlg: alg,

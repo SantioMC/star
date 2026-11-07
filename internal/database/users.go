@@ -13,9 +13,17 @@ import (
 
 const UserKey = "usr"
 
+type UserType string
+
+const (
+	UserTypeRegular UserType = "regular"
+	UserTypeService UserType = "service"
+)
+
 type User struct {
 	ID             string       `json:"id"`
 	Name           string       `json:"name"`
+	Type           UserType     `json:"type"`
 	FirstName      *string      `json:"first_name" db:"first_name"`
 	LastName       *string      `json:"last_name" db:"last_name"`
 	ProfilePicture *string      `json:"profile_picture" db:"profile_picture"`
@@ -41,12 +49,17 @@ func (db *Database) GetUserByID(ctx context.Context, id string) *User {
 	return &user
 }
 
-func (db *Database) GetUsers(ctx context.Context, page int, limit int) []User {
+func (db *Database) GetUsers(ctx context.Context, userType UserType, page int, limit int) []User {
 	users, err := list[User](
 		ctx,
 		db.DB(),
-		`SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-		limit, (page-1)*limit,
+		`
+		SELECT * FROM users
+		WHERE $1 = '' OR type = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+		`,
+		userType, limit, (page-1)*limit,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -59,17 +72,17 @@ func (db *Database) GetUsers(ctx context.Context, page int, limit int) []User {
 	return users
 }
 
-func (db *Database) SearchUsers(ctx context.Context, query string, page int, limit int) []User {
+func (db *Database) SearchUsers(ctx context.Context, query string, userType UserType, page int, limit int) []User {
 	users, err := list[User](
 		ctx,
 		db.DB(),
 		`
 		SELECT * FROM users
-		WHERE name ILIKE '%' || $1 || '%'
+		WHERE name ILIKE '%' || $1 || '%' AND ($2 = '' OR type = $2)
 		ORDER BY created_at DESC
-		LIMIT $2 OFFSET $3
+		LIMIT $3 OFFSET $4
 		`,
-		query, limit, (page-1)*limit,
+		query, userType, limit, (page-1)*limit,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -182,6 +195,25 @@ func (db *Database) updateUser(ctx context.Context, execer sqlx.ExecerContext, u
 	return err
 }
 
+func (db *Database) SetUserType(ctx context.Context, id string, userType UserType) error {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET type = $2 WHERE id = $1`, id, userType); err != nil {
+		return err
+	}
+
+	if err := db.revokeUserSessions(ctx, tx, id, RevocationReasonUserTypeChanged); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (db *Database) CreateUserIdentity(ctx context.Context, user *User, email *UserEmail, account *Account) error {
 	tx, err := db.DB().BeginTxx(ctx, nil)
 	if err != nil {
@@ -207,15 +239,24 @@ func (db *Database) CreateUserIdentity(ctx context.Context, user *User, email *U
 	return tx.Commit()
 }
 
+func (db *Database) CreateUser(ctx context.Context, user *User) error {
+	return duplicate(db.insertUser(ctx, db.DB(), user))
+}
+
 func (db *Database) insertUser(ctx context.Context, execer sqlx.ExecerContext, user *User) error {
+	if user.Type == "" {
+		user.Type = UserTypeRegular
+	}
+
 	_, err := execer.ExecContext(
 		ctx,
 		`
-		INSERT INTO users (id, name, first_name, last_name, profile_picture, birthday, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO users (id, name, type, first_name, last_name, profile_picture, birthday, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		`,
 		user.ID,
 		user.Name,
+		user.Type,
 		user.FirstName,
 		user.LastName,
 		user.ProfilePicture,
