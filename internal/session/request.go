@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/lib/pq"
+	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/state"
 	"github.com/tubblelive/star/internal/useragent"
@@ -21,6 +22,24 @@ func rejectSuspended(ctx fiber.Ctx, server *state.StarServer, userID string) err
 		return err
 	} else if suspension != nil {
 		return ErrUserSuspended
+	}
+
+	return nil
+}
+
+func rejectAgeRestricted(ctx fiber.Ctx, server *state.StarServer, userID string) error {
+	policy := server.Settings.Load().GetAgePolicy()
+	if !policy.Enabled() {
+		return nil
+	}
+
+	user := server.Database.GetUserByID(ctx, userID)
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	if err := policy.Check(user.Birthday); err != nil {
+		return birthday.ErrAgeRestricted
 	}
 
 	return nil
@@ -43,6 +62,8 @@ func CreateSession(
 		if err := CheckImpersonation(ctx, server, *options.ImpersonatorID, options.User.ID); err != nil {
 			return nil, err
 		}
+	} else if err := rejectAgeRestricted(ctx, server, options.User.ID); err != nil {
+		return nil, err
 	}
 
 	var accountID *string

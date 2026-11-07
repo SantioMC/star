@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/database/models"
 	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/password"
@@ -22,6 +23,8 @@ type Settings struct {
 	EmailDomainMode       email.DomainMode          `json:"email_domain_mode" db:"email_domain_mode"`
 	EmailDomains          models.JSONData[[]string] `json:"email_domains" db:"email_domains"`
 	BlockDisposableEmails bool                      `json:"block_disposable_emails" db:"block_disposable_emails"`
+	TrackBirthdays        bool                      `json:"track_birthdays" db:"track_birthdays"`
+	MinimumAge            int                       `json:"minimum_age" db:"minimum_age"`
 	AuditRetentionDays    *int                      `json:"audit_retention_days" db:"audit_retention_days"`
 	AuditAnonymize        bool                      `json:"audit_anonymize" db:"audit_anonymize"`
 	PasswordSettings      string                    `json:"password_settings" db:"password_settings"`
@@ -32,6 +35,13 @@ func (s *Settings) GetEmailDomainPolicy() email.DomainPolicy {
 		Mode:            s.EmailDomainMode,
 		Domains:         s.EmailDomains.Data,
 		BlockDisposable: s.BlockDisposableEmails,
+	}
+}
+
+func (s *Settings) GetAgePolicy() birthday.Policy {
+	return birthday.Policy{
+		Tracked:    s.TrackBirthdays,
+		MinimumAge: s.MinimumAge,
 	}
 }
 
@@ -70,7 +80,8 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		UPDATE settings
 		SET allow_registration = $2, allow_logins = $3, password_settings = $4, email_code_length = $5,
 			audit_retention_days = $6, audit_anonymize = $7, email_verification = $8, email_domain_mode = $9,
-			email_domains = $10, block_disposable_emails = $11
+			email_domains = $10, block_disposable_emails = $11, minimum_age = $12,
+			track_birthdays = $13
 		WHERE id = $1
 		`,
 		settings.ID,
@@ -84,6 +95,8 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		settings.EmailDomainMode,
 		settings.EmailDomains,
 		settings.BlockDisposableEmails,
+		settings.MinimumAge,
+		settings.TrackBirthdays,
 	)
 
 	return err

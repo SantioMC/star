@@ -21,12 +21,16 @@ const (
 	ScopeEmail   = "email"
 	ScopeRoles   = "roles"
 
+	ScopeBirthday = "birthday"
+
 	ScopeUserRead           = "star:user:read"
 	ScopeUserWrite          = "star:user:write"
 	ScopeUserAccountRead    = "star:user:account:read"
+	ScopeUserAccountWrite   = "star:user:account:write"
 	ScopeUserPasswordWrite  = "star:user:password:write"
 	ScopeUserEmailRead      = "star:user:email:read"
 	ScopeUserEmailWrite     = "star:user:email:write"
+	ScopeUserBirthdayRead   = "star:user:birthday:read"
 	ScopeUserRolesRead      = "star:user:roles:read"
 	ScopeUserSessionsRead   = "star:user:sessions:read"
 	ScopeUserSessionsWrite  = "star:user:sessions:write"
@@ -89,12 +93,17 @@ var BuiltinScopes = []ScopeDefinition{
 		Description: "View your connected accounts",
 	},
 	{
+		Name:        ScopeUserAccountWrite,
+		Description: "Connect and remove linked accounts",
+		Privileged:  true,
+	},
+	{
 		Name:        ScopeUserPermissionRead,
 		Description: "View permissions granted to you",
 	},
 	{
 		Name:        ScopeUserWrite,
-		Description: "Update your username and display name",
+		Description: "Update your username, display name, and birthday",
 		Privileged:  true,
 	},
 	{
@@ -106,6 +115,11 @@ var BuiltinScopes = []ScopeDefinition{
 		Name:        ScopeUserEmailWrite,
 		Description: "Add, remove, and change the primary of your email addresses",
 		Privileged:  true,
+	},
+	{
+		Name:        ScopeUserBirthdayRead,
+		Description: "Read your birthday",
+		Aliases:     []string{ScopeBirthday},
 	},
 	{
 		Name:        ScopeUserRolesRead,

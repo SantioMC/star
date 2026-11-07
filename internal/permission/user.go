@@ -54,6 +54,12 @@ var PermissionUpdatePrimaryEmail = PermissionDefinition{
 	Default:     true,
 }
 
+var PermissionManageConnections = PermissionDefinition{
+	Name:        "user:connection:write",
+	Description: "Allows connecting and removing social providers on the user",
+	Default:     true,
+}
+
 var PermissionEnrollMFA = PermissionDefinition{
 	Name:        "user:mfa:enroll",
 	Description: "Create and enroll MFA methods for the user",

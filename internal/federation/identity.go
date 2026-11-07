@@ -13,7 +13,9 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/database/models"
 )
 
 type Identity struct {
@@ -25,6 +27,7 @@ type Identity struct {
 	GivenName     *string
 	FamilyName    *string
 	Picture       *string
+	Birthday      *models.Date
 }
 
 func FetchIdentity(
@@ -71,6 +74,11 @@ func FetchIdentity(
 		picture = nil
 	}
 
+	claimedBirthday, err := birthday.Parse(claimString(claims, "birthdate"))
+	if err != nil {
+		claimedBirthday = nil
+	}
+
 	return &Identity{
 		Subject:       *subject,
 		Email:         claimString(claims, "email"),
@@ -80,6 +88,7 @@ func FetchIdentity(
 		GivenName:     claimString(claims, "given_name", "first_name"),
 		FamilyName:    claimString(claims, "family_name", "last_name"),
 		Picture:       picture,
+		Birthday:      claimedBirthday,
 	}, nil
 }
 

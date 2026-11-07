@@ -14,6 +14,7 @@ type CreateProviderRequest struct {
 	TokenURL         *string  `json:"token_url" validate:"omitempty,https_url"`
 	UserinfoURL      *string  `json:"userinfo_url" validate:"omitempty,https_url"`
 	TrustEmail       bool     `json:"trust_email"`
+	Enabled          *bool    `json:"enabled"`
 }
 
 type UpdateProviderRequest struct {
@@ -28,10 +29,13 @@ type UpdateProviderRequest struct {
 	TokenURL         *string   `json:"token_url" validate:"omitempty,https_url"`
 	UserinfoURL      *string   `json:"userinfo_url" validate:"omitempty,https_url"`
 	TrustEmail       *bool     `json:"trust_email" validate:"omitempty"`
+	Enabled          *bool     `json:"enabled" validate:"omitempty"`
 }
 
 type ProviderLoginState struct {
 	Provider  string    `json:"provider"`
+	UserID    string    `json:"user_id,omitempty"`
+	FamilyID  string    `json:"family_id,omitempty"`
 	State     string    `json:"state"`
 	Verifier  string    `json:"verifier"`
 	Nonce     string    `json:"nonce"`

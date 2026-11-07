@@ -19,6 +19,7 @@
         WebAuthnAbortService,
     } from "@simplewebauthn/browser";
     import { onMount, untrack } from "svelte";
+    import BirthdayStep from "./components/birthday-step.svelte";
     import CaptchaStep from "./components/captcha-step.svelte";
     import CredentialsStep from "./components/credentials-step.svelte";
     import MfaStep from "./components/mfa-step.svelte";
@@ -28,7 +29,8 @@
         | { kind: "credentials" }
         | { kind: "captcha" }
         | { kind: "mfa"; flow: string; factors: star.MFAMethod[] }
-        | { kind: "password-change"; flow: string };
+        | { kind: "password-change"; flow: string }
+        | { kind: "birthday"; flow: string };
 
     const intent = getLoginIntent();
     const knownUsername = $user?.username;
@@ -68,6 +70,12 @@
                     title: "Choose a new password",
                     description:
                         "You need to set a new password before you can continue",
+                };
+            case "birthday":
+                return {
+                    title: "Enter your birthday",
+                    description:
+                        "We need your birthday before you can continue",
                 };
         }
 
@@ -163,6 +171,10 @@
             case "pass_change":
                 error = "";
                 step = { kind: "password-change", flow: response.flow };
+                return;
+            case "birthday":
+                error = "";
+                step = { kind: "birthday", flow: response.flow };
                 return;
             default:
                 return restart(
@@ -276,6 +288,13 @@
         <PasswordChangeStep
             flow={step.flow}
             onstage={handleStage}
+            oncancel={() => restart()}
+        />
+    {:else if step.kind === "birthday"}
+        <BirthdayStep
+            flow={step.flow}
+            onstage={handleStage}
+            onrejected={restart}
             oncancel={() => restart()}
         />
     {/if}

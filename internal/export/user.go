@@ -27,12 +27,13 @@ type UserExport struct {
 }
 
 type Profile struct {
-	ID             string    `json:"id"`
-	Username       string    `json:"username"`
-	FirstName      *string   `json:"first_name"`
-	LastName       *string   `json:"last_name"`
-	ProfilePicture *string   `json:"profile_picture"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string       `json:"id"`
+	Username       string       `json:"username"`
+	FirstName      *string      `json:"first_name"`
+	LastName       *string      `json:"last_name"`
+	ProfilePicture *string      `json:"profile_picture"`
+	Birthday       *models.Date `json:"birthday"`
+	CreatedAt      time.Time    `json:"created_at"`
 }
 
 type Email struct {
@@ -135,6 +136,7 @@ func User(ctx context.Context, db *database.Database, user *database.User) (*Use
 			FirstName:      user.FirstName,
 			LastName:       user.LastName,
 			ProfilePicture: user.ProfilePicture,
+			Birthday:       user.Birthday,
 			CreatedAt:      user.CreatedAt,
 		},
 		Emails:         convert(db.GetEmailsByUserID(ctx, user.ID), email),

@@ -73,6 +73,14 @@ func validateSettings(settings *database.Settings, passwordSettings *password.Pa
 		return fiber.NewError(400, "A whitelist needs at least one domain, otherwise nobody could add an email address")
 	}
 
+	if settings.MinimumAge < 0 || settings.MinimumAge > 120 {
+		return fiber.NewError(400, "The minimum age must be between 0 and 120")
+	}
+
+	if settings.MinimumAge > 0 && !settings.TrackBirthdays {
+		return fiber.NewError(400, "A minimum age needs birthday tracking to be enabled")
+	}
+
 	if passwordSettings.MinLength < minimumPasswordLength || passwordSettings.MinLength > maximumPasswordLength {
 		return fiber.NewError(400, "The minimum password length must be between 8 and 512 characters")
 	}
@@ -143,6 +151,14 @@ func updateSettings(ctx fiber.Ctx) error {
 
 	if request.BlockDisposableEmails != nil {
 		settings.BlockDisposableEmails = *request.BlockDisposableEmails
+	}
+
+	if request.TrackBirthdays != nil {
+		settings.TrackBirthdays = *request.TrackBirthdays
+	}
+
+	if request.MinimumAge != nil {
+		settings.MinimumAge = *request.MinimumAge
 	}
 
 	currentPasswordSettings := *settings.GetPasswordSettings()

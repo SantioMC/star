@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/tubblelive/star/internal/database"
+	"github.com/tubblelive/star/internal/database/models"
 	"github.com/tubblelive/star/internal/picture"
 )
 
@@ -39,6 +40,7 @@ type PublicUser struct {
 	FirstName      *string       `json:"first_name"`
 	LastName       *string       `json:"last_name"`
 	ProfilePicture string        `json:"picture"`
+	Birthday       *models.Date  `json:"birthday,omitempty"`
 	Email          *string       `json:"email,omitempty"`
 	EmailVerified  bool          `json:"email_verified,omitempty"`
 	Roles          []string      `json:"roles,omitempty"`
@@ -55,6 +57,7 @@ type AdminUser struct {
 	FirstName              *string                  `json:"first_name"`
 	LastName               *string                  `json:"last_name"`
 	ProfilePicture         string                   `json:"profile_picture"`
+	Birthday               *models.Date             `json:"birthday"`
 	Email                  *string                  `json:"email"`
 	EmailVerified          bool                     `json:"email_verified"`
 	Roles                  []AdminRole              `json:"roles"`
@@ -112,6 +115,7 @@ func TransformAdminUser(
 		FirstName:              user.FirstName,
 		LastName:               user.LastName,
 		ProfilePicture:         picture.GetProfilePicture(user, primaryEmail),
+		Birthday:               user.Birthday,
 		Email:                  primaryEmail,
 		EmailVerified:          email != nil && email.Verified,
 		Roles:                  roles,
@@ -132,6 +136,7 @@ func TransformUser(
 	sessions []database.Session,
 	accounts []database.Account,
 	includeEmail bool,
+	includeBirthday bool,
 ) PublicUser {
 	primaryEmail := ""
 	emailVerified := false
@@ -172,6 +177,10 @@ func TransformUser(
 		transformed.Email = &primaryEmail
 		transformed.EmailVerified = emailVerified
 		transformed.Emails = TransformEmails(emails)
+	}
+
+	if includeBirthday {
+		transformed.Birthday = user.Birthday
 	}
 
 	return transformed

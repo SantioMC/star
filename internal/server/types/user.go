@@ -25,8 +25,15 @@ type LoginFlowPasswordRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
+type LoginFlowBirthdayRequest struct {
+	Flow     string `json:"flow" validate:"required,max=64"`
+	Birthday string `json:"birthday" validate:"required,max=10"`
+}
+
 type RegisterRequirements struct {
-	Username username.Settings `json:"username"`
+	Username         username.Settings `json:"username"`
+	BirthdayTracked  bool              `json:"birthday_tracked"`
+	BirthdayRequired bool              `json:"birthday_required"`
 }
 
 type RegisterRequest struct {
@@ -35,6 +42,7 @@ type RegisterRequest struct {
 	Password  string  `json:"password" validate:"required"`
 	FirstName *string `json:"first_name"`
 	LastName  *string `json:"last_name"`
+	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
 }
 
 type ChangePasswordRequest struct {
@@ -59,6 +67,7 @@ type UpdateUserRequest struct {
 	Username  *string `json:"username" validate:"omitempty"`
 	FirstName *string `json:"first_name" validate:"omitempty,max=255"`
 	LastName  *string `json:"last_name" validate:"omitempty,max=255"`
+	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
 }
 
 type AdminSetPasswordRequest struct {
@@ -69,6 +78,7 @@ type AdminUpdateUserRequest struct {
 	Username  *string   `json:"username" validate:"omitempty"`
 	FirstName *string   `json:"first_name" validate:"omitempty,max=255"`
 	LastName  *string   `json:"last_name" validate:"omitempty,max=255"`
+	Birthday  *string   `json:"birthday" validate:"omitempty,max=10"`
 	Roles     *[]string `json:"roles" validate:"omitempty"`
 }
 

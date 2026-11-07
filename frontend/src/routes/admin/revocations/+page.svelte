@@ -41,6 +41,7 @@
         user_suspended: "User suspended",
         application_deleted: "Application deleted",
         application_access_changed: "Application access changed",
+        connection_removed: "Social connection removed",
         manual: "Revoked by an admin",
     };
 

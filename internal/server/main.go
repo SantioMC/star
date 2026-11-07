@@ -153,6 +153,7 @@ func CreateServer(star *state.StarServer) (*fiber.App, error) {
 	api.Route("/mfa", mfaRouter)
 	api.Route("/role", roleRouter)
 	api.Route("/provider", providerRouter)
+	api.Route("/connection", connectionRouter)
 	api.Route("/settings", settingsRouter)
 	api.Route("/branding", brandingRouter)
 	api.Route("/key", keyRouter)

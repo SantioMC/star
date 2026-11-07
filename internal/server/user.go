@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/audit"
+	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
@@ -129,8 +130,12 @@ func requireManagement(ctx fiber.Ctx, user *database.User) error {
 }
 
 func getRegisterRequirements(ctx fiber.Ctx) error {
+	policy := common.GetState(ctx).Settings.Load().GetAgePolicy()
+
 	return ctx.JSON(types.RegisterRequirements{
-		Username: username.DefaultSettings,
+		Username:         username.DefaultSettings,
+		BirthdayTracked:  policy.Tracked,
+		BirthdayRequired: policy.Enabled(),
 	})
 }
 
@@ -153,6 +158,19 @@ func registerUser(ctx fiber.Ctx) error {
 
 	if request.LastName != nil && len(*request.LastName) == 0 {
 		request.LastName = nil
+	}
+
+	if !settings.TrackBirthdays {
+		request.Birthday = nil
+	}
+
+	declaredBirthday, err := birthday.Parse(request.Birthday)
+	if err != nil {
+		return err
+	}
+
+	if err := settings.GetAgePolicy().Check(declaredBirthday); err != nil {
+		return err
 	}
 
 	username, err := username.ValidateUsername(request.Username, &username.DefaultSettings)
@@ -185,6 +203,7 @@ func registerUser(ctx fiber.Ctx) error {
 		Name:      username,
 		FirstName: request.FirstName,
 		LastName:  request.LastName,
+		Birthday:  declaredBirthday,
 		CreatedAt: created,
 	}
 
@@ -313,7 +332,10 @@ func deletePassword(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "You do not have a password set")
 	}
 
-	if len(accounts) <= 1 {
+	removable, err := star.Database.CanRemoveAccount(ctx, internalAccount)
+	if err != nil {
+		return err
+	} else if !removable {
 		return fiber.NewError(400, "You must add another form of authentication before deleting your password")
 	}
 
@@ -363,6 +385,7 @@ func getUser(ctx fiber.Ctx) error {
 		sessions,
 		accounts,
 		request.HasScope(ctx, openid.ScopeUserEmailRead),
+		star.Settings.Load().TrackBirthdays && request.HasScope(ctx, openid.ScopeUserBirthdayRead),
 	)
 
 	return ctx.JSON(response)
@@ -404,6 +427,17 @@ func patchUser(ctx fiber.Ctx) error {
 
 	if data.LastName != nil {
 		user.LastName = data.LastName
+	}
+
+	if data.Birthday != nil && star.Settings.Load().TrackBirthdays {
+		user.Birthday, err = birthday.Parse(data.Birthday)
+		if err != nil {
+			return err
+		}
+
+		if err := star.Settings.Load().GetAgePolicy().Check(user.Birthday); err != nil {
+			return err
+		}
 	}
 
 	if err := star.Database.UpdateUser(ctx, user); err != nil {
@@ -542,11 +576,20 @@ func adminUpdateUser(ctx fiber.Ctx) error {
 		user.LastName = data.LastName
 	}
 
+	if data.Birthday != nil && star.Settings.Load().TrackBirthdays {
+		parsed, err := birthday.Parse(data.Birthday)
+		if err != nil {
+			return err
+		}
+
+		user.Birthday = parsed
+	}
+
 	if err := star.Database.UpdateUser(ctx, user); err != nil {
 		return err
 	}
 
-	if data.Username != nil || data.FirstName != nil || data.LastName != nil {
+	if data.Username != nil || data.FirstName != nil || data.LastName != nil || data.Birthday != nil {
 		audit.Log(ctx, audit.UserUpdate, audit.OnUser(user), audit.Changes(before, *user))
 	}
 

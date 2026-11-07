@@ -63,7 +63,7 @@ func IssueAccessToken(
 	session *database.Session,
 	user *database.User,
 ) (token.JWT, error) {
-	claims := openid.UserClaims(ctx, star.Database, user, session.Scopes)
+	claims := openid.UserClaims(ctx, star.Database, user, session.Scopes, star.Settings.Load().TrackBirthdays)
 	application := star.DefaultApp.Load()
 
 	return token.Create(ctx, star, session, &token.Options{

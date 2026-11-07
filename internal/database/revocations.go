@@ -32,6 +32,7 @@ const (
 	RevocationReasonUserSuspended          RevocationReason = "user_suspended"
 	RevocationReasonAppDeleted             RevocationReason = "application_deleted"
 	RevocationReasonAppAccessChanged       RevocationReason = "application_access_changed"
+	RevocationReasonConnectionRemoved      RevocationReason = "connection_removed"
 	RevocationReasonManual                 RevocationReason = "manual"
 )
 

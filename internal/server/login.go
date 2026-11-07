@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/audit"
+	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/login"
@@ -26,6 +27,7 @@ func loginRouter(router fiber.Router) {
 	router.Post("/totp", middleware.RateLimit(10), loginFlowTotp)
 	router.Post("/backup", middleware.RateLimit(10), loginFlowBackupCode)
 	router.Post("/password", middleware.RateLimit(10), loginFlowPassword)
+	router.Post("/birthday", middleware.RateLimit(10), loginFlowBirthday)
 	router.Post("/passkey/options", middleware.RateLimit(10), passkeyLoginOptions)
 	router.Post("/passkey", middleware.RateLimit(10), loginPasskey)
 
@@ -236,6 +238,41 @@ func loginFlowPassword(ctx fiber.Ctx) error {
 	return ctx.JSON(stage)
 }
 
+func loginFlowBirthday(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var request types.LoginFlowBirthdayRequest
+	if err := ctx.Bind().Body(&request); err != nil {
+		return err
+	}
+
+	loginFlow, err := pendingFlow(ctx, star, request.Flow, database.StageBirthday)
+	if err != nil {
+		return err
+	}
+
+	declared, err := birthday.Parse(&request.Birthday)
+	if err != nil {
+		return err
+	}
+
+	completed, err := star.Database.CompleteRequiredBirthday(ctx, loginFlow, declared)
+	if err != nil {
+		return err
+	} else if !completed {
+		return login.ErrLoginFlowExpired
+	}
+
+	audit.Log(ctx, audit.UserUpdate, audit.ByID(loginFlow.UserID), audit.With("fields", []string{"birthday"}))
+
+	stage, err := completeUserLogin(ctx, star, loginFlow.UserID, loginFlow.AccountID, "birthday")
+	if err != nil {
+		return err
+	}
+
+	return ctx.JSON(stage)
+}
+
 func pendingFlow(ctx fiber.Ctx, star *state.StarServer, token string, stage database.LoginFlowStage) (*database.LoginFlow, error) {
 	loginFlow := star.Database.GetLoginStageByToken(ctx, token)
 	if loginFlow == nil || loginFlow.Stage == database.StageCompleted {
@@ -369,6 +406,16 @@ func finishLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, acc
 	// User has completed every factor, let's run some last verifications
 	if err := login.Preverify(ctx, star, user, account); err != nil {
 		return nil, err
+	}
+
+	ageCheck := star.Settings.Load().GetAgePolicy().Check(user.Birthday)
+	if errors.Is(ageCheck, birthday.ErrRequired) {
+		return login.CreateRequireBirthdayStage(ctx, star, user, account)
+	} else if ageCheck != nil {
+		slog.Warn("login attempt failed", "reason", "user does not meet the minimum age", "user", user.ID)
+		audit.Log(ctx, audit.LoginFailed, audit.By(user), audit.With("reason", "age_restricted"), audit.With("method", method))
+
+		return nil, ageCheck
 	}
 
 	internal := star.Database.GetInternalAccountByUserID(ctx, user.ID)

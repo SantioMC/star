@@ -6,7 +6,9 @@
     import { downloadFile, simpleDate } from "@/utils";
     import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
+    import BirthdayField from "@/components/birthday-field.svelte";
     import Card from "@/components/card.svelte";
+    import ConnectionsCard from "./components/connections-card.svelte";
     import Input from "@/components/input.svelte";
     import Button from "@/components/button.svelte";
     import Icon from "@/components/icon.svelte";
@@ -19,6 +21,8 @@
     let username = $state<string>("");
     let firstName = $state<string>("");
     let lastName = $state<string>("");
+    let birthday = $state<string>("");
+    let birthdayTracked = $state<boolean>(false);
 
     let addEmailModal = $state<Modal>();
     let newEmail = $state<string>("");
@@ -41,6 +45,10 @@
         username = $user!.username;
         firstName = $user!.first_name;
         lastName = $user!.last_name;
+        birthday = $user!.birthday ?? "";
+
+        const requirements = await star.getRegisterRequirements();
+        birthdayTracked = requirements?.birthday_tracked ?? false;
     });
 
     const setEmails = (emails: star.Email[]) => {
@@ -57,6 +65,7 @@
             username,
             first_name: firstName,
             last_name: lastName,
+            birthday,
         });
 
         if ("error" in response) {
@@ -72,6 +81,7 @@
             user.username = username;
             user.first_name = firstName;
             user.last_name = lastName;
+            user.birthday = birthday;
             return user;
         });
     };
@@ -295,6 +305,10 @@
                             />
                         </div>
                     </div>
+
+                    {#if birthdayTracked}
+                        <BirthdayField bind:value={birthday} />
+                    {/if}
                 </div>
             </div>
             <div class="mt-4 flex items-center gap-2 justify-end">
@@ -303,13 +317,19 @@
         </form>
     </Card>
 
-    <Card class="flex flex-col gap-2">
-        <div class="flex flex-row items-center justify-between">
-            <h2 class="text-sm font-medium">Email addresses</h2>
+    <ConnectionsCard />
+
+    <Card
+        title="Email addresses"
+        description="Addresses you can sign in with and receive account notices at."
+        class="flex flex-col gap-2"
+    >
+        {#snippet actions()}
             <Button variant="secondary" onclick={() => addEmailModal?.open()}>
                 Add email
             </Button>
-        </div>
+        {/snippet}
+
         <table>
             <tbody>
                 {#each emails as email (email.id)}

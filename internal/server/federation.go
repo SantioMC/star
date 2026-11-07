@@ -52,22 +52,65 @@ func redirectToLogin(ctx fiber.Ctx, star *state.StarServer, key string, value st
 	return ctx.Redirect().To(star.Config.ServerURL + "/login?" + query.Encode())
 }
 
+func redirectToProfile(ctx fiber.Ctx, star *state.StarServer, key string, value string) error {
+	query := url.Values{}
+	query.Set(key, value)
+
+	return ctx.Redirect().To(star.Config.ServerURL + "/?" + query.Encode())
+}
+
+func redirectProviderFailure(ctx fiber.Ctx, star *state.StarServer, loginState *types.ProviderLoginState, message string) error {
+	if loginState.UserID != "" {
+		return redirectToProfile(ctx, star, "connection_error", message)
+	}
+
+	return redirectToLogin(ctx, star, "error", message)
+}
+
+func getEnabledProvider(ctx fiber.Ctx, star *state.StarServer, id string) *database.Provider {
+	provider := star.Database.GetProviderByID(ctx, id)
+	if provider == nil || !provider.Enabled {
+		return nil
+	}
+
+	return provider
+}
+
 func startProviderLogin(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	provider := star.Database.GetProviderByID(ctx, ctx.Params("provider"))
+	provider := getEnabledProvider(ctx, star, ctx.Params("provider"))
 	if provider == nil {
 		return redirectToLogin(ctx, star, "error", "This sign in provider is no longer available")
 	}
 
+	target, err := beginProviderAuthorization(ctx, star, provider, "", "")
+	if known, ok := errors.AsType[*fiber.Error](err); ok {
+		return redirectToLogin(ctx, star, "error", known.Message)
+	} else if err != nil {
+		return err
+	}
+
+	return ctx.Redirect().To(target)
+}
+
+func beginProviderAuthorization(
+	ctx fiber.Ctx,
+	star *state.StarServer,
+	provider *database.Provider,
+	userID string,
+	familyID string,
+) (string, error) {
 	endpoints, err := federation.ResolveEndpoints(ctx, provider)
 	if err != nil {
 		slog.Error("failed to resolve provider endpoints", "provider", provider.ID, "err", err)
-		return redirectToLogin(ctx, star, "error", "Unable to reach the sign in provider, please try again later")
+		return "", fiber.NewError(502, "Unable to reach the sign in provider, please try again later")
 	}
 
 	loginState := types.ProviderLoginState{
 		Provider:  provider.ID,
+		UserID:    userID,
+		FamilyID:  familyID,
 		State:     cryptography.CreateSecureString(32),
 		Verifier:  cryptography.CreateSecureString(64),
 		Nonce:     cryptography.CreateSecureString(32),
@@ -76,12 +119,12 @@ func startProviderLogin(ctx fiber.Ctx) error {
 
 	encoded, err := json.Marshal(loginState)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	sealed, err := cryptography.EncryptAES(string(encoded), star.Config.AppToken)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	target, err := federation.AuthorizationURL(endpoints, provider, &federation.Authorization{
@@ -93,11 +136,11 @@ func startProviderLogin(ctx fiber.Ctx) error {
 
 	if err != nil {
 		slog.Error("failed to build provider authorization url", "provider", provider.ID, "err", err)
-		return redirectToLogin(ctx, star, "error", "This sign in provider is misconfigured, please contact an administrator")
+		return "", fiber.NewError(500, "This sign in provider is misconfigured, please contact an administrator")
 	}
 
 	setProviderCookie(ctx, star, "star_provider_login", sealed, 600)
-	return ctx.Redirect().To(target)
+	return target, nil
 }
 
 func readProviderLoginState(ctx fiber.Ctx, star *state.StarServer) (*types.ProviderLoginState, error) {
@@ -133,19 +176,27 @@ func providerLoginCallback(ctx fiber.Ctx) error {
 	loginState, err := readProviderLoginState(ctx, star)
 	setProviderCookie(ctx, star, "star_provider_login", "", -1)
 
-	if err != nil || loginState.Provider != ctx.Params("provider") || time.Since(loginState.CreatedAt) > time.Minute*10 {
+	if err != nil {
 		return redirectToLogin(ctx, star, "error", "Your sign in attempt expired, please try again")
+	}
+
+	if loginState.Provider != ctx.Params("provider") || time.Since(loginState.CreatedAt) > time.Minute*10 {
+		return redirectProviderFailure(ctx, star, loginState, "Your sign in attempt expired, please try again")
 	}
 
 	if subtle.ConstantTimeCompare([]byte(callbackValue(ctx, "state")), []byte(loginState.State)) != 1 {
-		return redirectToLogin(ctx, star, "error", "Your sign in attempt expired, please try again")
+		return redirectProviderFailure(ctx, star, loginState, "Your sign in attempt expired, please try again")
 	}
 
 	if reason := callbackValue(ctx, "error"); reason == "access_denied" {
-		return redirectToLogin(ctx, star, "error", "Sign in was cancelled")
+		return redirectProviderFailure(ctx, star, loginState, "Sign in was cancelled")
 	} else if reason != "" {
 		slog.Warn("provider returned an authorization error", "provider", loginState.Provider, "error", reason)
-		return redirectToLogin(ctx, star, "error", "The sign in provider rejected the request, please try again")
+		return redirectProviderFailure(ctx, star, loginState, "The sign in provider rejected the request, please try again")
+	}
+
+	if loginState.UserID != "" {
+		return completeConnection(ctx, star, loginState)
 	}
 
 	user, account, associated, err := authenticateWithProvider(ctx, star, loginState, callbackValue(ctx, "code"))
@@ -193,31 +244,45 @@ func authenticateWithProvider(
 	loginState *types.ProviderLoginState,
 	code string,
 ) (*database.User, *database.Account, bool, error) {
-	if code == "" {
-		return nil, nil, false, errors.New("provider did not return an authorization code")
-	}
-
-	provider := star.Database.GetProviderByID(ctx, loginState.Provider)
-	if provider == nil {
-		return nil, nil, false, fiber.NewError(404, "This sign in provider is no longer available")
-	}
-
-	endpoints, err := federation.ResolveEndpoints(ctx, provider)
-	if err != nil {
-		return nil, nil, false, err
-	}
-
-	tokens, err := federation.Exchange(ctx, endpoints, provider, code, providerCallbackURL(star, provider), loginState.Verifier)
-	if err != nil {
-		return nil, nil, false, err
-	}
-
-	identity, err := federation.FetchIdentity(ctx, endpoints, provider, tokens, loginState.Nonce)
+	provider, identity, err := fetchProviderIdentity(ctx, star, loginState, code)
 	if err != nil {
 		return nil, nil, false, err
 	}
 
 	return federation.ResolveAccount(ctx, star, provider, identity)
+}
+
+func fetchProviderIdentity(
+	ctx fiber.Ctx,
+	star *state.StarServer,
+	loginState *types.ProviderLoginState,
+	code string,
+) (*database.Provider, *federation.Identity, error) {
+	if code == "" {
+		return nil, nil, errors.New("provider did not return an authorization code")
+	}
+
+	provider := getEnabledProvider(ctx, star, loginState.Provider)
+	if provider == nil {
+		return nil, nil, fiber.NewError(404, "This sign in provider is no longer available")
+	}
+
+	endpoints, err := federation.ResolveEndpoints(ctx, provider)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tokens, err := federation.Exchange(ctx, endpoints, provider, code, providerCallbackURL(star, provider), loginState.Verifier)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	identity, err := federation.FetchIdentity(ctx, endpoints, provider, tokens, loginState.Nonce)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return provider, identity, nil
 }
 
 func completeProviderLogin(ctx fiber.Ctx) error {

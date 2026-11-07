@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/audit"
+	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/cache"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/login"
@@ -149,7 +150,7 @@ func refreshUserSession(ctx fiber.Ctx) error {
 	defaultApp := star.DefaultApp.Load()
 
 	refreshed, err := session.RefreshSession(ctx, star, current, defaultApp.SessionDuration.Duration())
-	if errors.Is(err, session.ErrSessionRotated) || errors.Is(err, session.ErrSessionExpired) || errors.Is(err, session.ErrUserSuspended) {
+	if errors.Is(err, session.ErrSessionRotated) || errors.Is(err, session.ErrSessionExpired) || errors.Is(err, session.ErrUserSuspended) || errors.Is(err, birthday.ErrAgeRestricted) {
 		clearSessionCookie(ctx, star)
 		return fiber.NewError(401, "Your session has expired, please sign in again")
 	} else if err != nil {

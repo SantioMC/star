@@ -38,6 +38,8 @@ func RefreshSession(
 		if err := CheckImpersonation(ctx, server, *current.ImpersonatorID, current.UserID); err != nil {
 			return nil, err
 		}
+	} else if err := rejectAgeRestricted(ctx, server, current.UserID); err != nil {
+		return nil, err
 	}
 
 	session := buildSession(

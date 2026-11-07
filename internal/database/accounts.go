@@ -85,6 +85,25 @@ func (db *Database) GetProviderAccount(ctx context.Context, providerID string, e
 	return &account
 }
 
+func (db *Database) GetUserProviderAccount(ctx context.Context, userID string, providerID string) *Account {
+	account, err := sqlx.OneContext[Account](
+		ctx,
+		db.DB(),
+		`SELECT * FROM accounts WHERE user_id = $1 AND provider_id = $2 LIMIT 1`,
+		userID,
+		providerID,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		slog.Error("failed to get user provider account", "err", err)
+		return nil
+	}
+
+	return &account
+}
+
 func (db *Database) GetInternalAccountByUserID(ctx context.Context, userID string) *Account {
 	account, err := sqlx.OneContext[Account](
 		ctx,
@@ -105,7 +124,7 @@ func (db *Database) GetInternalAccountByUserID(ctx context.Context, userID strin
 }
 
 func (db *Database) CreateAccount(ctx context.Context, account *Account) error {
-	return db.insertAccount(ctx, db.DB(), account)
+	return duplicate(db.insertAccount(ctx, db.DB(), account))
 }
 
 func (db *Database) insertAccount(ctx context.Context, execer sqlx.ExecerContext, account *Account) error {
@@ -226,6 +245,77 @@ func (db *Database) DeleteAccountByID(ctx context.Context, id string) error {
 	)
 
 	return err
+}
+
+func (db *Database) CanRemoveAccount(ctx context.Context, account *Account) (bool, error) {
+	return canRemoveAccount(ctx, db.DB(), account)
+}
+
+func canRemoveAccount(ctx context.Context, queryer sqlx.QueryerContext, account *Account) (bool, error) {
+	return sqlx.OneContext[bool](
+		ctx,
+		queryer,
+		`
+		SELECT EXISTS (
+			SELECT 1 FROM accounts
+			LEFT JOIN providers ON providers.id = accounts.provider_id
+			WHERE accounts.user_id = $1
+			AND accounts.id != $2
+			AND (accounts.password IS NOT NULL OR providers.enabled)
+		) OR EXISTS (
+			SELECT 1 FROM passkeys WHERE user_id = $1
+		)
+		`,
+		account.UserID,
+		account.ID,
+	)
+}
+
+func (db *Database) RemoveProviderAccount(ctx context.Context, account *Account, familyID string) (bool, error) {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, account.UserID); err != nil {
+		return false, err
+	}
+
+	if removable, err := canRemoveAccount(ctx, tx, account); err != nil || !removable {
+		return false, err
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`UPDATE sessions SET account_id = NULL WHERE account_id = $1 AND family_id = $2`,
+		account.ID,
+		familyID,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	err = db.revoke(
+		ctx,
+		tx,
+		RevocationKindSession,
+		RevocationReasonConnectionRemoved,
+		`SELECT family_id AS subject, user_id FROM sessions WHERE account_id = $1`,
+		account.ID,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM accounts WHERE id = $1`, account.ID); err != nil {
+		return false, err
+	}
+
+	return true, tx.Commit()
 }
 
 func (db *Database) GetAccountsCount(ctx context.Context) (int, error) {

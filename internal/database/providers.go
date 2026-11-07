@@ -27,6 +27,7 @@ type Provider struct {
 	TokenURL         *string        `json:"token_url" db:"token_url"`
 	UserinfoURL      *string        `json:"userinfo_url" db:"userinfo_url"`
 	TrustEmail       bool           `json:"trust_email" db:"trust_email"`
+	Enabled          bool           `json:"enabled"`
 	CreatedAt        time.Time      `json:"created_at" db:"created_at"`
 }
 
@@ -112,8 +113,8 @@ func (db *Database) CreateProvider(ctx context.Context, provider *Provider) erro
 		INSERT INTO providers (
 			id, name, icon, display_order, client_id, client_secret,
 			scopes, oidc_url, authorization_url, token_url, userinfo_url,
-			trust_email, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			trust_email, enabled, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		`,
 		provider.ID,
 		provider.Name,
@@ -127,6 +128,7 @@ func (db *Database) CreateProvider(ctx context.Context, provider *Provider) erro
 		provider.TokenURL,
 		provider.UserinfoURL,
 		provider.TrustEmail,
+		provider.Enabled,
 		provider.CreatedAt,
 	)
 
@@ -146,7 +148,7 @@ func (db *Database) UpdateProvider(ctx context.Context, provider *Provider) erro
 		SET name = $2, icon = $3, display_order = $4, client_id = $5,
 		client_secret = $6, scopes = $7, oidc_url = $8,
 		authorization_url = $9, token_url = $10, userinfo_url = $11,
-		trust_email = $12
+		trust_email = $12, enabled = $13
 		WHERE id = $1
 		`,
 		provider.ID,
@@ -161,6 +163,7 @@ func (db *Database) UpdateProvider(ctx context.Context, provider *Provider) erro
 		provider.TokenURL,
 		provider.UserinfoURL,
 		provider.TrustEmail,
+		provider.Enabled,
 	)
 
 	return err

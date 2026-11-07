@@ -17,6 +17,7 @@ func UserClaims(
 	db *database.Database,
 	user *database.User,
 	scopes []string,
+	trackBirthdays bool,
 ) map[string]any {
 	claims := map[string]any{}
 
@@ -51,6 +52,10 @@ func UserClaims(
 		if profilePicture := picture.GetProfilePicture(user, &address); profilePicture != "" {
 			claims["picture"] = profilePicture
 		}
+	}
+
+	if trackBirthdays && HasScope(scopes, ScopeUserBirthdayRead) && user.Birthday != nil {
+		claims["birthdate"] = user.Birthday.String()
 	}
 
 	if HasScope(scopes, ScopeUserRolesRead) {

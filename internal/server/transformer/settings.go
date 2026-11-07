@@ -14,6 +14,8 @@ type AdminSettings struct {
 	EmailDomainMode       email.DomainMode           `json:"email_domain_mode"`
 	EmailDomains          []string                   `json:"email_domains"`
 	BlockDisposableEmails bool                       `json:"block_disposable_emails"`
+	TrackBirthdays        bool                       `json:"track_birthdays"`
+	MinimumAge            int                        `json:"minimum_age"`
 	PasswordSettings      password.PasswordSetttings `json:"password_settings"`
 }
 
@@ -26,6 +28,8 @@ func TransformSettings(settings database.Settings, passwordSettings password.Pas
 		EmailDomainMode:       settings.EmailDomainMode,
 		EmailDomains:          settings.EmailDomains.Data,
 		BlockDisposableEmails: settings.BlockDisposableEmails,
+		TrackBirthdays:        settings.TrackBirthdays,
+		MinimumAge:            settings.MinimumAge,
 		PasswordSettings:      passwordSettings,
 	}
 }

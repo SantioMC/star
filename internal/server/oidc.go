@@ -37,7 +37,7 @@ func getUserInfo(ctx fiber.Ctx) error {
 		return err
 	}
 
-	claims := openid.UserClaims(ctx, star.Database, user, scopes)
+	claims := openid.UserClaims(ctx, star.Database, user, scopes, star.Settings.Load().TrackBirthdays)
 	if jwt.Impersonator != "" {
 		claims[openid.ImpersonatorClaim] = jwt.Impersonator
 	}

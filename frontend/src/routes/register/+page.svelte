@@ -5,6 +5,7 @@
     import Button from "@/components/button.svelte";
     import Captcha from "@/components/captcha.svelte";
     import AuthShell from "@/components/auth-shell.svelte";
+    import BirthdayField from "@/components/birthday-field.svelte";
     import Icon from "@/components/icon.svelte";
     import Input from "@/components/input.svelte";
     import { Label } from "@/components/ui/label";
@@ -26,11 +27,14 @@
     let username = $state("");
     let password = $state("");
     let confirmPassword = $state("");
+    let birthday = $state("");
 
     let captchaToken = $state("");
     let captchaError = $state("");
 
     let usernameRules = $state<UsernameRules | null>(null);
+    let birthdayTracked = $state(false);
+    let birthdayRequired = $state(false);
 
     const usernameIssue = $derived(
         usernameRules && username ? validateUsername(username, usernameRules) : null,
@@ -39,6 +43,8 @@
     onMount(async () => {
         const requirements = await star.getRegisterRequirements();
         usernameRules = requirements?.username ?? null;
+        birthdayTracked = requirements?.birthday_tracked ?? false;
+        birthdayRequired = requirements?.birthday_required ?? false;
     });
 
     const register = async (event: Event | null = null) => {
@@ -64,6 +70,7 @@
             username,
             email,
             password,
+            birthday: birthday ? birthday : undefined,
         });
 
         loading = false;
@@ -221,6 +228,12 @@
                             required
                         />
                     </div>
+                    {#if birthdayTracked}
+                        <BirthdayField
+                            bind:value={birthday}
+                            required={birthdayRequired}
+                        />
+                    {/if}
                     <div class="grid gap-2">
                         <Label for="password" class="select-none">
                             Password

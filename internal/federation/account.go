@@ -19,6 +19,8 @@ var (
 	ErrRegistrationDisabled = fiber.NewError(403, "Registration is currently disabled, sign in with an existing account instead")
 	ErrEmailInUse           = fiber.NewError(409, "An account already uses this email address, sign in with your password instead")
 	ErrAccountConflict      = fiber.NewError(409, "This account was created by another request at the same time, please try signing in again")
+	ErrAccountLinked        = fiber.NewError(409, "This account is already connected to another user")
+	ErrProviderLinked       = fiber.NewError(409, "You already have an account connected with this provider")
 )
 
 func ResolveAccount(
@@ -27,6 +29,10 @@ func ResolveAccount(
 	provider *database.Provider,
 	identity *Identity,
 ) (*database.User, *database.Account, bool, error) {
+	if !star.Settings.Load().TrackBirthdays {
+		identity.Birthday = nil
+	}
+
 	account := star.Database.GetProviderAccount(ctx, provider.ID, identity.Subject)
 	if account == nil {
 		user, linked, err := createUser(ctx, star, provider, identity)
@@ -46,7 +52,43 @@ func ResolveAccount(
 		return nil, nil, false, errors.New("linked provider account has no user")
 	}
 
+	if user.Birthday == nil && identity.Birthday != nil {
+		user.Birthday = identity.Birthday
+
+		if err := star.Database.UpdateUser(ctx, user); err != nil {
+			return nil, nil, false, err
+		}
+	}
+
 	return user, account, false, nil
+}
+
+func LinkAccount(
+	ctx context.Context,
+	star *state.StarServer,
+	provider *database.Provider,
+	user *database.User,
+	identity *Identity,
+) (*database.Account, error) {
+	existing := star.Database.GetProviderAccount(ctx, provider.ID, identity.Subject)
+	if existing != nil && existing.UserID != user.ID {
+		return nil, ErrAccountLinked
+	}
+
+	if star.Database.GetUserProviderAccount(ctx, user.ID, provider.ID) != nil {
+		return nil, ErrProviderLinked
+	}
+
+	account := newProviderAccount(user.ID, provider, identity, time.Now())
+
+	err := star.Database.CreateAccount(ctx, account)
+	if errors.Is(err, database.ErrDuplicate) {
+		return nil, ErrAccountConflict
+	} else if err != nil {
+		return nil, err
+	}
+
+	return account, nil
 }
 
 func createUser(
@@ -57,6 +99,12 @@ func createUser(
 ) (*database.User, *database.Account, error) {
 	if !star.Settings.Load().AllowRegistration {
 		return nil, nil, ErrRegistrationDisabled
+	}
+
+	if identity.Birthday != nil {
+		if err := star.Settings.Load().GetAgePolicy().Check(identity.Birthday); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	verified := identity.Email != nil && identity.EmailVerified && provider.TrustEmail
@@ -82,6 +130,7 @@ func createUser(
 		FirstName:      identity.GivenName,
 		LastName:       identity.FamilyName,
 		ProfilePicture: identity.Picture,
+		Birthday:       identity.Birthday,
 		CreatedAt:      created,
 	}
 
@@ -98,17 +147,7 @@ func createUser(
 		}
 	}
 
-	account := &database.Account{
-		ID:         database.CreateID(database.AccountKey),
-		Type:       "provider",
-		UserID:     user.ID,
-		ProviderID: &provider.ID,
-		ExternalID: &identity.Subject,
-		Name:       displayName(identity),
-		Email:      identity.Email,
-		Avatar:     identity.Picture,
-		CreatedAt:  created,
-	}
+	account := newProviderAccount(user.ID, provider, identity, created)
 
 	err = star.Database.CreateUserIdentity(ctx, user, primary, account)
 	if errors.Is(err, database.ErrDuplicate) {
@@ -118,6 +157,20 @@ func createUser(
 	}
 
 	return user, account, nil
+}
+
+func newProviderAccount(userID string, provider *database.Provider, identity *Identity, created time.Time) *database.Account {
+	return &database.Account{
+		ID:         database.CreateID(database.AccountKey),
+		Type:       "provider",
+		UserID:     userID,
+		ProviderID: &provider.ID,
+		ExternalID: &identity.Subject,
+		Name:       displayName(identity),
+		Email:      identity.Email,
+		Avatar:     identity.Picture,
+		CreatedAt:  created,
+	}
 }
 
 func displayName(identity *Identity) *string {

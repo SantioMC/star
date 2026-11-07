@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/server/common"
@@ -93,13 +94,15 @@ func refreshTokenGrant(ctx fiber.Ctx, form url.Values, application *database.App
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "Unknown or expired refresh token")
 	} else if errors.Is(err, session.ErrUserSuspended) {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for is suspended")
+	} else if errors.Is(err, birthday.ErrAgeRestricted) {
+		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The user this refresh token was issued for does not meet the age requirement")
 	} else if errors.Is(err, session.ErrImpersonationDenied) {
 		return writeTokenError(ctx, 400, Oauth2ErrorInvalidGrant, "The impersonator of this session is no longer permitted to impersonate this user")
 	} else if err != nil {
 		return err
 	}
 
-	claims := openid.UserClaims(ctx, star.Database, user, scope)
+	claims := openid.UserClaims(ctx, star.Database, user, scope, star.Settings.Load().TrackBirthdays)
 	accessToken, err := token.Create(ctx, star, refreshed, &token.Options{
 		Application: sessionApp,
 		Duration:    sessionApp.TokenDuration.Duration(),

@@ -16,5 +16,7 @@ type UpdateSettingsRequest struct {
 	EmailDomainMode       *string                        `json:"email_domain_mode" validate:"omitempty,oneof=disabled whitelist blacklist"`
 	EmailDomains          []string                       `json:"email_domains" validate:"omitempty,max=1000,dive,max=253"`
 	BlockDisposableEmails *bool                          `json:"block_disposable_emails" validate:"omitempty"`
+	TrackBirthdays        *bool                          `json:"track_birthdays" validate:"omitempty"`
+	MinimumAge            *int                           `json:"minimum_age" validate:"omitempty,min=0,max=120"`
 	PasswordSettings      *UpdatePasswordSettingsRequest `json:"password_settings" validate:"omitempty"`
 }

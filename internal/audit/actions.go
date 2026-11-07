@@ -76,10 +76,11 @@ const (
 	ApplicationScopeUpdate  Action = "application.scope_update"
 	ApplicationScopeDelete  Action = "application.scope_delete"
 
-	ProviderCreate    Action = "provider.create"
-	ProviderUpdate    Action = "provider.update"
-	ProviderDelete    Action = "provider.delete"
-	ProviderAssociate Action = "provider.associate"
+	ProviderCreate       Action = "provider.create"
+	ProviderUpdate       Action = "provider.update"
+	ProviderDelete       Action = "provider.delete"
+	ProviderAssociate    Action = "provider.associate"
+	ProviderDisassociate Action = "provider.disassociate"
 
 	KeyRotate Action = "key.rotate"
 	KeyDelete Action = "key.delete"
@@ -161,6 +162,7 @@ var Definitions = []Definition{
 	{ProviderUpdate, "Social provider updated", "Providers", SeverityNotice},
 	{ProviderDelete, "Social provider deleted", "Providers", SeverityCritical},
 	{ProviderAssociate, "Social provider linked", "Providers", SeverityNotice},
+	{ProviderDisassociate, "Social provider unlinked", "Providers", SeverityNotice},
 
 	{KeyRotate, "Signing keys rotated", "Signing Keys", SeverityCritical},
 	{KeyDelete, "Signing key deleted", "Signing Keys", SeverityCritical},

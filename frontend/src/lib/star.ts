@@ -25,6 +25,7 @@ export type StarPermission =
   | "user:email:create"
   | "user:email:delete"
   | "user:email:primary"
+  | "user:connection:write"
   | "user:mfa:enroll"
   | "user:mfa:delete"
   | "user:session:delete"
@@ -73,6 +74,7 @@ export type StarScope =
   | "star:user:password:write"
   | "star:user:email:read"
   | "star:user:email:write"
+  | "star:user:birthday:read"
   | "star:user:roles:read"
   | "star:user:sessions:read"
   | "star:user:sessions:write"
@@ -192,6 +194,39 @@ export const getLoginProviders = async () => {
     .catch(() => [] as LoginProvider[]);
 };
 
+export interface ConnectionAccount {
+  id: string;
+  name: string | null;
+  email: string | null;
+  picture: string | null;
+  created_at: string;
+}
+
+export interface Connection extends LoginProvider {
+  account: ConnectionAccount | null;
+}
+
+export const getConnections = async () => {
+  return api
+    .get("api/connection")
+    .json<Connection[]>()
+    .catch(() => [] as Connection[]);
+};
+
+export const startConnection = async (provider: string) => {
+  return credentialed
+    .post(`api/connection/${encodeURIComponent(provider)}`)
+    .json<{ url: string }>()
+    .catch(orError);
+};
+
+export const deleteConnection = async (provider: string) => {
+  return api
+    .delete(`api/connection/${encodeURIComponent(provider)}`)
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
 export const completeProviderLogin = async (flow: string) => {
   return credentialed
     .post(`api/user/login/provider/complete`, {
@@ -245,6 +280,15 @@ export const loginPassword = async (flow: string, password: string) => {
     .catch(orError);
 };
 
+export const loginBirthday = async (flow: string, birthday: string) => {
+  return credentialed
+    .post(`api/user/login/birthday`, {
+      json: { flow, birthday },
+    })
+    .json<LoginResponse>()
+    .catch(orError);
+};
+
 export const getPasskeyLoginOptions = async (flow?: string) => {
   return api
     .post(`api/user/login/passkey/options`, {
@@ -283,6 +327,7 @@ export const register = async (data: RegisterRequest) => {
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
+        birthday: data.birthday,
       },
       headers: data.captcha
         ? {
@@ -1127,11 +1172,14 @@ export interface RegisterRequest {
   password: string;
   first_name?: string;
   last_name?: string;
+  birthday?: string;
   captcha?: string;
 }
 
 export interface RegisterRequirements {
   username: UsernameRules;
+  birthday_tracked: boolean;
+  birthday_required: boolean;
 }
 
 export interface RegisterResponse {
@@ -1219,6 +1267,8 @@ export interface ServerSettings {
   email_domain_mode: EmailDomainMode;
   email_domains: string[];
   block_disposable_emails: boolean;
+  track_birthdays: boolean;
+  minimum_age: number;
   password_settings: PasswordSettings;
 }
 
@@ -1230,6 +1280,8 @@ export interface UpdateServerSettingsRequest {
   email_domain_mode?: EmailDomainMode;
   email_domains?: string[];
   block_disposable_emails?: boolean;
+  track_birthdays?: boolean;
+  minimum_age?: number;
   password_settings?: Partial<PasswordSettings>;
 }
 
@@ -1296,10 +1348,16 @@ export interface LoginPasswordChangeResponse {
   flow: string;
 }
 
+export interface LoginBirthdayResponse {
+  next: "birthday";
+  flow: string;
+}
+
 export type LoginResponse =
   | LoginSuccessResponse
   | LoginMfaResponse
-  | LoginPasswordChangeResponse;
+  | LoginPasswordChangeResponse
+  | LoginBirthdayResponse;
 
 export interface MfaFactorsResponse {
   factors: MFAMethod[];
@@ -1419,6 +1477,7 @@ export interface UserChanges {
   username?: string;
   first_name?: string;
   last_name?: string;
+  birthday?: string;
 }
 
 export interface AdminUserChanges extends UserChanges {
@@ -1431,6 +1490,7 @@ export interface User {
   first_name: string;
   last_name: string;
   picture: string;
+  birthday?: string;
   email: string;
   email_verified: boolean;
   roles: string[];
@@ -1447,6 +1507,7 @@ export interface AdminUser {
   first_name: string | null;
   last_name: string | null;
   profile_picture: string;
+  birthday: string | null;
   email: string | null;
   email_verified: boolean;
   roles: Role[];
@@ -1587,6 +1648,7 @@ export interface SocialProviderConfig {
   token_url: string | null;
   userinfo_url: string | null;
   trust_email: boolean;
+  enabled: boolean;
   created_at: string;
 }
 
@@ -1627,6 +1689,7 @@ export interface UpdateSocialProviderRequest {
   token_url?: string;
   userinfo_url?: string;
   trust_email?: boolean;
+  enabled?: boolean;
 }
 
 export interface SigningKey {
@@ -1655,6 +1718,7 @@ export type RevocationReason =
   | "user_suspended"
   | "application_deleted"
   | "application_access_changed"
+  | "connection_removed"
   | "manual";
 
 export interface TokenRevocation {

@@ -175,6 +175,9 @@
                                     {#if provider.oidc_url}
                                         <Badge tone="info">oidc</Badge>
                                     {/if}
+                                    {#if !provider.enabled}
+                                        <Badge tone="warning">disabled</Badge>
+                                    {/if}
                                 </div>
                                 <p class="truncate font-mono text-xs text-muted">
                                     {provider.id}

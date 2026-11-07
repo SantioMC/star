@@ -157,6 +157,11 @@ func createProvider(ctx fiber.Ctx) error {
 		scopes = request.Scopes
 	}
 
+	enabled := true
+	if request.Enabled != nil {
+		enabled = *request.Enabled
+	}
+
 	provider := &database.Provider{
 		ID:               database.CreateID(database.ProviderKey),
 		Name:             request.Name,
@@ -170,6 +175,7 @@ func createProvider(ctx fiber.Ctx) error {
 		TokenURL:         request.TokenURL,
 		UserinfoURL:      request.UserinfoURL,
 		TrustEmail:       request.TrustEmail,
+		Enabled:          enabled,
 		CreatedAt:        time.Now(),
 	}
 
@@ -247,6 +253,10 @@ func updateProvider(ctx fiber.Ctx) error {
 
 	if request.TrustEmail != nil {
 		provider.TrustEmail = *request.TrustEmail
+	}
+
+	if request.Enabled != nil {
+		provider.Enabled = *request.Enabled
 	}
 
 	if err := validateProviderEndpoints(provider); err != nil {

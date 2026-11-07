@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tubblelive/star/internal/cryptography"
+	"github.com/tubblelive/star/internal/database/models"
 	"github.com/vinovest/sqlx"
 )
 
@@ -22,6 +23,7 @@ const (
 	StageMFARequired LoginFlowStage = "mfa_required"
 	// Set when the user is required to change their password before being authenticated
 	StagePasswordChange LoginFlowStage = "pass_change"
+	StageBirthday       LoginFlowStage = "birthday"
 	// Set when the user has signed in through an external provider and is waiting for the frontend to claim the flow
 	StageProvider LoginFlowStage = "provider"
 )
@@ -154,18 +156,7 @@ func (db *Database) CompleteRequiredPasswordChange(ctx context.Context, loginFlo
 
 	defer tx.Rollback()
 
-	consumed, err := tx.ExecContext(
-		ctx,
-		`DELETE FROM login_flows WHERE id = $1 AND stage = $2`,
-		loginFlow.ID,
-		StagePasswordChange,
-	)
-
-	if err != nil {
-		return false, err
-	}
-
-	if affected, err := consumed.RowsAffected(); err != nil || affected == 0 {
+	if consumed, err := consumeLoginFlow(ctx, tx, loginFlow, StagePasswordChange); err != nil || !consumed {
 		return false, err
 	}
 
@@ -190,6 +181,52 @@ func (db *Database) CompleteRequiredPasswordChange(ctx context.Context, loginFlo
 	}
 
 	return true, tx.Commit()
+}
+
+func (db *Database) CompleteRequiredBirthday(ctx context.Context, loginFlow *LoginFlow, birthday *models.Date) (bool, error) {
+	tx, err := db.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+
+	defer tx.Rollback()
+
+	if consumed, err := consumeLoginFlow(ctx, tx, loginFlow, StageBirthday); err != nil || !consumed {
+		return false, err
+	}
+
+	updated, err := tx.ExecContext(
+		ctx,
+		`UPDATE users SET birthday = $2 WHERE id = $1 AND birthday IS NULL`,
+		loginFlow.UserID,
+		birthday,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	if affected, err := updated.RowsAffected(); err != nil || affected == 0 {
+		return false, err
+	}
+
+	return true, tx.Commit()
+}
+
+func consumeLoginFlow(ctx context.Context, execer sqlx.ExecerContext, loginFlow *LoginFlow, stage LoginFlowStage) (bool, error) {
+	consumed, err := execer.ExecContext(
+		ctx,
+		`DELETE FROM login_flows WHERE id = $1 AND stage = $2`,
+		loginFlow.ID,
+		stage,
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	affected, err := consumed.RowsAffected()
+	return affected > 0, err
 }
 
 func (db *Database) DeleteDeadLoginFlows(ctx context.Context) (int64, error) {

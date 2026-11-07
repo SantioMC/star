@@ -7,18 +7,20 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/tubblelive/star/internal/database/models"
 	"github.com/vinovest/sqlx"
 )
 
 const UserKey = "usr"
 
 type User struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	FirstName      *string   `json:"first_name" db:"first_name"`
-	LastName       *string   `json:"last_name" db:"last_name"`
-	ProfilePicture *string   `json:"profile_picture" db:"profile_picture"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	ID             string       `json:"id"`
+	Name           string       `json:"name"`
+	FirstName      *string      `json:"first_name" db:"first_name"`
+	LastName       *string      `json:"last_name" db:"last_name"`
+	ProfilePicture *string      `json:"profile_picture" db:"profile_picture"`
+	Birthday       *models.Date `json:"birthday" db:"birthday"`
+	CreatedAt      time.Time    `json:"created_at" db:"created_at"`
 }
 
 func (db *Database) GetUserByID(ctx context.Context, id string) *User {
@@ -162,7 +164,7 @@ func (db *Database) UpdateUser(ctx context.Context, user *User) error {
 		ctx,
 		`
 		UPDATE users
-		SET name = $2, first_name = $3, last_name = $4, profile_picture = $5
+		SET name = $2, first_name = $3, last_name = $4, profile_picture = $5, birthday = $6
 		WHERE id = $1
 		`,
 		user.ID,
@@ -170,6 +172,7 @@ func (db *Database) UpdateUser(ctx context.Context, user *User) error {
 		user.FirstName,
 		user.LastName,
 		user.ProfilePicture,
+		user.Birthday,
 	)
 
 	return err
@@ -204,14 +207,15 @@ func (db *Database) insertUser(ctx context.Context, execer sqlx.ExecerContext, u
 	_, err := execer.ExecContext(
 		ctx,
 		`
-		INSERT INTO users (id, name, first_name, last_name, profile_picture, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO users (id, name, first_name, last_name, profile_picture, birthday, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`,
 		user.ID,
 		user.Name,
 		user.FirstName,
 		user.LastName,
 		user.ProfilePicture,
+		user.Birthday,
 		user.CreatedAt,
 	)
 

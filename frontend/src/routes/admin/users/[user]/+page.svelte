@@ -2,6 +2,7 @@
     import { branding } from "@/branding";
     import * as star from "$lib/star";
     import Badge from "@/components/badge.svelte";
+    import BirthdayField from "@/components/birthday-field.svelte";
     import Button from "@/components/button.svelte";
     import Card from "@/components/card.svelte";
     import Input from "@/components/input.svelte";
@@ -12,6 +13,7 @@
     import { hasPermission } from "@/index";
     import { getResource } from "@/resource.svelte";
     import { formatTime, titleCase } from "@/utils";
+    import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
 
     const context = getResource<star.AdminUser>();
@@ -24,6 +26,8 @@
     let username = $state("");
     let firstName = $state("");
     let lastName = $state("");
+    let birthday = $state("");
+    let birthdayTracked = $state(false);
     let saving = $state(false);
 
     let roles = $state<star.Role[]>([]);
@@ -36,10 +40,16 @@
         username = data.username;
         firstName = data.first_name ?? "";
         lastName = data.last_name ?? "";
+        birthday = data.birthday ?? "";
         roles = [...data.roles];
     };
 
     resetForm(context.current!);
+
+    onMount(async () => {
+        const requirements = await star.getRegisterRequirements();
+        birthdayTracked = requirements?.birthday_tracked ?? false;
+    });
 
     const updateUser = async (event: Event) => {
         event.preventDefault();
@@ -50,6 +60,7 @@
             username,
             first_name: firstName,
             last_name: lastName,
+            birthday,
         });
         saving = false;
 
@@ -213,6 +224,10 @@
                         />
                     </div>
                 </div>
+
+                {#if birthdayTracked}
+                    <BirthdayField bind:value={birthday} disabled={!canWrite} />
+                {/if}
             </div>
 
             {#if canWrite}

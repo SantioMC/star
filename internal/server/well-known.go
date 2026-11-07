@@ -60,7 +60,7 @@ func getOpenIDConfiguration(ctx fiber.Ctx) error {
 		CodeChallengeMethodsSupported:     []string{oauth.CodeChallengeMethodS256},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post", "none"},
 		SubjectTypesSupported:             []string{"public"},
-		ClaimsSupported:                   []string{"aud", "auth_time", "azp", "email", "email_verified", "exp", "family_name", "given_name", "iat", openid.ImpersonatorClaim, "iss", "name", "nickname", "nonce", "picture", "preferred_username", "sid", "sub", openid.RolesClaim},
+		ClaimsSupported:                   []string{"aud", "auth_time", "azp", "birthdate", "email", "email_verified", "exp", "family_name", "given_name", "iat", openid.ImpersonatorClaim, "iss", "name", "nickname", "nonce", "picture", "preferred_username", "sid", "sub", openid.RolesClaim},
 		MfaChallengeEndpoint:              "",
 		ResponseModesSupported:            oauth.SupportedResponseModes,
 		RequestParameterSupported:         false,
