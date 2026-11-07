@@ -21,6 +21,13 @@ func CheckImpersonation(ctx fiber.Ctx, server *state.StarServer, impersonatorID 
 		return err
 	}
 
+	invite, err := server.Database.GetUserInvite(ctx, userID)
+	if err != nil {
+		return err
+	} else if invite != nil {
+		return ErrImpersonationDenied
+	}
+
 	if !server.Database.UserHasPermission(ctx, impersonatorID, permission.PermissionAdminImpersonateUsers.Name) {
 		return ErrImpersonationDenied
 	}

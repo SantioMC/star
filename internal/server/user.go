@@ -73,6 +73,8 @@ func userRouter(router fiber.Router) {
 	router.Get("/:user/suspensions", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersRead), middleware.RequirePermission(permission.PermissionAdminReadUsers), adminGetUserSuspensions)
 	router.Post("/:user/suspend", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminSuspendUsers), adminSuspendUser)
 	router.Post("/:user/unsuspend", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminSuspendUsers), adminUnsuspendUser)
+	router.Post("/:user/invite", middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminInviteUsers), regenerateInvite)
+	router.Post("/:user/invite/email", middleware.RateLimit(10), middleware.RequireAuth, middleware.RequireScope(openid.ScopeAdminUsersWrite), middleware.RequirePermission(permission.PermissionAdminInviteUsers), emailInvite)
 }
 
 // misc: maybe move this to transformer?
@@ -104,9 +106,14 @@ func populateUser(ctx fiber.Ctx, user *database.User) transformer.AdminUser {
 		slog.Error("failed to get active suspension", "user", user.ID, "err", err)
 	}
 
+	invite, err := star.Database.GetUserInvite(ctx, user.ID)
+	if err != nil {
+		slog.Error("failed to get user invite", "user", user.ID, "err", err)
+	}
+
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
 
-	return transformer.TransformAdminUser(user, email, transformed, attempts, account, suspension, reach)
+	return transformer.TransformAdminUser(user, email, transformed, attempts, account, suspension, invite, reach)
 }
 
 func requireManagement(ctx fiber.Ctx, user *database.User) error {
@@ -139,6 +146,14 @@ func getRegisterRequirements(ctx fiber.Ctx) error {
 	})
 }
 
+func optionalName(value *string) *string {
+	if value != nil && len(*value) == 0 {
+		return nil
+	}
+
+	return value
+}
+
 func registerUser(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	settings := star.Settings.Load()
@@ -152,13 +167,8 @@ func registerUser(ctx fiber.Ctx) error {
 		return err
 	}
 
-	if request.FirstName != nil && len(*request.FirstName) == 0 {
-		request.FirstName = nil
-	}
-
-	if request.LastName != nil && len(*request.LastName) == 0 {
-		request.LastName = nil
-	}
+	request.FirstName = optionalName(request.FirstName)
+	request.LastName = optionalName(request.LastName)
 
 	if !settings.TrackBirthdays {
 		request.Birthday = nil
@@ -661,6 +671,13 @@ func adminSetPassword(ctx fiber.Ctx) error {
 
 	if err := requireManagement(ctx, user); err != nil {
 		return err
+	}
+
+	invite, err := star.Database.GetUserInvite(ctx, user.ID)
+	if err != nil {
+		return err
+	} else if invite != nil {
+		return fiber.NewError(400, "This user has a pending invite and sets their own password when accepting it")
 	}
 
 	var data types.AdminSetPasswordRequest

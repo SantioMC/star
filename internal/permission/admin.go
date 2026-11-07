@@ -25,6 +25,11 @@ var PermissionAdminSuspendUsers = PermissionDefinition{
 	Description: "Allows suspending users and lifting their suspensions",
 }
 
+var PermissionAdminInviteUsers = PermissionDefinition{
+	Name:        "admin:user:invite",
+	Description: "Allows inviting new users and managing their pending invites",
+}
+
 var PermissionAdminImpersonateUsers = PermissionDefinition{
 	Name:        "admin:user:impersonate",
 	Description: "Allows signing in to applications as a user with an equal or lower role",

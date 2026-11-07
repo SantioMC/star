@@ -160,7 +160,11 @@ func (db *Database) DeleteUser(ctx context.Context, id string) error {
 }
 
 func (db *Database) UpdateUser(ctx context.Context, user *User) error {
-	_, err := db.DB().ExecContext(
+	return db.updateUser(ctx, db.DB(), user)
+}
+
+func (db *Database) updateUser(ctx context.Context, execer sqlx.ExecerContext, user *User) error {
+	_, err := execer.ExecContext(
 		ctx,
 		`
 		UPDATE users

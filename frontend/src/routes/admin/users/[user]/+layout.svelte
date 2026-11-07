@@ -13,6 +13,7 @@
     import Notice from "@/components/notice.svelte";
     import Tabs from "@/components/tabs.svelte";
     import * as Avatar from "@/components/ui/avatar";
+    import InviteLinkModal from "@/components/invite-link-modal.svelte";
     import { Label } from "@/components/ui/label";
     import { hasPermission, user as currentUser } from "@/index";
     import { Resource, setResource } from "@/resource.svelte";
@@ -20,6 +21,7 @@
     import { onMount } from "svelte";
     import { toast } from "svelte-sonner";
     import ImpersonateModal from "./components/impersonate-modal.svelte";
+    import RegenerateInviteModal from "./components/regenerate-invite-modal.svelte";
     import SuspendModal from "./components/suspend-modal.svelte";
     import UnsuspendModal from "./components/unsuspend-modal.svelte";
 
@@ -32,6 +34,7 @@
     const canRevokeTokens = hasPermission("admin:token:revoke");
     const canReadAudit = hasPermission("admin:audit:read");
     const canImpersonate = hasPermission("admin:user:impersonate");
+    const canInvite = hasPermission("admin:user:invite");
 
     const context = new Resource<star.AdminUser>();
     setResource(context);
@@ -51,6 +54,8 @@
     let suspendModal = $state<SuspendModal>();
     let unsuspendModal = $state<UnsuspendModal>();
     let impersonateModal = $state<ImpersonateModal>();
+    let regenerateInviteModal = $state<RegenerateInviteModal>();
+    let inviteLinkModal = $state<InviteLinkModal>();
 
     const tabs = $derived.by(() => {
         if (!user) return [];
@@ -91,6 +96,10 @@
         const items: { label: string; tone: BadgeTone }[] = [];
         if (!user) return items;
 
+        if (user.invite) {
+            items.push({ label: "invited", tone: "info" });
+        }
+
         if (user.email && !user.email_verified) {
             items.push({ label: "unverified", tone: "warning" });
         }
@@ -113,7 +122,7 @@
     const menuItems = $derived.by(() => {
         const items: MenuItem[] = [];
 
-        if (canWrite && manageable) {
+        if (canWrite && manageable && !user?.invite) {
             items.push({
                 label: "Set password",
                 icon: "key",
@@ -151,6 +160,7 @@
             canImpersonate &&
             manageable &&
             !user?.suspension &&
+            !user?.invite &&
             user?.id !== $currentUser?.id;
 
         if (canImpersonateUser) {
@@ -332,7 +342,10 @@
                     <Icon icon="mail" />
                     {user.email ?? "No email"}
                 </span>
-                <span>Joined {simpleDate(new Date(user.created_at))}</span>
+                <span>
+                    {user.invite ? "Invited" : "Joined"}
+                    {simpleDate(new Date(user.created_at))}
+                </span>
             </div>
             {#if badges.length > 0}
                 <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -371,11 +384,45 @@
         </Notice>
     {/if}
 
+    {#if user.invite}
+        {@const inviter = user.invite.invited_by_name ?? "a deleted user"}
+        <Notice
+            tone="info"
+            icon="mail-forward"
+            title={`Invited by ${inviter}, expires ${formatTime(new Date(user.invite.expires_at))}.`}
+        >
+            This user can not sign in until they accept the invite, and is
+            deleted if it expires.
+
+            {#snippet actions()}
+                {#if canInvite && manageable}
+                    <Button
+                        variant="secondary"
+                        onclick={() => regenerateInviteModal?.open()}
+                    >
+                        Regenerate link
+                    </Button>
+                {/if}
+            {/snippet}
+        </Notice>
+    {/if}
+
     <Tabs items={tabs} label="User sections" />
 
     {@render children()}
 
     <ImpersonateModal bind:this={impersonateModal} {user} />
+
+    <RegenerateInviteModal
+        bind:this={regenerateInviteModal}
+        {user}
+        onregenerated={async (link) => {
+            inviteLinkModal?.show(link, user.username);
+            context.current = (await star.getUser(user.id)) ?? user;
+        }}
+    />
+
+    <InviteLinkModal bind:this={inviteLinkModal} />
 
     <SuspendModal
         bind:this={suspendModal}

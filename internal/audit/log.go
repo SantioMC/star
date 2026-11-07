@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -24,19 +25,7 @@ type Option func(*record)
 
 func Log(ctx fiber.Ctx, action Action, options ...Option) {
 	star := common.GetState(ctx)
-
-	entry := &record{
-		AuditLog: database.AuditLog{
-			ID:        database.CreateID(database.AuditLogKey),
-			Action:    string(action),
-			CreatedAt: time.Now(),
-		},
-		anonymize: star.Settings.Load().AuditAnonymize,
-	}
-
-	for _, option := range options {
-		option(entry)
-	}
+	entry := newRecord(star, action, options)
 
 	entry.resolveActor(ctx, star)
 
@@ -50,7 +39,32 @@ func Log(ctx fiber.Ctx, action Action, options ...Option) {
 	}
 }
 
-func write(ctx fiber.Ctx, star *state.StarServer, log *database.AuditLog) error {
+func LogSystem(ctx context.Context, star *state.StarServer, action Action, options ...Option) {
+	entry := newRecord(star, action, options)
+
+	if err := write(ctx, star, &entry.AuditLog); err != nil {
+		slog.Error("failed to write audit log", "action", action, "err", err)
+	}
+}
+
+func newRecord(star *state.StarServer, action Action, options []Option) *record {
+	entry := &record{
+		AuditLog: database.AuditLog{
+			ID:        database.CreateID(database.AuditLogKey),
+			Action:    string(action),
+			CreatedAt: time.Now(),
+		},
+		anonymize: star.Settings.Load().AuditAnonymize,
+	}
+
+	for _, option := range options {
+		option(entry)
+	}
+
+	return entry
+}
+
+func write(ctx context.Context, star *state.StarServer, log *database.AuditLog) error {
 	var err error
 
 	for attempt := range 3 {

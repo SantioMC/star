@@ -147,6 +147,7 @@ func CreateServer(star *state.StarServer) (*fiber.App, error) {
 
 	api.Route("/email", emailRouter)
 	api.Route("/user", userRouter)
+	api.Route("/invite", inviteRouter)
 	api.Route("/app", appRouter)
 	api.Route("/session", sessionRouter)
 	api.Route("/grant", grantRouter)

@@ -60,6 +60,12 @@ const (
 	UserSuspend      Action = "user.suspend"
 	UserUnsuspend    Action = "user.unsuspend"
 
+	UserInvite           Action = "user.invite"
+	UserInviteRegenerate Action = "user.invite_regenerate"
+	UserInviteEmail      Action = "user.invite_email"
+	UserInviteAccept     Action = "user.invite_accept"
+	UserInviteExpire     Action = "user.invite_expire"
+
 	UserImpersonate       Action = "user.impersonate"
 	UserImpersonateSignIn Action = "user.impersonate_sign_in"
 
@@ -142,6 +148,11 @@ var Definitions = []Definition{
 	{UserLockoutClear, "Sign in lockout cleared", "Users", SeverityNotice},
 	{UserSuspend, "User suspended", "Users", SeverityCritical},
 	{UserUnsuspend, "User unsuspended", "Users", SeverityCritical},
+	{UserInvite, "User invited", "Users", SeverityNotice},
+	{UserInviteRegenerate, "User invite link regenerated", "Users", SeverityNotice},
+	{UserInviteEmail, "User invite emailed", "Users", SeverityInfo},
+	{UserInviteAccept, "User invite accepted", "Users", SeverityInfo},
+	{UserInviteExpire, "User invite expired", "Users", SeverityInfo},
 	{UserImpersonate, "User impersonation started", "Users", SeverityCritical},
 	{UserImpersonateSignIn, "Signed in to application as impersonated user", "Users", SeverityCritical},
 

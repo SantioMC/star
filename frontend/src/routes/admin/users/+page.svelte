@@ -3,7 +3,10 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import Badge from "@/components/badge.svelte";
+    import Button from "@/components/button.svelte";
     import Card from "@/components/card.svelte";
+    import Icon from "@/components/icon.svelte";
+    import InviteLinkModal from "@/components/invite-link-modal.svelte";
     import Pagination from "@/components/pagination.svelte";
     import PageHeader from "@/components/page-header.svelte";
     import SearchInput from "@/components/search-input.svelte";
@@ -12,8 +15,14 @@
     import * as star from "@/star";
     import { simpleDate, titleCase } from "@/utils";
     import { onMount } from "svelte";
+    import InviteModal from "./components/invite-modal.svelte";
 
     const PAGE_SIZE = 25;
+
+    const canInvite = hasPermission("admin:user:invite");
+
+    let inviteModal = $state<InviteModal>();
+    let linkModal = $state<InviteLinkModal>();
 
     let users = $state<star.AdminUser[]>([]);
     let loaded = $state(false);
@@ -60,7 +69,16 @@
 <PageHeader
     title="User Directory"
     description="View and manage every user registered with {$branding.name}"
-/>
+>
+    {#snippet actions()}
+        {#if canInvite}
+            <Button onclick={() => inviteModal?.open()}>
+                <Icon icon="user-plus" />
+                Invite
+            </Button>
+        {/if}
+    {/snippet}
+</PageHeader>
 
 <SearchInput
     bind:value={query}
@@ -124,6 +142,9 @@
                                     {/if}
                                 </p>
                             </div>
+                            {#if user.invite}
+                                <Badge tone="info" class="ml-1">invited</Badge>
+                            {/if}
                             {#if !user.email_verified}
                                 <Badge tone="warning" class="ml-1">
                                     unverified
@@ -178,3 +199,13 @@
     onprevious={() => changePage(-1)}
     onnext={() => changePage(1)}
 />
+
+<InviteModal
+    bind:this={inviteModal}
+    oninvited={(link, username) => {
+        linkModal?.show(link, username);
+        load();
+    }}
+/>
+
+<InviteLinkModal bind:this={linkModal} />

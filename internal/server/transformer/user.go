@@ -63,6 +63,7 @@ type AdminUser struct {
 	Roles                  []AdminRole              `json:"roles"`
 	Lockout                *Lockout                 `json:"lockout"`
 	Suspension             *database.UserSuspension `json:"suspension"`
+	Invite                 *database.UserInvite     `json:"invite"`
 	HasPassword            bool                     `json:"has_password"`
 	PasswordChangeRequired bool                     `json:"password_change_required"`
 	Manageable             bool                     `json:"manageable"`
@@ -96,6 +97,7 @@ func TransformAdminUser(
 	attempts *database.LoginAttempts,
 	account *database.Account,
 	suspension *database.UserSuspension,
+	invite *database.UserInvite,
 	reach int,
 ) AdminUser {
 	var primaryEmail *string
@@ -121,6 +123,7 @@ func TransformAdminUser(
 		Roles:                  roles,
 		Lockout:                TransformLockout(attempts),
 		Suspension:             suspension,
+		Invite:                 invite,
 		HasPassword:            account != nil && account.Password != nil,
 		PasswordChangeRequired: account != nil && account.PasswordChangeRequired,
 		Manageable:             weight <= reach,

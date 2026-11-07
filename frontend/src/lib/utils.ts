@@ -25,6 +25,13 @@ export const simpleDate = (time: number | Date): string => {
   return dateFormatter.format(date);
 };
 
+export const toLocalInput = (date: Date): string => {
+  const offset = date.getTimezoneOffset() * 60_000;
+  const local = new Date(date.getTime() - offset);
+
+  return local.toISOString().slice(0, 16);
+};
+
 export function formatTime(time: number | Date): string {
   const date = time instanceof Date ? time : new Date(time * 1000);
   const parts = timeFormatter.formatToParts(date);

@@ -5,6 +5,7 @@
     import Modal from "@/components/modal.svelte";
     import Segmented from "@/components/segmented.svelte";
     import { Label } from "@/components/ui/label";
+    import { toLocalInput } from "@/utils";
     import { toast } from "svelte-sonner";
 
     const {
@@ -28,13 +29,6 @@
     let until = $state("");
     let minimum = $state("");
     let saving = $state(false);
-
-    const toLocalInput = (date: Date): string => {
-        const offset = date.getTimezoneOffset() * 60_000;
-        const local = new Date(date.getTime() - offset);
-
-        return local.toISOString().slice(0, 16);
-    };
 
     export const open = () => {
         const now = Date.now();

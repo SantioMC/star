@@ -25,6 +25,8 @@ var PasswordReset = parse("password-reset.html")
 
 var PasswordChanged = parse("password-changed.html")
 
+var Invite = parse("invite.html")
+
 type Branding struct {
 	Name             string
 	AccentColor      string
@@ -58,6 +60,14 @@ type PasswordChangedData struct {
 	ChangedAt   string
 	IPAddress   string
 	RecoveryURL string
+}
+
+type InviteData struct {
+	Brand     Branding
+	Name      string
+	Inviter   string
+	InviteURL string
+	ExpiresAt string
 }
 
 func FormatTime(at time.Time) string {

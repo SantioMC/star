@@ -14,7 +14,7 @@ type UpdateBrandingRequest struct {
 }
 
 type EmailPreviewRequest struct {
-	Template   string                `json:"template" validate:"required,oneof=verification password-reset password-changed"`
+	Template   string                `json:"template" validate:"required,oneof=verification password-reset password-changed invite"`
 	RemoveLogo bool                  `json:"remove_logo"`
 	Branding   UpdateBrandingRequest `json:"branding"`
 }

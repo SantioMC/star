@@ -40,6 +40,7 @@ func Cleanup(state *state.StarServer) {
 	CleanupLoginFlows(ctx, state)
 	CleanupPasskeyChallenges(ctx, state)
 	CleanupPasswordResets(ctx, state)
+	CleanupExpiredInvites(ctx, state)
 	CleanupSigningKeys(ctx, state)
 	CleanupTokenRevocations(ctx, state)
 }

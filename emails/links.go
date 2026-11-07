@@ -17,6 +17,10 @@ func PasswordResetURL(serverURL string, token string) string {
 	return serverURL + "/reset-password?" + values.Encode()
 }
 
+func InviteURL(serverURL string, code string) string {
+	return serverURL + "/invite/" + url.PathEscape(code)
+}
+
 func RecoveryURL(serverURL string) string {
 	return serverURL + "/forgot-password"
 }

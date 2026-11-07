@@ -3,6 +3,7 @@ package types
 import (
 	"time"
 
+	"github.com/tubblelive/star/internal/database/models"
 	"github.com/tubblelive/star/internal/username"
 )
 
@@ -43,6 +44,54 @@ type RegisterRequest struct {
 	FirstName *string `json:"first_name"`
 	LastName  *string `json:"last_name"`
 	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
+}
+
+type CreateInviteRequest struct {
+	Username  string  `json:"username" validate:"required"`
+	Email     string  `json:"email" validate:"required,email,max=255"`
+	FirstName *string `json:"first_name" validate:"omitempty,max=255"`
+	LastName  *string `json:"last_name" validate:"omitempty,max=255"`
+	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
+	ExpiresIn int     `json:"expires_in" validate:"required,min=1,max=168"`
+}
+
+type RegenerateInviteRequest struct {
+	ExpiresIn int `json:"expires_in" validate:"required,min=1,max=168"`
+}
+
+type EmailInviteRequest struct {
+	Code string `json:"code" validate:"required,max=64"`
+}
+
+type LookupInviteRequest struct {
+	Code string `json:"code" validate:"required,max=64"`
+}
+
+type AcceptInviteRequest struct {
+	Code      string  `json:"code" validate:"required,max=64"`
+	Password  string  `json:"password" validate:"required"`
+	FirstName *string `json:"first_name" validate:"omitempty,max=255"`
+	LastName  *string `json:"last_name" validate:"omitempty,max=255"`
+	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
+}
+
+type InviteLink struct {
+	UserID       string    `json:"user_id"`
+	Code         string    `json:"code"`
+	URL          string    `json:"url"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	EmailEnabled bool      `json:"email_enabled"`
+}
+
+type InviteDetails struct {
+	Username         string       `json:"username"`
+	Email            string       `json:"email"`
+	FirstName        *string      `json:"first_name"`
+	LastName         *string      `json:"last_name"`
+	Birthday         *models.Date `json:"birthday"`
+	BirthdayTracked  bool         `json:"birthday_tracked"`
+	BirthdayRequired bool         `json:"birthday_required"`
+	ExpiresAt        time.Time    `json:"expires_at"`
 }
 
 type ChangePasswordRequest struct {

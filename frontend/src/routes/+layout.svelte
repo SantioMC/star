@@ -23,7 +23,11 @@
     onMount(async () => {
         await Promise.all([restoreSession(), loadBranding()]);
 
-        if (!PUBLIC_ROUTES.includes(page.url.pathname) && !isLoggedIn()) {
+        const isPublic =
+            PUBLIC_ROUTES.includes(page.url.pathname) ||
+            page.url.pathname.startsWith("/invite/");
+
+        if (!isPublic && !isLoggedIn()) {
             location.href = "/login";
             return;
         }

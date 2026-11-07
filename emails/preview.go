@@ -29,6 +29,14 @@ func Sample(name string, brand Branding, serverURL string) (*template.Template, 
 			IPAddress:   "203.0.113.42",
 			RecoveryURL: RecoveryURL(serverURL),
 		}, true
+	case "invite":
+		return Invite, InviteData{
+			Brand:     brand,
+			Name:      "jane",
+			Inviter:   "admin",
+			InviteURL: InviteURL(serverURL, "preview"),
+			ExpiresAt: FormatTime(time.Now().Add(time.Hour * 72)),
+		}, true
 	}
 
 	return nil, nil, false

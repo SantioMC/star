@@ -740,6 +740,45 @@ export const getUserSuspensions = async (user: string, before?: string) => {
     .catch(orError);
 };
 
+export const createInvite = async (data: CreateInviteRequest) => {
+  return api
+    .post(`api/invite`, { json: data })
+    .json<InviteLink>()
+    .catch(orError);
+};
+
+export const regenerateInvite = async (user: string, expiresIn: number) => {
+  return api
+    .post(`api/user/${encodeURIComponent(user)}/invite`, {
+      json: { expires_in: expiresIn },
+    })
+    .json<InviteLink>()
+    .catch(orError);
+};
+
+export const emailInvite = async (user: string, code: string) => {
+  return api
+    .post(`api/user/${encodeURIComponent(user)}/invite/email`, {
+      json: { code },
+    })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
+export const lookupInvite = async (code: string) => {
+  return api
+    .post(`api/invite/lookup`, { json: { code } })
+    .json<InviteDetails>()
+    .catch(orError);
+};
+
+export const acceptInvite = async (data: AcceptInviteRequest) => {
+  return api
+    .post(`api/invite/accept`, { json: data })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
 export const suspendUser = async (user: string, data: SuspendUserRequest) => {
   return api
     .post(`api/user/${encodeURIComponent(user)}/suspend`, { json: data })
@@ -1310,7 +1349,8 @@ export type UpdateBrandingRequest = Partial<
 export type EmailTemplate =
   | "verification"
   | "password-reset"
-  | "password-changed";
+  | "password-changed"
+  | "invite";
 
 export interface EmailPreviewRequest {
   template: EmailTemplate;
@@ -1513,6 +1553,7 @@ export interface AdminUser {
   roles: Role[];
   lockout: Lockout | null;
   suspension: UserSuspension | null;
+  invite: UserInvite | null;
   has_password: boolean;
   password_change_required: boolean;
   manageable: boolean;
@@ -1548,6 +1589,51 @@ export interface UserSuspension {
 export interface SuspensionPage {
   items: UserSuspension[];
   next: string | null;
+}
+
+export interface UserInvite {
+  id: string;
+  user_id: string;
+  invited_by: string | null;
+  invited_by_name: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface CreateInviteRequest {
+  username: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  birthday?: string;
+  expires_in: number;
+}
+
+export interface InviteLink {
+  user_id: string;
+  code: string;
+  url: string;
+  expires_at: string;
+  email_enabled: boolean;
+}
+
+export interface InviteDetails {
+  username: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  birthday: string | null;
+  birthday_tracked: boolean;
+  birthday_required: boolean;
+  expires_at: string;
+}
+
+export interface AcceptInviteRequest {
+  code: string;
+  password: string;
+  first_name?: string;
+  last_name?: string;
+  birthday?: string;
 }
 
 export interface SuspendUserRequest {
