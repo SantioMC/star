@@ -1282,6 +1282,7 @@ export interface PublicApplication {
   id: string;
   name: string;
   url: string;
+  development_mode: boolean;
   scopes: PublicScope[];
   invalid_scopes: string[];
 }

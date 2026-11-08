@@ -73,7 +73,25 @@ func validateWebURL(parsed *url.URL, label string) error {
 }
 
 func AllowedRedirectURI(application *database.Application, value string) bool {
-	return slices.Contains(application.RedirectURIs, value) && ValidateRedirectURI(value) == nil
+	if ValidateRedirectURI(value) != nil {
+		return false
+	}
+
+	if slices.Contains(application.RedirectURIs, value) {
+		return true
+	}
+
+	return application.DevelopmentMode && loopbackRedirectURI(value)
+}
+
+func loopbackRedirectURI(value string) bool {
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return false
+	}
+
+	web := parsed.Scheme == "http" || parsed.Scheme == "https"
+	return web && loopbackHost(parsed.Hostname())
 }
 
 func loopbackHost(host string) bool {

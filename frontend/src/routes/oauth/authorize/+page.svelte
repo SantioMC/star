@@ -5,6 +5,7 @@
     import AuthShell from "@/components/auth-shell.svelte";
     import GrantedScopes from "@/components/granted-scopes.svelte";
     import Icon from "@/components/icon.svelte";
+    import Notice from "@/components/notice.svelte";
     import { isLoggedIn, requestLogin } from "@/index";
     import { onMount } from "svelte";
 
@@ -231,6 +232,18 @@
                     </p>
                 {/if}
             </div>
+
+            {#if application.development_mode}
+                <Notice
+                    icon="alert-triangle"
+                    title="This application is in development."
+                    class="mt-6"
+                >
+                    It may be unfinished or run on someone's own computer. Only
+                    continue if you trust {application.name} and expected this
+                    request.
+                </Notice>
+            {/if}
 
             <GrantedScopes scopes={application.scopes} class="my-6" />
 

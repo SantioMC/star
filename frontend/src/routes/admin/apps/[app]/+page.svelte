@@ -609,7 +609,9 @@
                     <div class="flex flex-col gap-0.5">
                         <span class="text-sm select-none">Development mode</span>
                         <span class="text-sm text-muted select-none">
-                            Flags this application as under development.
+                            Allows any loopback redirect URI (localhost,
+                            127.0.0.1, [::1]) on any port and warns users when
+                            they authorize it.
                         </span>
                     </div>
                 </label>

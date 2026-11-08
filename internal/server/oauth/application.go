@@ -16,11 +16,12 @@ type PublicScope struct {
 }
 
 type PublicApplication struct {
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
-	URL           string        `json:"url"`
-	Scopes        []PublicScope `json:"scopes"`
-	InvalidScopes []string      `json:"invalid_scopes"`
+	ID              string        `json:"id"`
+	Name            string        `json:"name"`
+	URL             string        `json:"url"`
+	DevelopmentMode bool          `json:"development_mode"`
+	Scopes          []PublicScope `json:"scopes"`
+	InvalidScopes   []string      `json:"invalid_scopes"`
 }
 
 func Application(ctx fiber.Ctx) error {
@@ -64,10 +65,11 @@ func NewPublicApplication(ctx fiber.Ctx, application *database.Application, requ
 	}
 
 	return PublicApplication{
-		ID:            application.ID,
-		Name:          application.Name,
-		URL:           application.ApplicationURL,
-		Scopes:        scopes,
-		InvalidScopes: resolution.Invalid,
+		ID:              application.ID,
+		Name:            application.Name,
+		URL:             application.ApplicationURL,
+		DevelopmentMode: application.DevelopmentMode,
+		Scopes:          scopes,
+		InvalidScopes:   resolution.Invalid,
 	}
 }
