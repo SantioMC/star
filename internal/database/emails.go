@@ -238,14 +238,19 @@ func (db *Database) VerifyEmailCode(ctx context.Context, email string, code stri
 	return true, tx.Commit()
 }
 
-func (db *Database) DeleteEmail(ctx context.Context, id string) error {
-	_, err := db.DB().ExecContext(
+func (db *Database) DeleteEmail(ctx context.Context, id string) (bool, error) {
+	result, err := db.DB().ExecContext(
 		ctx,
-		`DELETE FROM user_emails WHERE id = $1`,
+		`DELETE FROM user_emails WHERE id = $1 AND preferred = FALSE`,
 		id,
 	)
 
-	return err
+	if err != nil {
+		return false, err
+	}
+
+	deleted, err := result.RowsAffected()
+	return deleted > 0, err
 }
 
 func (db *Database) GetPrimaryEmail(ctx context.Context, userID string) *UserEmail {
@@ -266,10 +271,10 @@ func (db *Database) GetPrimaryEmail(ctx context.Context, userID string) *UserEma
 	return &email
 }
 
-func (db *Database) SetPrimaryEmail(ctx context.Context, userID string, emailID string) error {
+func (db *Database) SetPrimaryEmail(ctx context.Context, userID string, emailID string) (bool, error) {
 	tx, err := db.DB().BeginTxx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	defer tx.Rollback()
@@ -281,20 +286,26 @@ func (db *Database) SetPrimaryEmail(ctx context.Context, userID string, emailID 
 	)
 
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	_, err = tx.ExecContext(
+	result, err := tx.ExecContext(
 		ctx,
-		`UPDATE user_emails SET preferred = TRUE WHERE id = $1`,
+		`UPDATE user_emails SET preferred = TRUE WHERE id = $1 AND user_id = $2 AND verified = TRUE`,
 		emailID,
+		userID,
 	)
 
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return tx.Commit()
+	updated, err := result.RowsAffected()
+	if err != nil || updated == 0 {
+		return false, err
+	}
+
+	return true, tx.Commit()
 }
 
 func (db *Database) EmailClaimed(ctx context.Context, email string) bool {

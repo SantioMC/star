@@ -23,6 +23,13 @@ export const clearSession = () => {
   user.set(null);
 };
 
+export const syncUser = async (): Promise<boolean> => {
+  const data = await star.getSelf();
+  if (data) user.set(data);
+
+  return get(user) != null;
+};
+
 export const restoreSession = async () => {
   if (get(signedIn) == null) return;
   await refreshAccessToken();

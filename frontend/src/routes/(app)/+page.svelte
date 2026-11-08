@@ -1,7 +1,7 @@
 <script lang="ts">
     import * as Avatar from "@/components/ui/avatar";
     import { Label } from "@/components/ui/label";
-    import { hasPermission, user } from "@/index";
+    import { hasPermission, syncUser, user } from "@/index";
     import * as star from "@/star";
     import { downloadFile, simpleDate } from "@/utils";
     import { onMount } from "svelte";
@@ -84,6 +84,8 @@
             user.birthday = birthday;
             return user;
         });
+
+        syncUser();
     };
 
     const addEmail = async (e: Event) => {
@@ -132,6 +134,7 @@
         deleteEmailModal?.close();
 
         toast.success(`Removed ${email.email} from your account`);
+        syncUser();
     };
 
     const makePrimary = async (email: star.Email) => {
@@ -160,6 +163,7 @@
         });
 
         toast.success(`${email.email} is now your primary email`);
+        syncUser();
     };
 
     const resendVerification = async (email: star.Email) => {

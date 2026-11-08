@@ -1,19 +1,14 @@
 <script lang="ts">
     import Sidebar from "@/components/sidebar/index.svelte";
-    import { user } from "@/index";
+    import { user, syncUser } from "@/index";
     import { onMount } from "svelte";
-    import * as star from "@/star";
     import { goto } from "$app/navigation";
 
     let { children } = $props();
 
     onMount(async () => {
-        if (!!$user) return;
-
-        const data = await star.getSelf();
-        if (!data) return goto("/login");
-
-        user.set(data);
+        const synced = await syncUser();
+        if (!synced) return goto("/login");
     });
 </script>
 

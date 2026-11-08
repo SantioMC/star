@@ -174,8 +174,11 @@ func deleteUserEmail(ctx fiber.Ctx) error {
 		return fiber.NewError(400, "you may not remove the only email on your account")
 	}
 
-	if err := star.Database.DeleteEmail(ctx, emailID); err != nil {
+	deleted, err := star.Database.DeleteEmail(ctx, emailID)
+	if err != nil {
 		return err
+	} else if !deleted {
+		return fiber.NewError(400, "you may not remove your primary email, set another email as primary first")
 	}
 
 	audit.Log(ctx, audit.EmailRemove, audit.With("email_id", email.ID), audit.Private("email", email.Email))
@@ -203,8 +206,11 @@ func updatePrimaryEmail(ctx fiber.Ctx) error {
 		return fiber.NewError(401, "the provided email is not associated with your account")
 	}
 
-	if err := star.Database.SetPrimaryEmail(ctx, userId, emailID); err != nil {
+	updated, err := star.Database.SetPrimaryEmail(ctx, userId, emailID)
+	if err != nil {
 		return err
+	} else if !updated {
+		return fiber.NewError(400, "you must verify this email before making it your primary email")
 	}
 
 	audit.Log(ctx, audit.EmailPrimary, audit.With("email_id", email.ID), audit.Private("email", email.Email))
