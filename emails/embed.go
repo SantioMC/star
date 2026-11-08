@@ -27,6 +27,8 @@ var PasswordChanged = parse("password-changed.html")
 
 var Invite = parse("invite.html")
 
+var Test = parse("test.html")
+
 type Branding struct {
 	Name             string
 	AccentColor      string
@@ -68,6 +70,14 @@ type InviteData struct {
 	Inviter   string
 	InviteURL string
 	ExpiresAt string
+}
+
+type TestData struct {
+	Brand       Branding
+	Name        string
+	Provider    string
+	SentAt      string
+	SettingsURL string
 }
 
 func FormatTime(at time.Time) string {

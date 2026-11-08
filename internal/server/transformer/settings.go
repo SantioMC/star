@@ -1,6 +1,7 @@
 package transformer
 
 import (
+	"github.com/tubblelive/star/internal/captcha"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/password"
@@ -17,6 +18,16 @@ type AdminSettings struct {
 	TrackBirthdays        bool                       `json:"track_birthdays"`
 	MinimumAge            int                        `json:"minimum_age"`
 	PasswordSettings      password.PasswordSetttings `json:"password_settings"`
+	EmailProvider         email.Provider             `json:"email_provider"`
+	EmailSender           string                     `json:"email_sender"`
+	SMTPHost              string                     `json:"smtp_host"`
+	SMTPPort              int                        `json:"smtp_port"`
+	SMTPUsername          string                     `json:"smtp_username"`
+	HasSMTPPassword       bool                       `json:"has_smtp_password"`
+	HasResendAPIKey       bool                       `json:"has_resend_api_key"`
+	CaptchaProvider       captcha.Provider           `json:"captcha_provider"`
+	TurnstileSiteKey      string                     `json:"turnstile_site_key"`
+	HasTurnstileSecretKey bool                       `json:"has_turnstile_secret_key"`
 }
 
 func TransformSettings(settings database.Settings, passwordSettings password.PasswordSetttings) AdminSettings {
@@ -31,6 +42,16 @@ func TransformSettings(settings database.Settings, passwordSettings password.Pas
 		TrackBirthdays:        settings.TrackBirthdays,
 		MinimumAge:            settings.MinimumAge,
 		PasswordSettings:      passwordSettings,
+		EmailProvider:         settings.EmailProvider,
+		EmailSender:           settings.EmailSender,
+		SMTPHost:              settings.SMTPHost,
+		SMTPPort:              settings.SMTPPort,
+		SMTPUsername:          settings.SMTPUsername,
+		HasSMTPPassword:       settings.SMTPPassword != "",
+		HasResendAPIKey:       settings.ResendAPIKey != "",
+		CaptchaProvider:       settings.CaptchaProvider,
+		TurnstileSiteKey:      settings.TurnstileSiteKey,
+		HasTurnstileSecretKey: settings.TurnstileSecretKey != "",
 	}
 }
 

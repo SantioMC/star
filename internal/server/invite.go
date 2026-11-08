@@ -43,7 +43,7 @@ func newInviteLink(star *state.StarServer, invite *database.UserInvite) types.In
 		Code:         invite.Token,
 		URL:          emails.InviteURL(star.Config.ServerURL, invite.Token),
 		ExpiresAt:    invite.ExpiresAt,
-		EmailEnabled: star.Config.Email.IsEnabled(),
+		EmailEnabled: star.EmailConfig().IsEnabled(),
 	}
 }
 
@@ -181,7 +181,7 @@ func regenerateInvite(ctx fiber.Ctx) error {
 func emailInvite(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	if !star.Config.Email.IsEnabled() {
+	if !star.EmailConfig().IsEnabled() {
 		return fiber.NewError(400, "Email is not configured on this server")
 	}
 
@@ -212,7 +212,7 @@ func emailInvite(ctx fiber.Ctx) error {
 
 	brand := star.Branding.Load()
 
-	err = star.Email.Send(
+	err = star.Email().Send(
 		primary.Email,
 		"You have been invited to "+brand.Name,
 		emails.Invite,

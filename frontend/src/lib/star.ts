@@ -1182,6 +1182,25 @@ export const updateServerSettings = async (
     .catch(orError);
 };
 
+export const testEmailSettings = async (
+  changes: UpdateServerSettingsRequest,
+) => {
+  return api
+    .post("api/settings/email/test", { json: changes })
+    .json<TestEmailResponse>()
+    .catch(orError);
+};
+
+export const testCaptchaSettings = async (
+  changes: UpdateServerSettingsRequest,
+  token: string,
+) => {
+  return api
+    .post("api/settings/captcha/test", { json: { ...changes, token } })
+    .json<{ success: boolean }>()
+    .catch(orError);
+};
+
 export const getDisposableDomains = async () => {
   const response = await api
     .get("api/settings/disposable-domains")
@@ -1339,6 +1358,10 @@ export interface DisposableDomains {
 
 export type EmailDomainMode = "disabled" | "whitelist" | "blacklist";
 
+export type EmailProvider = "disabled" | "smtp" | "resend";
+
+export type CaptchaProvider = "disabled" | "turnstile";
+
 export interface ServerSettings {
   allow_registration: boolean;
   allow_logins: boolean;
@@ -1350,6 +1373,16 @@ export interface ServerSettings {
   track_birthdays: boolean;
   minimum_age: number;
   password_settings: PasswordSettings;
+  email_provider: EmailProvider;
+  email_sender: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  has_smtp_password: boolean;
+  has_resend_api_key: boolean;
+  captcha_provider: CaptchaProvider;
+  turnstile_site_key: string;
+  has_turnstile_secret_key: boolean;
 }
 
 export interface UpdateServerSettingsRequest {
@@ -1363,6 +1396,20 @@ export interface UpdateServerSettingsRequest {
   track_birthdays?: boolean;
   minimum_age?: number;
   password_settings?: Partial<PasswordSettings>;
+  email_provider?: EmailProvider;
+  email_sender?: string;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  resend_api_key?: string;
+  captcha_provider?: CaptchaProvider;
+  turnstile_site_key?: string;
+  turnstile_secret_key?: string;
+}
+
+export interface TestEmailResponse {
+  email: string;
 }
 
 export type BrandingLayout = "centered" | "split" | "minimal";
@@ -1391,7 +1438,8 @@ export type EmailTemplate =
   | "verification"
   | "password-reset"
   | "password-changed"
-  | "invite";
+  | "invite"
+  | "test";
 
 export interface EmailPreviewRequest {
   template: EmailTemplate;

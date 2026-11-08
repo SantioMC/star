@@ -37,6 +37,14 @@ func Sample(name string, brand Branding, serverURL string) (*template.Template, 
 			InviteURL: InviteURL(serverURL, "preview"),
 			ExpiresAt: FormatTime(time.Now().Add(time.Hour * 72)),
 		}, true
+	case "test":
+		return Test, TestData{
+			Brand:       brand,
+			Name:        "jane",
+			Provider:    "SMTP (smtp.example.com:587)",
+			SentAt:      FormatTime(time.Now()),
+			SettingsURL: EmailSettingsURL(serverURL),
+		}, true
 	}
 
 	return nil, nil, false

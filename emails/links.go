@@ -21,6 +21,10 @@ func InviteURL(serverURL string, code string) string {
 	return serverURL + "/invite/" + url.PathEscape(code)
 }
 
+func EmailSettingsURL(serverURL string) string {
+	return serverURL + "/admin/settings/email"
+}
+
 func RecoveryURL(serverURL string) string {
 	return serverURL + "/forgot-password"
 }

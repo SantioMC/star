@@ -2,10 +2,16 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tubblelive/star/emails"
 	"github.com/tubblelive/star/internal/audit"
+	"github.com/tubblelive/star/internal/branding"
 	"github.com/tubblelive/star/internal/cache"
+	"github.com/tubblelive/star/internal/captcha"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/openid"
@@ -13,6 +19,7 @@ import (
 	"github.com/tubblelive/star/internal/permission"
 	"github.com/tubblelive/star/internal/server/common"
 	"github.com/tubblelive/star/internal/server/middleware"
+	"github.com/tubblelive/star/internal/server/request"
 	"github.com/tubblelive/star/internal/server/transformer"
 	"github.com/tubblelive/star/internal/server/types"
 	"github.com/tubblelive/star/internal/state"
@@ -32,6 +39,8 @@ func settingsRouter(router fiber.Router) {
 	router.Get("/", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getSettings)
 	router.Patch("/", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), updateSettings)
 	router.Get("/disposable-domains", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getDisposableDomains)
+	router.Post("/email/test", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), middleware.RateLimit(5), testEmailSettings)
+	router.Post("/captcha/test", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), middleware.RateLimit(10), testCaptchaSettings)
 }
 
 func currentSettings(star *state.StarServer, ctx fiber.Ctx) (*database.Settings, error) {
@@ -93,7 +102,15 @@ func validateSettings(settings *database.Settings, passwordSettings *password.Pa
 		return fiber.NewError(400, "The maximum password length must be greater than the minimum password length")
 	}
 
-	if passwordSettings.MinSymbols < 0 || passwordSettings.MinUpper < 0 || passwordSettings.MinLower < 0 {
+	if err := settings.GetEmailConfig().Validate(); err != nil {
+		return err
+	}
+
+	if err := settings.GetCaptchaConfig().Validate(); err != nil {
+		return err
+	}
+
+	if passwordSettings.MinSymbols < 0 ||passwordSettings.MinUpper < 0 || passwordSettings.MinLower < 0 {
 		return fiber.NewError(400, "The required character counts may not be negative")
 	}
 
@@ -161,6 +178,9 @@ func updateSettings(ctx fiber.Ctx) error {
 		settings.MinimumAge = *request.MinimumAge
 	}
 
+	applyEmailSettings(settings, &request)
+	applyCaptchaSettings(settings, &request)
+
 	currentPasswordSettings := *settings.GetPasswordSettings()
 	passwordSettings := currentPasswordSettings
 
@@ -190,6 +210,13 @@ func updateSettings(ctx fiber.Ctx) error {
 		return err
 	}
 
+	captchaConfig := settings.GetCaptchaConfig()
+	if captchaConfig.IsEnabled() && captchaConfig != before.GetCaptchaConfig() {
+		if err := captchaConfig.CheckSecret(); err != nil {
+			return err
+		}
+	}
+
 	if passwordSettings != currentPasswordSettings {
 		encoded, err := json.Marshal(passwordSettings)
 		if err != nil {
@@ -204,7 +231,166 @@ func updateSettings(ctx fiber.Ctx) error {
 	}
 
 	cache.UpdateSettings(ctx, star)
-	audit.Log(ctx, audit.SettingsUpdate, audit.Changes(before, *settings))
+	audit.Log(
+		ctx,
+		audit.SettingsUpdate,
+		audit.Changes(before, *settings),
+		audit.With("secrets_changed", changedSecrets(&request)),
+	)
 
 	return ctx.JSON(transformer.TransformSettings(*settings, passwordSettings))
+}
+
+func testEmailSettings(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var data types.UpdateSettingsRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	settings, err := currentSettings(star, ctx)
+	if err != nil {
+		return err
+	}
+
+	applyEmailSettings(settings, &data)
+
+	config := settings.GetEmailConfig()
+	if !config.IsEnabled() {
+		return fiber.NewError(400, "Choose an email provider before sending a test email")
+	}
+
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	user, err := request.GetUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	primary := star.Database.GetPrimaryEmail(ctx, user.ID)
+	if primary == nil {
+		return fiber.NewError(400, "Your account has no primary email to send the test email to")
+	}
+
+	brand := star.Branding.Load()
+
+	err = email.NewProvider(config).Send(
+		primary.Email,
+		"Test email from "+brand.Name,
+		emails.Test,
+		emails.TestData{
+			Brand:       branding.ForEmail(brand, star.Config.ServerURL),
+			Name:        user.Name,
+			Provider:    config.Describe(),
+			SentAt:      emails.FormatTime(time.Now()),
+			SettingsURL: emails.EmailSettingsURL(star.Config.ServerURL),
+		},
+	)
+
+	if err != nil {
+		slog.Warn("failed to send test email", "err", err, "provider", config.Provider)
+		return fiber.NewError(502, "Failed to send the test email: "+err.Error())
+	}
+
+	return ctx.JSON(types.TestEmailResponse{
+		Email: primary.Email,
+	})
+}
+
+func testCaptchaSettings(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	var data types.TestCaptchaRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	settings, err := currentSettings(star, ctx)
+	if err != nil {
+		return err
+	}
+
+	applyCaptchaSettings(settings, &data.UpdateSettingsRequest)
+
+	config := settings.GetCaptchaConfig()
+	if !config.IsEnabled() {
+		return fiber.NewError(400, "Choose a captcha provider before testing it")
+	}
+
+	if err := config.Validate(); err != nil {
+		return err
+	}
+
+	if err := captcha.NewVerifier(config).Check(data.Token); err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+	})
+}
+
+func applyEmailSettings(settings *database.Settings, request *types.UpdateSettingsRequest) {
+	if request.EmailProvider != nil {
+		settings.EmailProvider = email.Provider(*request.EmailProvider)
+	}
+
+	if request.EmailSender != nil {
+		settings.EmailSender = strings.TrimSpace(*request.EmailSender)
+	}
+
+	if request.SMTPHost != nil {
+		settings.SMTPHost = strings.TrimSpace(*request.SMTPHost)
+	}
+
+	if request.SMTPPort != nil {
+		settings.SMTPPort = *request.SMTPPort
+	}
+
+	if request.SMTPUsername != nil {
+		settings.SMTPUsername = strings.TrimSpace(*request.SMTPUsername)
+	}
+
+	if request.SMTPPassword != nil {
+		settings.SMTPPassword = *request.SMTPPassword
+	}
+
+	if request.ResendAPIKey != nil {
+		settings.ResendAPIKey = strings.TrimSpace(*request.ResendAPIKey)
+	}
+}
+
+func applyCaptchaSettings(settings *database.Settings, request *types.UpdateSettingsRequest) {
+	if request.CaptchaProvider != nil {
+		settings.CaptchaProvider = captcha.Provider(*request.CaptchaProvider)
+	}
+
+	if request.TurnstileSiteKey != nil {
+		settings.TurnstileSiteKey = strings.TrimSpace(*request.TurnstileSiteKey)
+	}
+
+	if request.TurnstileSecretKey != nil {
+		settings.TurnstileSecretKey = strings.TrimSpace(*request.TurnstileSecretKey)
+	}
+}
+
+func changedSecrets(request *types.UpdateSettingsRequest) []string {
+	changed := []string{}
+
+	if request.SMTPPassword != nil {
+		changed = append(changed, "smtp_password")
+	}
+
+	if request.ResendAPIKey != nil {
+		changed = append(changed, "resend_api_key")
+	}
+
+	if request.TurnstileSecretKey != nil {
+		changed = append(changed, "turnstile_secret_key")
+	}
+
+	return changed
 }

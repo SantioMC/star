@@ -9,3 +9,7 @@ func (v *NoopVerifier) GetSiteKey() string {
 func (v *NoopVerifier) ValidateToken(token string) bool {
 	return true
 }
+
+func (v *NoopVerifier) Check(token string) error {
+	return nil
+}

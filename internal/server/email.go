@@ -100,7 +100,7 @@ func newUserEmail(settings *database.Settings, userID string, address string, pr
 
 func sendVerificationEmail(star *state.StarServer, name string, address string, code string) {
 	verificationURL := emails.VerificationURL(star.Config.ServerURL, address, code)
-	err := star.Email.Send(
+	err := star.Email().Send(
 		address,
 		"Verify your email address",
 		emails.Verification,

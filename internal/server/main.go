@@ -170,24 +170,17 @@ func CreateServer(star *state.StarServer) (*fiber.App, error) {
 	})
 
 	// Frontend
-	siteKey := ""
-
-	if star.Config.Captcha.IsEnabled() {
-		siteKey = star.Captcha.GetSiteKey()
-	}
-
-	environment, err := json.Marshal(map[string]any{
-		"PUBLIC_API_URL":  star.Config.ServerURL,
-		"PUBLIC_SITE_KEY": siteKey,
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal frontend environment: %w", err)
-	}
-
 	app.Get("/_app/env.js", func(ctx fiber.Ctx) error {
-		// Cloudflare cached this and made my life miserable so cache is now 5mins
-		ctx.Set(fiber.HeaderCacheControl, "public, max-age=300")
+		environment, err := json.Marshal(map[string]any{
+			"PUBLIC_API_URL":  star.Config.ServerURL,
+			"PUBLIC_SITE_KEY": star.Captcha().GetSiteKey(),
+		})
+
+		if err != nil {
+			return fmt.Errorf("failed to marshal frontend environment: %w", err)
+		}
+
+		ctx.Set(fiber.HeaderCacheControl, "no-cache")
 		ctx.Set(fiber.HeaderContentType, "application/javascript")
 		return ctx.SendString("export const env=" + string(environment))
 	})

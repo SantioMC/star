@@ -8,6 +8,8 @@ import (
 	"log/slog"
 
 	"github.com/tubblelive/star/internal/birthday"
+	"github.com/tubblelive/star/internal/captcha"
+	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database/models"
 	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/password"
@@ -28,6 +30,57 @@ type Settings struct {
 	AuditRetentionDays    *int                      `json:"audit_retention_days" db:"audit_retention_days"`
 	AuditAnonymize        bool                      `json:"audit_anonymize" db:"audit_anonymize"`
 	PasswordSettings      string                    `json:"password_settings" db:"password_settings"`
+	EmailProvider         email.Provider            `json:"email_provider" db:"email_provider"`
+	EmailSender           string                    `json:"email_sender" db:"email_sender"`
+	SMTPHost              string                    `json:"smtp_host" db:"smtp_host"`
+	SMTPPort              int                       `json:"smtp_port" db:"smtp_port"`
+	SMTPUsername          string                    `json:"smtp_username" db:"smtp_username"`
+	SMTPPassword          string                    `json:"-" db:"smtp_password"`
+	ResendAPIKey          string                    `json:"-" db:"resend_api_key"`
+	CaptchaProvider       captcha.Provider          `json:"captcha_provider" db:"captcha_provider"`
+	TurnstileSiteKey      string                    `json:"turnstile_site_key" db:"turnstile_site_key"`
+	TurnstileSecretKey    string                    `json:"-" db:"turnstile_secret_key"`
+}
+
+func (s *Settings) GetEmailConfig() email.Config {
+	return email.Config{
+		Provider:     s.EmailProvider,
+		Sender:       s.EmailSender,
+		SMTPHost:     s.SMTPHost,
+		SMTPPort:     s.SMTPPort,
+		SMTPUsername: s.SMTPUsername,
+		SMTPPassword: s.SMTPPassword,
+		ResendAPIKey: s.ResendAPIKey,
+	}
+}
+
+func (s *Settings) GetCaptchaConfig() captcha.Config {
+	return captcha.Config{
+		Provider:           s.CaptchaProvider,
+		TurnstileSiteKey:   s.TurnstileSiteKey,
+		TurnstileSecretKey: s.TurnstileSecretKey,
+	}
+}
+
+func (s *Settings) secrets() []*string {
+	return []*string{&s.SMTPPassword, &s.ResendAPIKey, &s.TurnstileSecretKey}
+}
+
+func (s *Settings) transformSecrets(key [32]byte, transform func(string, [32]byte) (string, error)) error {
+	for _, secret := range s.secrets() {
+		if *secret == "" {
+			continue
+		}
+
+		transformed, err := transform(*secret, key)
+		if err != nil {
+			return err
+		}
+
+		*secret = transformed
+	}
+
+	return nil
 }
 
 func (s *Settings) GetEmailDomainPolicy() email.DomainPolicy {
@@ -70,10 +123,20 @@ func (db *Database) GetSettings(ctx context.Context) (*Settings, error) {
 		return nil, err
 	}
 
+	if err := settings.transformSecrets(db.config.AppToken, cryptography.DecryptAES); err != nil {
+		slog.Error("failed to decrypt settings secrets", "err", err)
+		return nil, err
+	}
+
 	return &settings, nil
 }
 
 func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) error {
+	encrypted := *settings
+	if err := encrypted.transformSecrets(db.config.AppToken, cryptography.EncryptAES); err != nil {
+		return err
+	}
+
 	_, err := db.DB().ExecContext(
 		ctx,
 		`
@@ -81,22 +144,34 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		SET allow_registration = $2, allow_logins = $3, password_settings = $4, email_code_length = $5,
 			audit_retention_days = $6, audit_anonymize = $7, email_verification = $8, email_domain_mode = $9,
 			email_domains = $10, block_disposable_emails = $11, minimum_age = $12,
-			track_birthdays = $13
+			track_birthdays = $13, email_provider = $14, email_sender = $15, smtp_host = $16,
+			smtp_port = $17, smtp_username = $18, smtp_password = $19, resend_api_key = $20,
+			captcha_provider = $21, turnstile_site_key = $22, turnstile_secret_key = $23
 		WHERE id = $1
 		`,
-		settings.ID,
-		settings.AllowRegistration,
-		settings.AllowLogins,
-		settings.PasswordSettings,
-		settings.EmailCodeLength,
-		settings.AuditRetentionDays,
-		settings.AuditAnonymize,
-		settings.EmailVerification,
-		settings.EmailDomainMode,
-		settings.EmailDomains,
-		settings.BlockDisposableEmails,
-		settings.MinimumAge,
-		settings.TrackBirthdays,
+		encrypted.ID,
+		encrypted.AllowRegistration,
+		encrypted.AllowLogins,
+		encrypted.PasswordSettings,
+		encrypted.EmailCodeLength,
+		encrypted.AuditRetentionDays,
+		encrypted.AuditAnonymize,
+		encrypted.EmailVerification,
+		encrypted.EmailDomainMode,
+		encrypted.EmailDomains,
+		encrypted.BlockDisposableEmails,
+		encrypted.MinimumAge,
+		encrypted.TrackBirthdays,
+		encrypted.EmailProvider,
+		encrypted.EmailSender,
+		encrypted.SMTPHost,
+		encrypted.SMTPPort,
+		encrypted.SMTPUsername,
+		encrypted.SMTPPassword,
+		encrypted.ResendAPIKey,
+		encrypted.CaptchaProvider,
+		encrypted.TurnstileSiteKey,
+		encrypted.TurnstileSecretKey,
 	)
 
 	return err

@@ -19,4 +19,23 @@ type UpdateSettingsRequest struct {
 	TrackBirthdays        *bool                          `json:"track_birthdays" validate:"omitempty"`
 	MinimumAge            *int                           `json:"minimum_age" validate:"omitempty,min=0,max=120"`
 	PasswordSettings      *UpdatePasswordSettingsRequest `json:"password_settings" validate:"omitempty"`
+	EmailProvider         *string                        `json:"email_provider" validate:"omitempty,oneof=disabled smtp resend"`
+	EmailSender           *string                        `json:"email_sender" validate:"omitempty,max=320"`
+	SMTPHost              *string                        `json:"smtp_host" validate:"omitempty,max=255"`
+	SMTPPort              *int                           `json:"smtp_port" validate:"omitempty,min=1,max=65535"`
+	SMTPUsername          *string                        `json:"smtp_username" validate:"omitempty,max=255"`
+	SMTPPassword          *string                        `json:"smtp_password" validate:"omitempty,max=1024"`
+	ResendAPIKey          *string                        `json:"resend_api_key" validate:"omitempty,max=1024"`
+	CaptchaProvider       *string                        `json:"captcha_provider" validate:"omitempty,oneof=disabled turnstile"`
+	TurnstileSiteKey      *string                        `json:"turnstile_site_key" validate:"omitempty,max=255"`
+	TurnstileSecretKey    *string                        `json:"turnstile_secret_key" validate:"omitempty,max=1024"`
+}
+
+type TestCaptchaRequest struct {
+	UpdateSettingsRequest
+	Token string `json:"token" validate:"required,max=2048"`
+}
+
+type TestEmailResponse struct {
+	Email string `json:"email"`
 }

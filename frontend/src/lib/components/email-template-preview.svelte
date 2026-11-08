@@ -29,6 +29,7 @@
                 { value: "password-reset", label: "Password Reset" },
                 { value: "password-changed", label: "Password Changed" },
                 { value: "invite", label: "Invite" },
+                { value: "test", label: "Test" },
             ]}
         />
     </div>

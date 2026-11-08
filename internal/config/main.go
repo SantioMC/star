@@ -14,8 +14,6 @@ type Config struct {
 	DatabaseURL string   `env:"DATABASE_URL"`
 	Origins     []string `env:"ORIGIN,"`
 	Proxy       ProxyConfig
-	Captcha     CaptchaConfig
-	Email       EmailConfig
 	Geolocation GeoserviceConfig
 }
 

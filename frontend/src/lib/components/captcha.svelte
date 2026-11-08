@@ -27,9 +27,11 @@
 	let captcha = $state<HTMLElement>();
 
 	const {
+		sitekey = env.PUBLIC_SITE_KEY,
 		onsuccess,
 		onerror
 	}: {
+		sitekey?: string;
 		onsuccess?: (token: string) => void;
 		onerror?: (error: string) => void;
 	} = $props();
@@ -43,7 +45,7 @@
 				if (destroyed) return;
 
 				widget = turnstile.render(captcha!, {
-					sitekey: env.PUBLIC_SITE_KEY,
+					sitekey,
 					theme: 'auto',
 					callback: function (token: string) {
 						onsuccess?.(token);

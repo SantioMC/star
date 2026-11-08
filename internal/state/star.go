@@ -20,8 +20,6 @@ type StarServer struct {
 	Database   *database.Database
 	Config     *config.Config
 	GeoService geolocation.Service
-	Captcha    captcha.Verifier
-	Email      email.EmailProvider
 	WebAuthn   *webauthn.WebAuthn
 	StartedAt  time.Time
 
@@ -31,6 +29,32 @@ type StarServer struct {
 	DefaultApp  atomic.Pointer[database.Application]
 	SigningKeys atomic.Pointer[[]database.SigningKey]
 	Revocations *revocation.List
+}
+
+func (s *StarServer) EmailConfig() email.Config {
+	settings := s.Settings.Load()
+	if settings == nil {
+		return email.Config{Provider: email.ProviderDisabled}
+	}
+
+	return settings.GetEmailConfig()
+}
+
+func (s *StarServer) Email() email.EmailProvider {
+	return email.NewProvider(s.EmailConfig())
+}
+
+func (s *StarServer) CaptchaConfig() captcha.Config {
+	settings := s.Settings.Load()
+	if settings == nil {
+		return captcha.Config{Provider: captcha.ProviderDisabled}
+	}
+
+	return settings.GetCaptchaConfig()
+}
+
+func (s *StarServer) Captcha() captcha.Verifier {
+	return captcha.NewVerifier(s.CaptchaConfig())
 }
 
 func (s *StarServer) ClientIP(ctx fiber.Ctx) string {

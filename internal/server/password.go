@@ -84,7 +84,7 @@ func requestPasswordReset(ctx fiber.Ctx) error {
 }
 
 func sendPasswordResetEmail(star *state.StarServer, name string, address string, token string, ipAddress string) {
-	err := star.Email.Send(
+	err := star.Email().Send(
 		address,
 		"Reset your password",
 		emails.PasswordReset,
@@ -121,7 +121,7 @@ func notifyPasswordChanged(ctx fiber.Ctx, star *state.StarServer, userID string,
 	}
 
 	go func() {
-		if err := star.Email.Send(primary.Email, "Your password was changed", emails.PasswordChanged, data); err != nil {
+		if err := star.Email().Send(primary.Email, "Your password was changed", emails.PasswordChanged, data); err != nil {
 			slog.Warn("failed to send password changed email", "err", err, "email", primary.Email)
 		}
 	}()

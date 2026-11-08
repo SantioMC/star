@@ -3,11 +3,21 @@ package turnstile
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/outbound"
+)
+
+var (
+	ErrInvalidSecret   = fiber.NewError(400, "Cloudflare rejected the secret key")
+	ErrInvalidResponse = fiber.NewError(400, "Cloudflare rejected the captcha response, make sure the site key and secret key belong to the same widget")
+	ErrExpiredResponse = fiber.NewError(400, "The captcha response expired or was already used, solve it again")
+	ErrUnavailable     = fiber.NewError(502, "Cloudflare Turnstile could not be reached")
 )
 
 type TurnstileValidator struct {
@@ -28,8 +38,8 @@ type Response struct {
 	Action     string   `json:"action"`
 }
 
-func NewTurnstileValidator(siteKey string, secret string) TurnstileValidator {
-	return TurnstileValidator{
+func NewTurnstileValidator(siteKey string, secret string) *TurnstileValidator {
+	return &TurnstileValidator{
 		siteKey: siteKey,
 		secret:  secret,
 	}
@@ -40,23 +50,42 @@ func (v *TurnstileValidator) GetSiteKey() string {
 }
 
 func (v *TurnstileValidator) ValidateToken(token string) bool {
-	if strings.TrimSpace(token) == "" {
-		return false
+	return v.Check(token) == nil
+}
+
+func (v *TurnstileValidator) Check(token string) error {
+	if strings.TrimSpace(token) == "" || len(token) > 2048 {
+		return ErrInvalidResponse
 	}
 
-	if len(token) > 2048 {
-		slog.Warn("captcha token provided was too large")
-		return false
+	data, err := v.verify(token)
+	if err != nil {
+		slog.Error("failed to verify captcha token", "err", err)
+		return ErrUnavailable
 	}
 
+	if data.Success {
+		return nil
+	}
+
+	switch {
+	case slices.Contains(data.ErrorCodes, "missing-input-secret"), slices.Contains(data.ErrorCodes, "invalid-input-secret"):
+		return ErrInvalidSecret
+	case slices.Contains(data.ErrorCodes, "timeout-or-duplicate"):
+		return ErrExpiredResponse
+	default:
+		return ErrInvalidResponse
+	}
+}
+
+func (v *TurnstileValidator) verify(token string) (*Response, error) {
 	body, err := json.Marshal(Request{
 		Secret: v.secret,
 		Token:  token,
 	})
 
 	if err != nil {
-		slog.Error("failed to create json body for captcha", "err", err)
-		return false
+		return nil, err
 	}
 
 	response, err := outbound.Public.Post(
@@ -66,29 +95,20 @@ func (v *TurnstileValidator) ValidateToken(token string) bool {
 	)
 
 	if err != nil {
-		slog.Error("failed to verify captcha token", "err", err)
-		return false
+		return nil, err
 	}
 
 	defer response.Body.Close()
 
-	bytes, err := io.ReadAll(response.Body)
+	contents, err := io.ReadAll(response.Body)
 	if err != nil {
-		slog.Error("Failed to read response body", "err", err)
-		return false
-	}
-
-	if response.StatusCode != 200 {
-		slog.Error("failed to verify captcha token", "token", token, "response", string(bytes))
-		return false
+		return nil, err
 	}
 
 	data := Response{}
-	err = json.Unmarshal(bytes, &data)
-	if err != nil {
-		slog.Error("failed to parse cloudflare turnstile response", "response", string(bytes))
-		return false
+	if err := json.Unmarshal(contents, &data); err != nil {
+		return nil, fmt.Errorf("siteverify returned status %d: %s", response.StatusCode, contents)
 	}
 
-	return data.Success
+	return &data, nil
 }

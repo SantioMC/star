@@ -62,8 +62,6 @@ func PrepareServer() *state.StarServer {
 	star := state.StarServer{
 		Database:    db,
 		GeoService:  config.Geolocation.CreateService(),
-		Captcha:     config.Captcha.CreateVerifier(),
-		Email:       config.Email.CreateSender(),
 		WebAuthn:    relyingParty,
 		Config:      config,
 		StartedAt:   time.Now(),
