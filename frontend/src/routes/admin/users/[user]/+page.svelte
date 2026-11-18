@@ -110,24 +110,18 @@
         }
 
         context.current = result;
-        toast.success(`Cleared ${result.username}'s failed sign in attempts`);
+        toast.success(`Unlocked sign in for ${result.username}`);
     };
 </script>
 
 {#if user}
-    {#if user.lockout && (user.lockout.locked || user.lockout.attempts > 0)}
+    {#if user.lockout?.locked}
         {@const lockout = user.lockout}
-        <Notice
-            tone={lockout.locked ? "danger" : "warning"}
-            icon={lockout.locked ? "lock" : "alert-triangle"}
-            title={lockout.locked
-                ? "Sign in locked."
-                : "Failed sign in attempts."}
-        >
+        <Notice tone="danger" icon="lock" title="Sign in locked.">
             {user.username} failed to sign in {lockout.attempts}
             {lockout.attempts === 1 ? "time" : "times"}, most recently on
             {formatTime(new Date(lockout.last_attempt_at))}.
-            {#if lockout.locked && lockout.locked_until}
+            {#if lockout.locked_until}
                 Sign in is blocked until
                 {formatTime(new Date(lockout.locked_until))}.
             {/if}
@@ -139,7 +133,7 @@
                         loading={unlocking}
                         onclick={unlock}
                     >
-                        {lockout.locked ? "Unlock" : "Reset"}
+                        Unlock
                     </Button>
                 {/if}
             {/snippet}

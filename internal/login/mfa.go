@@ -17,7 +17,7 @@ type RequireMFAStage struct {
 
 type MFAAttempt struct {
 	Flow int
-	User int
+	User *database.LoginAttempts
 }
 
 func CreateRequireMFAStage(
@@ -73,6 +73,6 @@ func RecordMFAFailure(ctx fiber.Ctx, star *state.StarServer, loginFlow *database
 		}
 	}
 
-	ReportFailure(ctx, star, loginFlow.UserID, attempt.User, database.SecurityAlertMFABruteForce)
+	ReportFailure(ctx, star, attempt.User, database.SecurityAlertMFABruteForce)
 	return nil
 }

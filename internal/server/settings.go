@@ -90,6 +90,18 @@ func validateSettings(settings *database.Settings, passwordSettings *password.Pa
 		return fiber.NewError(400, "A minimum age needs birthday tracking to be enabled")
 	}
 
+	if settings.LockoutThreshold < 3 || settings.LockoutThreshold > 100 {
+		return fiber.NewError(400, "The lockout threshold must be between 3 and 100 failed attempts")
+	}
+
+	if settings.LockoutWindowMinutes < 1 || settings.LockoutWindowMinutes > 1440 {
+		return fiber.NewError(400, "The lockout window must be between 1 minute and 24 hours")
+	}
+
+	if settings.LockoutDurationMinutes < 1 || settings.LockoutDurationMinutes > 1440 {
+		return fiber.NewError(400, "The lockout duration must be between 1 minute and 24 hours")
+	}
+
 	if passwordSettings.MinLength < minimumPasswordLength || passwordSettings.MinLength > maximumPasswordLength {
 		return fiber.NewError(400, "The minimum password length must be between 8 and 512 characters")
 	}
@@ -110,7 +122,7 @@ func validateSettings(settings *database.Settings, passwordSettings *password.Pa
 		return err
 	}
 
-	if passwordSettings.MinSymbols < 0 ||passwordSettings.MinUpper < 0 || passwordSettings.MinLower < 0 {
+	if passwordSettings.MinSymbols < 0 || passwordSettings.MinUpper < 0 || passwordSettings.MinLower < 0 {
 		return fiber.NewError(400, "The required character counts may not be negative")
 	}
 
@@ -176,6 +188,18 @@ func updateSettings(ctx fiber.Ctx) error {
 
 	if request.MinimumAge != nil {
 		settings.MinimumAge = *request.MinimumAge
+	}
+
+	if request.LockoutThreshold != nil {
+		settings.LockoutThreshold = *request.LockoutThreshold
+	}
+
+	if request.LockoutWindowMinutes != nil {
+		settings.LockoutWindowMinutes = *request.LockoutWindowMinutes
+	}
+
+	if request.LockoutDurationMinutes != nil {
+		settings.LockoutDurationMinutes = *request.LockoutDurationMinutes
 	}
 
 	applyEmailSettings(settings, &request)

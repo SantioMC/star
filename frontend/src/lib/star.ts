@@ -1384,6 +1384,9 @@ export interface ServerSettings {
   captcha_provider: CaptchaProvider;
   turnstile_site_key: string;
   has_turnstile_secret_key: boolean;
+  lockout_threshold: number;
+  lockout_window_minutes: number;
+  lockout_duration_minutes: number;
 }
 
 export interface UpdateServerSettingsRequest {
@@ -1407,6 +1410,9 @@ export interface UpdateServerSettingsRequest {
   captcha_provider?: CaptchaProvider;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
+  lockout_threshold?: number;
+  lockout_window_minutes?: number;
+  lockout_duration_minutes?: number;
 }
 
 export interface TestEmailResponse {

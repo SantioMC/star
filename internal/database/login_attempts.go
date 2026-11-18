@@ -12,10 +12,17 @@ import (
 var ErrLoginLocked = errors.New("the user has too many failed login attempts")
 
 type LoginAttempts struct {
-	UserID        string     `json:"user_id" db:"user_id"`
-	Attempts      int        `json:"attempts"`
-	LastAttemptAt time.Time  `json:"last_attempt_at" db:"last_attempt_at"`
-	LockedUntil   *time.Time `json:"locked_until" db:"locked_until"`
+	UserID          string     `json:"user_id" db:"user_id"`
+	Attempts        int        `json:"attempts"`
+	LastAttemptAt   time.Time  `json:"last_attempt_at" db:"last_attempt_at"`
+	WindowStartedAt time.Time  `json:"window_started_at" db:"window_started_at"`
+	LockedUntil     *time.Time `json:"locked_until" db:"locked_until"`
+}
+
+type LockoutPolicy struct {
+	Threshold int
+	Window    time.Duration
+	Duration  time.Duration
 }
 
 func (attempts *LoginAttempts) IsLocked() bool {
@@ -39,10 +46,10 @@ func (db *Database) GetLoginAttempts(ctx context.Context, userID string) (*Login
 	return &attempts, nil
 }
 
-func (db *Database) ReserveLoginAttempt(ctx context.Context, userID string) (int, error) {
+func (db *Database) ReserveLoginAttempt(ctx context.Context, userID string, policy LockoutPolicy) (*LoginAttempts, error) {
 	tx, err := db.DB().BeginTxx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	defer tx.Rollback()
@@ -52,8 +59,8 @@ func (db *Database) ReserveLoginAttempt(ctx context.Context, userID string) (int
 	_, err = tx.ExecContext(
 		ctx,
 		`
-		INSERT INTO login_attempts (user_id, attempts, last_attempt_at)
-		VALUES ($1, 0, $2)
+		INSERT INTO login_attempts (user_id, attempts, last_attempt_at, window_started_at)
+		VALUES ($1, 0, $2, $2)
 		ON CONFLICT (user_id) DO NOTHING
 		`,
 		userID,
@@ -61,7 +68,7 @@ func (db *Database) ReserveLoginAttempt(ctx context.Context, userID string) (int
 	)
 
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	current, err := sqlx.OneContext[LoginAttempts](
@@ -72,37 +79,51 @@ func (db *Database) ReserveLoginAttempt(ctx context.Context, userID string) (int
 	)
 
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	if current.IsLocked() {
-		return 0, ErrLoginLocked
+		return nil, ErrLoginLocked
 	}
 
-	attempts := current.Attempts + 1
-	if current.LastAttemptAt.Before(now.Add(-time.Hour * 24)) {
-		attempts = 1
+	next := LoginAttempts{
+		UserID:          userID,
+		Attempts:        current.Attempts + 1,
+		LastAttemptAt:   now,
+		WindowStartedAt: current.WindowStartedAt,
 	}
 
-	var lockedUntil *time.Time
-	if attempts >= 5 {
-		lockedUntil = new(now.Add(min(time.Minute<<min(attempts-5, 6), time.Hour)))
+	lockExpired := current.LockedUntil != nil
+	windowExpired := now.Sub(current.WindowStartedAt) > policy.Window
+
+	if lockExpired || windowExpired {
+		next.Attempts = 1
+		next.WindowStartedAt = now
+	}
+
+	if next.Attempts >= policy.Threshold {
+		next.LockedUntil = new(now.Add(policy.Duration))
 	}
 
 	_, err = tx.ExecContext(
 		ctx,
-		`UPDATE login_attempts SET attempts = $2, last_attempt_at = $3, locked_until = $4 WHERE user_id = $1`,
+		`
+		UPDATE login_attempts
+		SET attempts = $2, last_attempt_at = $3, window_started_at = $4, locked_until = $5
+		WHERE user_id = $1
+		`,
 		userID,
-		attempts,
-		now,
-		lockedUntil,
+		next.Attempts,
+		next.LastAttemptAt,
+		next.WindowStartedAt,
+		next.LockedUntil,
 	)
 
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return attempts, tx.Commit()
+	return &next, tx.Commit()
 }
 
 func (db *Database) ReleaseLoginAttempt(ctx context.Context, userID string) error {

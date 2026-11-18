@@ -932,12 +932,19 @@ func adminClearLockout(ctx fiber.Ctx) error {
 		return err
 	}
 
+	attempts, err := star.Database.GetLoginAttempts(ctx, user.ID)
+	if err != nil {
+		return err
+	} else if attempts == nil {
+		return ctx.JSON(populateUser(ctx, user))
+	}
+
 	if err := star.Database.ClearLoginAttempts(ctx, user.ID); err != nil {
 		return err
 	}
 
-	slog.Info("login lockout cleared", "user", user.ID, "by", requesterID)
-	audit.Log(ctx, audit.UserLockoutClear, audit.OnUser(user))
+	slog.Info("login attempts cleared", "user", user.ID, "by", requesterID, "attempts", attempts.Attempts, "locked", attempts.IsLocked())
+	audit.Log(ctx, audit.UserLockoutClear, audit.OnUser(user), audit.With("attempts", attempts.Attempts), audit.With("locked", attempts.IsLocked()))
 
 	return ctx.JSON(populateUser(ctx, user))
 }

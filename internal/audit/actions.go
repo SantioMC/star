@@ -25,6 +25,7 @@ const (
 	SessionRevoke    Action = "session.revoke"
 	SessionRevokeAll Action = "session.revoke_all"
 	LoginFailed      Action = "login.failed"
+	LoginLocked      Action = "login.locked"
 
 	PasswordChange         Action = "password.change"
 	PasswordRemove         Action = "password.remove"
@@ -120,6 +121,7 @@ var Definitions = []Definition{
 	{SessionRevoke, "Session revoked", "Sessions", SeverityNotice},
 	{SessionRevokeAll, "All sessions revoked", "Sessions", SeverityNotice},
 	{LoginFailed, "Sign in failed", "Sessions", SeverityNotice},
+	{LoginLocked, "Sign in locked", "Sessions", SeverityCritical},
 
 	{PasswordChange, "Password changed", "Passwords", SeverityNotice},
 	{PasswordRemove, "Password removed", "Passwords", SeverityNotice},

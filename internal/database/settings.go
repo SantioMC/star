@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/captcha"
@@ -17,29 +18,32 @@ import (
 )
 
 type Settings struct {
-	ID                    int                       `json:"id"`
-	AllowRegistration     bool                      `json:"allow_registration" db:"allow_registration"`
-	AllowLogins           bool                      `json:"allow_logins" db:"allow_logins"`
-	EmailCodeLength       int                       `json:"email_code_length" db:"email_code_length"`
-	EmailVerification     bool                      `json:"email_verification" db:"email_verification"`
-	EmailDomainMode       email.DomainMode          `json:"email_domain_mode" db:"email_domain_mode"`
-	EmailDomains          models.JSONData[[]string] `json:"email_domains" db:"email_domains"`
-	BlockDisposableEmails bool                      `json:"block_disposable_emails" db:"block_disposable_emails"`
-	TrackBirthdays        bool                      `json:"track_birthdays" db:"track_birthdays"`
-	MinimumAge            int                       `json:"minimum_age" db:"minimum_age"`
-	AuditRetentionDays    *int                      `json:"audit_retention_days" db:"audit_retention_days"`
-	AuditAnonymize        bool                      `json:"audit_anonymize" db:"audit_anonymize"`
-	PasswordSettings      string                    `json:"password_settings" db:"password_settings"`
-	EmailProvider         email.Provider            `json:"email_provider" db:"email_provider"`
-	EmailSender           string                    `json:"email_sender" db:"email_sender"`
-	SMTPHost              string                    `json:"smtp_host" db:"smtp_host"`
-	SMTPPort              int                       `json:"smtp_port" db:"smtp_port"`
-	SMTPUsername          string                    `json:"smtp_username" db:"smtp_username"`
-	SMTPPassword          string                    `json:"-" db:"smtp_password"`
-	ResendAPIKey          string                    `json:"-" db:"resend_api_key"`
-	CaptchaProvider       captcha.Provider          `json:"captcha_provider" db:"captcha_provider"`
-	TurnstileSiteKey      string                    `json:"turnstile_site_key" db:"turnstile_site_key"`
-	TurnstileSecretKey    string                    `json:"-" db:"turnstile_secret_key"`
+	ID                     int                       `json:"id"`
+	AllowRegistration      bool                      `json:"allow_registration" db:"allow_registration"`
+	AllowLogins            bool                      `json:"allow_logins" db:"allow_logins"`
+	EmailCodeLength        int                       `json:"email_code_length" db:"email_code_length"`
+	EmailVerification      bool                      `json:"email_verification" db:"email_verification"`
+	EmailDomainMode        email.DomainMode          `json:"email_domain_mode" db:"email_domain_mode"`
+	EmailDomains           models.JSONData[[]string] `json:"email_domains" db:"email_domains"`
+	BlockDisposableEmails  bool                      `json:"block_disposable_emails" db:"block_disposable_emails"`
+	TrackBirthdays         bool                      `json:"track_birthdays" db:"track_birthdays"`
+	MinimumAge             int                       `json:"minimum_age" db:"minimum_age"`
+	AuditRetentionDays     *int                      `json:"audit_retention_days" db:"audit_retention_days"`
+	AuditAnonymize         bool                      `json:"audit_anonymize" db:"audit_anonymize"`
+	PasswordSettings       string                    `json:"password_settings" db:"password_settings"`
+	EmailProvider          email.Provider            `json:"email_provider" db:"email_provider"`
+	EmailSender            string                    `json:"email_sender" db:"email_sender"`
+	SMTPHost               string                    `json:"smtp_host" db:"smtp_host"`
+	SMTPPort               int                       `json:"smtp_port" db:"smtp_port"`
+	SMTPUsername           string                    `json:"smtp_username" db:"smtp_username"`
+	SMTPPassword           string                    `json:"-" db:"smtp_password"`
+	ResendAPIKey           string                    `json:"-" db:"resend_api_key"`
+	CaptchaProvider        captcha.Provider          `json:"captcha_provider" db:"captcha_provider"`
+	TurnstileSiteKey       string                    `json:"turnstile_site_key" db:"turnstile_site_key"`
+	TurnstileSecretKey     string                    `json:"-" db:"turnstile_secret_key"`
+	LockoutThreshold       int                       `json:"lockout_threshold" db:"lockout_threshold"`
+	LockoutWindowMinutes   int                       `json:"lockout_window_minutes" db:"lockout_window_minutes"`
+	LockoutDurationMinutes int                       `json:"lockout_duration_minutes" db:"lockout_duration_minutes"`
 }
 
 func (s *Settings) GetEmailConfig() email.Config {
@@ -98,6 +102,14 @@ func (s *Settings) GetAgePolicy() birthday.Policy {
 	}
 }
 
+func (s *Settings) GetLockoutPolicy() LockoutPolicy {
+	return LockoutPolicy{
+		Threshold: s.LockoutThreshold,
+		Window:    time.Duration(s.LockoutWindowMinutes) * time.Minute,
+		Duration:  time.Duration(s.LockoutDurationMinutes) * time.Minute,
+	}
+}
+
 func (s *Settings) GetPasswordSettings() *password.PasswordSetttings {
 	var settings password.PasswordSetttings
 
@@ -146,7 +158,8 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 			email_domains = $10, block_disposable_emails = $11, minimum_age = $12,
 			track_birthdays = $13, email_provider = $14, email_sender = $15, smtp_host = $16,
 			smtp_port = $17, smtp_username = $18, smtp_password = $19, resend_api_key = $20,
-			captcha_provider = $21, turnstile_site_key = $22, turnstile_secret_key = $23
+			captcha_provider = $21, turnstile_site_key = $22, turnstile_secret_key = $23,
+			lockout_threshold = $24, lockout_window_minutes = $25, lockout_duration_minutes = $26
 		WHERE id = $1
 		`,
 		encrypted.ID,
@@ -172,6 +185,9 @@ func (db *Database) UpdateSettings(ctx context.Context, settings *Settings) erro
 		encrypted.CaptchaProvider,
 		encrypted.TurnstileSiteKey,
 		encrypted.TurnstileSecretKey,
+		encrypted.LockoutThreshold,
+		encrypted.LockoutWindowMinutes,
+		encrypted.LockoutDurationMinutes,
 	)
 
 	return err

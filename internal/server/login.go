@@ -87,7 +87,7 @@ func loginUser(ctx fiber.Ctx) error {
 	if !success {
 		slog.Warn("login attempt failed", "reason", "invalid password")
 		audit.Log(ctx, audit.LoginFailed, audit.By(user), audit.With("reason", "invalid_password"))
-		login.ReportFailure(ctx, star, user.ID, attempt, database.SecurityAlertPasswordBruteForce)
+		login.ReportFailure(ctx, star, attempt, database.SecurityAlertPasswordBruteForce)
 		return fiber.NewError(401, "Invalid username or password")
 	}
 
@@ -298,11 +298,11 @@ func pendingFlow(ctx fiber.Ctx, star *state.StarServer, token string, stage data
 }
 
 func failMFAFlow(ctx fiber.Ctx, star *state.StarServer, loginFlow *database.LoginFlow, attempt *login.MFAAttempt, method string, message string) error {
+	audit.Log(ctx, audit.LoginFailed, audit.ByID(loginFlow.UserID), audit.With("reason", "invalid_code"), audit.With("method", method))
+
 	if err := login.RecordMFAFailure(ctx, star, loginFlow, attempt); err != nil {
 		return err
 	}
-
-	audit.Log(ctx, audit.LoginFailed, audit.ByID(loginFlow.UserID), audit.With("reason", "invalid_code"), audit.With("method", method))
 
 	return fiber.NewError(401, message)
 }

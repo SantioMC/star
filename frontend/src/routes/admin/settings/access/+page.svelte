@@ -22,6 +22,11 @@
   let turnstileSiteKey = $state(settings.current!.turnstile_site_key);
   let turnstileSecretKey = $state("");
   let verifiedCaptcha = $state<string | null>(null);
+  let lockoutThreshold = $state(String(settings.current!.lockout_threshold));
+  let lockoutWindow = $state(String(settings.current!.lockout_window_minutes));
+  let lockoutDuration = $state(
+    String(settings.current!.lockout_duration_minutes),
+  );
 
   const effectiveMinimumAge = $derived(trackBirthdays ? Number(minimumAge) : 0);
 
@@ -30,6 +35,9 @@
       allowLogins !== settings.current!.allow_logins ||
       trackBirthdays !== settings.current!.track_birthdays ||
       effectiveMinimumAge !== settings.current!.minimum_age ||
+      Number(lockoutThreshold) !== settings.current!.lockout_threshold ||
+      Number(lockoutWindow) !== settings.current!.lockout_window_minutes ||
+      Number(lockoutDuration) !== settings.current!.lockout_duration_minutes ||
       captchaProvider !== settings.current!.captcha_provider ||
       turnstileSiteKey.trim() !== settings.current!.turnstile_site_key ||
       turnstileSecretKey.trim() !== "",
@@ -80,6 +88,9 @@
       allow_logins: allowLogins,
       track_birthdays: trackBirthdays,
       minimum_age: effectiveMinimumAge,
+      lockout_threshold: Number(lockoutThreshold),
+      lockout_window_minutes: Number(lockoutWindow),
+      lockout_duration_minutes: Number(lockoutDuration),
       ...captchaChanges,
     });
 
@@ -94,6 +105,9 @@
     allowLogins = settings.current!.allow_logins;
     trackBirthdays = settings.current!.track_birthdays;
     minimumAge = String(settings.current!.minimum_age);
+    lockoutThreshold = String(settings.current!.lockout_threshold);
+    lockoutWindow = String(settings.current!.lockout_window_minutes);
+    lockoutDuration = String(settings.current!.lockout_duration_minutes);
     captchaProvider = settings.current!.captcha_provider;
     turnstileSiteKey = settings.current!.turnstile_site_key;
     turnstileSecretKey = "";
@@ -135,6 +149,37 @@
         permission before signing out.
       </Notice>
     {/if}
+  </Card>
+
+  <Card
+    title="Sign in Lockout"
+    icon="lock"
+    description="Temporarily block sign in to an account after repeated failed attempts."
+    class="flex flex-col gap-4"
+  >
+    <div class="grid gap-4 sm:grid-cols-3">
+      <NumberField
+        bind:value={lockoutThreshold}
+        id="lockoutThreshold"
+        label="Failed Attempts"
+        min={3}
+        max={100}
+      />
+      <NumberField
+        bind:value={lockoutWindow}
+        id="lockoutWindow"
+        label="Within (minutes)"
+        min={1}
+        max={1440}
+      />
+      <NumberField
+        bind:value={lockoutDuration}
+        id="lockoutDuration"
+        label="Lock For (minutes)"
+        min={1}
+        max={1440}
+      />
+    </div>
   </Card>
 
   <Card
