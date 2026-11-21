@@ -1,15 +1,16 @@
 <script lang="ts">
   import * as star from "$lib/star";
-  import BirthdayField from "@/components/birthday-field.svelte";
   import Button from "@/components/button.svelte";
-  import Input from "@/components/input.svelte";
   import InviteExpiryField, {
     defaultInviteExpiry,
   } from "@/components/invite-expiry-field.svelte";
   import Modal from "@/components/modal.svelte";
-  import { Label } from "@/components/ui/label";
   import { validateUsername, type UsernameRules } from "@/username";
   import { toast } from "svelte-sonner";
+  import UserProfileFields, {
+    emptyProfile,
+    toProfileRequest,
+  } from "./user-profile-fields.svelte";
 
   const {
     oninvited,
@@ -18,11 +19,7 @@
   } = $props();
 
   let modal = $state<Modal>();
-  let username = $state("");
-  let email = $state("");
-  let firstName = $state("");
-  let lastName = $state("");
-  let birthday = $state("");
+  let profile = $state(emptyProfile());
   let expiry = $state(defaultInviteExpiry);
   let saving = $state(false);
 
@@ -30,17 +27,13 @@
   let birthdayTracked = $state(false);
 
   const usernameIssue = $derived(
-    usernameRules && username
-      ? validateUsername(username, usernameRules)
+    usernameRules && profile.username
+      ? validateUsername(profile.username, usernameRules)
       : null,
   );
 
   export const open = async () => {
-    username = "";
-    email = "";
-    firstName = "";
-    lastName = "";
-    birthday = "";
+    profile = emptyProfile();
     expiry = defaultInviteExpiry;
     modal?.open();
 
@@ -55,11 +48,7 @@
 
     saving = true;
     const result = await star.createInvite({
-      username,
-      email,
-      first_name: firstName ? firstName : undefined,
-      last_name: lastName ? lastName : undefined,
-      birthday: birthday ? birthday : undefined,
+      ...toProfileRequest(profile),
       expires_in: Number(expiry),
     });
     saving = false;
@@ -69,7 +58,7 @@
     }
 
     modal?.close();
-    oninvited(result, username);
+    oninvited(result, profile.username);
   };
 </script>
 
@@ -84,70 +73,7 @@
     </div>
 
     <div class="flex flex-col gap-5">
-      <div class="grid gap-2">
-        <Label for="inviteUsername" class="gap-0.5">
-          Username
-          <span class="text-red-400" aria-hidden="true">*</span>
-        </Label>
-        <Input
-          bind:value={username}
-          id="inviteUsername"
-          type="text"
-          autocomplete="off"
-          aria-invalid={usernameIssue != null}
-          aria-describedby={usernameIssue ? "invite-username-issue" : undefined}
-          required
-        />
-        {#if usernameIssue}
-          <p id="invite-username-issue" class="text-xs text-red-300">
-            {usernameIssue}
-          </p>
-        {/if}
-      </div>
-
-      <div class="grid gap-2">
-        <Label for="inviteEmail" class="gap-0.5">
-          Email
-          <span class="text-red-400" aria-hidden="true">*</span>
-        </Label>
-        <Input
-          bind:value={email}
-          id="inviteEmail"
-          type="email"
-          maxlength={255}
-          autocomplete="off"
-          required
-        />
-      </div>
-
-      <div class="grid gap-5 sm:grid-cols-2">
-        <div class="grid gap-2">
-          <Label for="inviteFirstName">First Name</Label>
-          <Input
-            bind:value={firstName}
-            id="inviteFirstName"
-            type="text"
-            maxlength={255}
-            autocomplete="off"
-          />
-        </div>
-
-        <div class="grid gap-2">
-          <Label for="inviteLastName">Last Name</Label>
-          <Input
-            bind:value={lastName}
-            id="inviteLastName"
-            type="text"
-            maxlength={255}
-            autocomplete="off"
-          />
-        </div>
-      </div>
-
-      {#if birthdayTracked}
-        <BirthdayField bind:value={birthday} />
-      {/if}
-
+      <UserProfileFields bind:profile {usernameIssue} {birthdayTracked} />
       <InviteExpiryField bind:value={expiry} />
     </div>
 
@@ -158,7 +84,7 @@
       <Button
         type="submit"
         loading={saving}
-        disabled={!username.trim() || !email}
+        disabled={!profile.username.trim() || !profile.email}
       >
         Create invite
       </Button>

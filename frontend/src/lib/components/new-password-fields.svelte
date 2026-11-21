@@ -5,15 +5,17 @@
     let {
         password = $bindable(""),
         confirmPassword = $bindable(""),
+        label = "New Password",
     }: {
         password?: string;
         confirmPassword?: string;
+        label?: string;
     } = $props();
 </script>
 
 <div class="flex flex-col gap-6">
     <div class="grid gap-2">
-        <Label for="password" class="select-none">New Password</Label>
+        <Label for="password" class="select-none">{label}</Label>
         <Input
             bind:value={password}
             id="password"

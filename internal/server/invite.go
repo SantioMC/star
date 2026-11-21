@@ -20,7 +20,6 @@ import (
 	"github.com/tubblelive/star/internal/server/request"
 	"github.com/tubblelive/star/internal/server/types"
 	"github.com/tubblelive/star/internal/state"
-	"github.com/tubblelive/star/internal/username"
 )
 
 var ErrInviteInvalid = fiber.NewError(410, "This invite link is invalid or has expired, please ask for a new one")
@@ -61,43 +60,11 @@ func createInvite(ctx fiber.Ctx) error {
 		return err
 	}
 
-	name, err := username.ValidateUsername(data.Username, &username.DefaultSettings)
-	if err != nil {
-		return fiber.NewError(400, err.Error())
-	}
-
-	if err := settings.GetEmailDomainPolicy().Check(data.Email); err != nil {
-		return err
-	}
-
-	if !settings.TrackBirthdays {
-		data.Birthday = nil
-	}
-
-	declaredBirthday, err := birthday.Parse(data.Birthday)
-	if err != nil {
-		return err
-	}
-
-	if declaredBirthday != nil {
-		if err := settings.GetAgePolicy().Check(declaredBirthday); err != nil {
-			return err
-		}
-	}
-
 	created := time.Now()
-	user := &database.User{
-		ID:        database.CreateID(database.UserKey),
-		Name:      name,
-		FirstName: optionalName(data.FirstName),
-		LastName:  optionalName(data.LastName),
-		Birthday:  declaredBirthday,
-		CreatedAt: created,
+	user, email, err := newManagedUser(settings, &data.UserProfileRequest, created)
+	if err != nil {
+		return err
 	}
-
-	email := newUserEmail(settings, user.ID, data.Email, true, created)
-	email.Verified = true
-	email.SelfAsserted = false
 
 	invite := &database.UserInvite{
 		ID:        database.CreateID(database.UserInviteKey),

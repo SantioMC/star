@@ -156,6 +156,47 @@ func optionalName(value *string) *string {
 	return value
 }
 
+func newManagedUser(settings *database.Settings, profile *types.UserProfileRequest, created time.Time) (*database.User, *database.UserEmail, error) {
+	name, err := username.ValidateUsername(profile.Username, &username.DefaultSettings)
+	if err != nil {
+		return nil, nil, fiber.NewError(400, err.Error())
+	}
+
+	if err := settings.GetEmailDomainPolicy().Check(profile.Email); err != nil {
+		return nil, nil, err
+	}
+
+	if !settings.TrackBirthdays {
+		profile.Birthday = nil
+	}
+
+	declaredBirthday, err := birthday.Parse(profile.Birthday)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if declaredBirthday != nil {
+		if err := settings.GetAgePolicy().Check(declaredBirthday); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	user := &database.User{
+		ID:        database.CreateID(database.UserKey),
+		Name:      name,
+		FirstName: optionalName(profile.FirstName),
+		LastName:  optionalName(profile.LastName),
+		Birthday:  declaredBirthday,
+		CreatedAt: created,
+	}
+
+	email := newUserEmail(settings, user.ID, profile.Email, true, created)
+	email.Verified = true
+	email.SelfAsserted = false
+
+	return user, email, nil
+}
+
 func registerUser(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 	settings := star.Settings.Load()
@@ -252,9 +293,25 @@ func registerUser(ctx fiber.Ctx) error {
 }
 
 func createUser(ctx fiber.Ctx) error {
+	var data types.CreateUserRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	switch data.Type {
+	case database.UserTypeRegular:
+		return createRegularUser(ctx)
+	case database.UserTypeService:
+		return createServiceUser(ctx)
+	}
+
+	return fiber.NewError(400, "Unsupported user type")
+}
+
+func createServiceUser(ctx fiber.Ctx) error {
 	star := common.GetState(ctx)
 
-	var data types.CreateUserRequest
+	var data types.CreateServiceUserRequest
 	if err := ctx.Bind().Body(&data); err != nil {
 		return err
 	}
@@ -267,7 +324,7 @@ func createUser(ctx fiber.Ctx) error {
 	user := &database.User{
 		ID:        database.CreateID(database.UserKey),
 		Name:      name,
-		Type:      data.Type,
+		Type:      database.UserTypeService,
 		CreatedAt: time.Now(),
 	}
 
@@ -279,6 +336,65 @@ func createUser(ctx fiber.Ctx) error {
 	}
 
 	audit.Log(ctx, audit.UserCreate, audit.OnUser(user), audit.With("type", user.Type))
+
+	return ctx.JSON(populateUser(ctx, user))
+}
+
+func createRegularUser(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+	settings := star.Settings.Load()
+
+	requesterID, err := request.GetUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	var data types.CreateRegularUserRequest
+	if err := ctx.Bind().Body(&data); err != nil {
+		return err
+	}
+
+	created := time.Now()
+	user, email, err := newManagedUser(settings, &data.UserProfileRequest, created)
+	if err != nil {
+		return err
+	}
+
+	sanitized, err := password.ValidatePassword(data.Password, settings.GetPasswordSettings())
+	if err != nil {
+		return fiber.NewError(400, err.Error())
+	}
+
+	hashed, alg := cryptography.HashString(sanitized)
+
+	account := &database.Account{
+		ID:                     database.CreateID(database.AccountKey),
+		Type:                   "internal",
+		UserID:                 user.ID,
+		Email:                  &email.Email,
+		Name:                   &user.Name,
+		Password:               &hashed,
+		PasswordAlg:            alg,
+		PasswordChangeRequired: data.RequirePasswordChange,
+		CreatedAt:              created,
+	}
+
+	err = star.Database.CreateUserIdentity(ctx, user, email, account)
+	if errors.Is(err, database.ErrDuplicate) {
+		return fiber.NewError(400, "username or email already taken")
+	} else if err != nil {
+		return err
+	}
+
+	slog.Info("user created", "user", user.ID, "by", requesterID, "password_change_required", data.RequirePasswordChange)
+	audit.Log(
+		ctx,
+		audit.UserCreate,
+		audit.OnUser(user),
+		audit.With("type", user.Type),
+		audit.With("password_change_required", data.RequirePasswordChange),
+		audit.Private("email", email.Email),
+	)
 
 	return ctx.JSON(populateUser(ctx, user))
 }

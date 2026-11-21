@@ -16,12 +16,15 @@
     import * as star from "@/star";
     import { simpleDate, titleCase } from "@/utils";
     import { onMount } from "svelte";
+    import CreateUserModal from "./components/create-user-modal.svelte";
     import InviteModal from "./components/invite-modal.svelte";
 
     const PAGE_SIZE = 25;
 
+    const canCreate = hasPermission("admin:user:write");
     const canInvite = hasPermission("admin:user:invite");
 
+    let createModal = $state<CreateUserModal>();
     let inviteModal = $state<InviteModal>();
     let linkModal = $state<InviteLinkModal>();
 
@@ -84,6 +87,15 @@
     description="View and manage every user registered with {$branding.name}"
 >
     {#snippet actions()}
+        {#if canCreate}
+            <Button
+                variant={canInvite ? "secondary" : undefined}
+                onclick={() => createModal?.open()}
+            >
+                <Icon icon="plus" />
+                Create
+            </Button>
+        {/if}
         {#if canInvite}
             <Button onclick={() => inviteModal?.open()}>
                 <Icon icon="user-plus" />
@@ -221,6 +233,12 @@
     {loaded}
     onprevious={() => changePage(-1)}
     onnext={() => changePage(1)}
+/>
+
+<CreateUserModal
+    bind:this={createModal}
+    oncreated={(user) =>
+        goto(resolve("/admin/users/[user]", { user: user.id }))}
 />
 
 <InviteModal

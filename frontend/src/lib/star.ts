@@ -1641,9 +1641,12 @@ export interface User {
 
 export type UserType = "regular" | "service";
 
-export interface CreateUserRequest {
+export type CreateUserRequest =
+  | ({ type: "regular" } & CreateRegularUserRequest)
+  | ({ type: "service" } & CreateServiceUserRequest);
+
+export interface CreateServiceUserRequest {
   username: string;
-  type: UserType;
 }
 
 export interface AdminUser {
@@ -1706,13 +1709,21 @@ export interface UserInvite {
   created_at: string;
 }
 
-export interface CreateInviteRequest {
+export interface UserProfileRequest {
   username: string;
   email: string;
   first_name?: string;
   last_name?: string;
   birthday?: string;
+}
+
+export interface CreateInviteRequest extends UserProfileRequest {
   expires_in: number;
+}
+
+export interface CreateRegularUserRequest extends UserProfileRequest {
+  password: string;
+  require_password_change: boolean;
 }
 
 export interface InviteLink {

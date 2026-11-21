@@ -47,18 +47,31 @@ type RegisterRequest struct {
 	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
 }
 
-type CreateInviteRequest struct {
+type UserProfileRequest struct {
 	Username  string  `json:"username" validate:"required"`
 	Email     string  `json:"email" validate:"required,email,max=255"`
 	FirstName *string `json:"first_name" validate:"omitempty,max=255"`
 	LastName  *string `json:"last_name" validate:"omitempty,max=255"`
 	Birthday  *string `json:"birthday" validate:"omitempty,max=10"`
-	ExpiresIn int     `json:"expires_in" validate:"required,min=1,max=168"`
+}
+
+type CreateInviteRequest struct {
+	UserProfileRequest
+	ExpiresIn int `json:"expires_in" validate:"required,min=1,max=168"`
+}
+
+type CreateRegularUserRequest struct {
+	UserProfileRequest
+	Password              string `json:"password" validate:"required"`
+	RequirePasswordChange bool   `json:"require_password_change"`
 }
 
 type CreateUserRequest struct {
-	Username string            `json:"username" validate:"required"`
-	Type     database.UserType `json:"type" validate:"required,oneof=service"`
+	Type database.UserType `json:"type" validate:"required,oneof=regular service"`
+}
+
+type CreateServiceUserRequest struct {
+	Username string `json:"username" validate:"required"`
 }
 
 type RegenerateInviteRequest struct {
