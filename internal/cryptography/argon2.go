@@ -4,22 +4,30 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
-	"sync"
 
+	"github.com/tubblelive/star/internal/password"
 	"golang.org/x/crypto/argon2"
 )
 
-var dummyHash = sync.OnceValue(func() string {
-	hash, _ := HashString(CreateSecureString(32))
-	return hash
-})
+type argon2idHasher struct {
+	memory      uint32
+	iterations  uint32
+	parallelism uint8
+	saltLength  int
+	keyLength   uint32
+}
 
-func SimulateVerifyHash(value string) {
-	VerifyHash(value, dummyHash())
+type argon2idHash struct {
+	memory      uint32
+	iterations  uint32
+	parallelism uint8
+	salt        []byte
+	key         []byte
 }
 
 // Create a random salt for hashing
@@ -34,15 +42,50 @@ func createSalt(length int) []byte {
 	return salt
 }
 
-// Hash a value with recommended Argon2id parameters
-func HashString(value string) (string, Algorithm) {
-	salt := createSalt(16)
+func parseArgon2id(hash string) (*argon2idHash, error) {
+	if hash == "" {
+		return nil, errors.New("empty hash")
+	}
 
-	iterations := uint32(3)
-	memory := uint32(64 * 1024)
-	parallelism := uint8(4)
+	section := strings.Split(hash[1:], "$")
+	if len(section) != 5 {
+		return nil, errors.New("invalid hash format")
+	}
 
-	hash := argon2.IDKey([]byte(value), salt, iterations, memory, parallelism, 32)
+	if section[0] != "argon2id" {
+		return nil, fmt.Errorf("invalid argon2id constant %q", section[0])
+	}
+
+	version, err := strconv.Atoi(strings.TrimPrefix(section[1], "v="))
+	if err != nil || version != argon2.Version {
+		return nil, fmt.Errorf("invalid argon2id version %q", section[1])
+	}
+
+	var parsed argon2idHash
+
+	_, err = fmt.Sscanf(section[2], "m=%d,t=%d,p=%d", &parsed.memory, &parsed.iterations, &parsed.parallelism)
+	if err != nil {
+		return nil, fmt.Errorf("invalid argon2id parameters: %w", err)
+	}
+
+	if parsed.salt, err = base64.RawStdEncoding.Strict().DecodeString(section[3]); err != nil {
+		return nil, fmt.Errorf("invalid base64 salt: %w", err)
+	}
+
+	if parsed.key, err = base64.RawStdEncoding.Strict().DecodeString(section[4]); err != nil {
+		return nil, fmt.Errorf("invalid base64 hash: %w", err)
+	}
+
+	return &parsed, nil
+}
+
+func (h argon2idHasher) Algorithm() password.Algorithm {
+	return password.AlgorithmArgon2Id
+}
+
+func (h argon2idHasher) Hash(value string) (string, error) {
+	salt := createSalt(h.saltLength)
+	hash := argon2.IDKey([]byte(value), salt, h.iterations, h.memory, h.parallelism, h.keyLength)
 
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
@@ -50,57 +93,36 @@ func HashString(value string) (string, Algorithm) {
 	encoded := fmt.Sprintf(
 		"$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version,
-		memory,
-		iterations,
-		parallelism,
+		h.memory,
+		h.iterations,
+		h.parallelism,
 		b64Salt,
 		b64Hash,
 	)
 
-	return encoded, AlgorithmArgon2
+	return encoded, nil
 }
 
-// Verify a hashed value against a plaintext value
-func VerifyHash(value string, hash string) bool {
-	section := strings.Split(hash[1:], "$")
-	if len(section) != 5 {
-		slog.Error("invalid hash format", "hash", hash)
-		return false
-	}
-
-	if section[0] != "argon2id" {
-		slog.Error("invalid argon2id constant", "constant", section[0])
-		return false
-	}
-
-	version, err := strconv.Atoi(section[1][2:])
-	if err != nil || version != argon2.Version {
-		slog.Error("invalid argon2id version", "version", version, "error", err)
-		return false
-	}
-
-	var memory uint32
-	var iterations uint32
-	var parallelism uint8
-
-	_, err = fmt.Sscanf(section[2], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism)
+func (h argon2idHasher) Verify(value string, hash string) bool {
+	parsed, err := parseArgon2id(hash)
 	if err != nil {
-		slog.Error("invalid argon2id parameters", "error", err)
+		slog.Error("invalid argon2id hash", "err", err)
 		return false
 	}
 
-	salt, err := base64.RawStdEncoding.Strict().DecodeString(section[3])
+	hashed := argon2.IDKey([]byte(value), parsed.salt, parsed.iterations, parsed.memory, parsed.parallelism, uint32(len(parsed.key)))
+	return subtle.ConstantTimeCompare(parsed.key, hashed) == 1
+}
+
+func (h argon2idHasher) NeedsRehash(hash string) bool {
+	parsed, err := parseArgon2id(hash)
 	if err != nil {
-		slog.Error("invalid base64 salt", "error", err)
-		return false
+		return true
 	}
 
-	rawBytes, err := base64.RawStdEncoding.Strict().DecodeString(section[4])
-	if err != nil {
-		slog.Error("invalid base64 hash", "error", err)
-		return false
-	}
-
-	hashed := argon2.IDKey([]byte(value), salt, iterations, memory, parallelism, uint32(len(rawBytes)))
-	return subtle.ConstantTimeCompare(rawBytes, hashed) == 1
+	return parsed.memory != h.memory ||
+		parsed.iterations != h.iterations ||
+		parsed.parallelism != h.parallelism ||
+		len(parsed.salt) != h.saltLength ||
+		len(parsed.key) != int(h.keyLength)
 }

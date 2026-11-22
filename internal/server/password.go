@@ -9,7 +9,6 @@ import (
 	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/branding"
 	"github.com/tubblelive/star/internal/cache"
-	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/password"
 	"github.com/tubblelive/star/internal/permission"
@@ -175,9 +174,14 @@ func completePasswordReset(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	hashed, alg := cryptography.HashString(sanitized)
+	hasher := star.PasswordHasher()
+	hashed, err := hasher.Hash(ctx, sanitized)
 
-	completed, err := star.Database.CompletePasswordReset(ctx, reset, hashed, alg)
+	if err != nil {
+		return err
+	}
+
+	completed, err := star.Database.CompletePasswordReset(ctx, reset, hashed, hasher.Algorithm())
 	if err != nil {
 		return err
 	} else if !completed {

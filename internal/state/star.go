@@ -9,9 +9,11 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/tubblelive/star/internal/captcha"
 	"github.com/tubblelive/star/internal/config"
+	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/email"
 	"github.com/tubblelive/star/internal/geolocation"
+	"github.com/tubblelive/star/internal/password"
 	"github.com/tubblelive/star/internal/revocation"
 )
 
@@ -55,6 +57,15 @@ func (s *StarServer) CaptchaConfig() captcha.Config {
 
 func (s *StarServer) Captcha() captcha.Verifier {
 	return captcha.NewVerifier(s.CaptchaConfig())
+}
+
+func (s *StarServer) PasswordHasher() cryptography.PasswordHasher {
+	settings := s.Settings.Load()
+	if settings == nil {
+		return cryptography.NewPasswordHasher(password.DefaultSettings.Algorithm)
+	}
+
+	return settings.GetPasswordHasher()
 }
 
 func (s *StarServer) ClientIP(ctx fiber.Ctx) string {

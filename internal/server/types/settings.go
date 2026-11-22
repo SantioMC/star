@@ -1,11 +1,14 @@
 package types
 
+import "github.com/tubblelive/star/internal/password"
+
 type UpdatePasswordSettingsRequest struct {
-	MinLength  *int `json:"min_length" validate:"omitempty,min=8,max=128"`
-	MaxLength  *int `json:"max_length" validate:"omitempty,min=8,max=512"`
-	MinSymbols *int `json:"min_symbols" validate:"omitempty,min=0,max=32"`
-	MinUpper   *int `json:"min_upper" validate:"omitempty,min=0,max=32"`
-	MinLower   *int `json:"min_lower" validate:"omitempty,min=0,max=32"`
+	MinLength  *int                `json:"min_length" validate:"omitempty,min=8,max=128"`
+	MaxLength  *int                `json:"max_length" validate:"omitempty,min=8,max=512"`
+	MinSymbols *int                `json:"min_symbols" validate:"omitempty,min=0,max=32"`
+	MinUpper   *int                `json:"min_upper" validate:"omitempty,min=0,max=32"`
+	MinLower   *int                `json:"min_lower" validate:"omitempty,min=0,max=32"`
+	Algorithm  *password.Algorithm `json:"algorithm" validate:"omitempty,oneof=argon2 bcrypt"`
 }
 
 type UpdateSettingsRequest struct {

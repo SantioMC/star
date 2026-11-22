@@ -9,6 +9,7 @@ import (
 
 	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database/models"
+	"github.com/tubblelive/star/internal/password"
 	"github.com/vinovest/sqlx"
 )
 
@@ -148,7 +149,7 @@ func (db *Database) UpdateLoginFlow(ctx context.Context, loginFlow *LoginFlow) e
 	return err
 }
 
-func (db *Database) CompleteRequiredPasswordChange(ctx context.Context, loginFlow *LoginFlow, hashed string, alg cryptography.Algorithm) (bool, error) {
+func (db *Database) CompleteRequiredPasswordChange(ctx context.Context, loginFlow *LoginFlow, hashed string, alg password.Algorithm) (bool, error) {
 	tx, err := db.DB().BeginTxx(ctx, nil)
 	if err != nil {
 		return false, err

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,6 +39,7 @@ func settingsRouter(router fiber.Router) {
 
 	router.Get("/", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getSettings)
 	router.Patch("/", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), updateSettings)
+	router.Get("/password-algorithms", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getPasswordAlgorithms)
 	router.Get("/disposable-domains", middleware.RequireAuth, readSettings, middleware.RequirePermission(permission.PermissionAdminReadSettings), getDisposableDomains)
 	router.Post("/email/test", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), middleware.RateLimit(5), testEmailSettings)
 	router.Post("/captcha/test", middleware.RequireAuth, writeSettings, middleware.RequirePermission(permission.PermissionAdminWriteSettings), middleware.RateLimit(10), testCaptchaSettings)
@@ -70,6 +72,21 @@ func getSettings(ctx fiber.Ctx) error {
 func getDisposableDomains(ctx fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{
 		"domains": email.DisposableDomains(),
+	})
+}
+
+func getPasswordAlgorithms(ctx fiber.Ctx) error {
+	star := common.GetState(ctx)
+
+	counts, err := star.Database.GetPasswordAlgorithmCounts(ctx)
+	if err != nil {
+		return err
+	}
+
+	return ctx.JSON(fiber.Map{
+		"algorithm":  star.PasswordHasher().Algorithm(),
+		"algorithms": password.Algorithms,
+		"counts":     counts,
 	})
 }
 
@@ -112,6 +129,14 @@ func validateSettings(settings *database.Settings, passwordSettings *password.Pa
 
 	if passwordSettings.MaxLength < passwordSettings.MinLength {
 		return fiber.NewError(400, "The maximum password length must be greater than the minimum password length")
+	}
+
+	if !slices.Contains(password.Algorithms, passwordSettings.Algorithm) {
+		return fiber.NewError(400, "Unknown password hashing algorithm")
+	}
+
+	if passwordSettings.Algorithm == password.AlgorithmBcrypt && passwordSettings.MaxLength > 72 {
+		return fiber.NewError(400, "bcrypt only supports passwords up to 72 bytes, lower the maximum password length to 72 or less")
 	}
 
 	if err := settings.GetEmailConfig().Validate(); err != nil {
@@ -227,6 +252,10 @@ func updateSettings(ctx fiber.Ctx) error {
 
 		if update.MinLower != nil {
 			passwordSettings.MinLower = *update.MinLower
+		}
+
+		if update.Algorithm != nil {
+			passwordSettings.Algorithm = *update.Algorithm
 		}
 	}
 

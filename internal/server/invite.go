@@ -10,7 +10,6 @@ import (
 	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/branding"
-	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/openid"
 	"github.com/tubblelive/star/internal/password"
@@ -289,7 +288,12 @@ func acceptInvite(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	hashed, alg := cryptography.HashString(sanitized)
+	hasher := star.PasswordHasher()
+	hashed, err := hasher.Hash(ctx, sanitized)
+
+	if err != nil {
+		return err
+	}
 
 	account := &database.Account{
 		ID:          database.CreateID(database.AccountKey),
@@ -298,7 +302,7 @@ func acceptInvite(ctx fiber.Ctx) error {
 		Email:       &primary.Email,
 		Name:        &user.Name,
 		Password:    &hashed,
-		PasswordAlg: alg,
+		PasswordAlg: hasher.Algorithm(),
 		CreatedAt:   time.Now(),
 	}
 

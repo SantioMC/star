@@ -1201,6 +1201,12 @@ export const testCaptchaSettings = async (
     .catch(orError);
 };
 
+export const getPasswordAlgorithmStatus = () =>
+  api
+    .get("api/settings/password-algorithms")
+    .json<PasswordAlgorithmStatus>()
+    .catch((_) => null);
+
 export const getDisposableDomains = async () => {
   const response = await api
     .get("api/settings/disposable-domains")
@@ -1345,12 +1351,26 @@ export interface BuiltinScope {
   privileged: boolean;
 }
 
+export type PasswordAlgorithm = "argon2" | "bcrypt";
+
 export interface PasswordSettings {
   min_length: number;
   max_length: number;
   min_symbols: number;
   min_upper: number;
   min_lower: number;
+  algorithm: PasswordAlgorithm;
+}
+
+export interface PasswordAlgorithmCount {
+  algorithm: PasswordAlgorithm;
+  count: number;
+}
+
+export interface PasswordAlgorithmStatus {
+  algorithm: PasswordAlgorithm;
+  algorithms: PasswordAlgorithm[];
+  counts: PasswordAlgorithmCount[];
 }
 
 export interface DisposableDomains {
@@ -1442,11 +1462,7 @@ export type UpdateBrandingRequest = Partial<
 };
 
 export type EmailTemplate =
-  | "verification"
-  | "password-reset"
-  | "password-changed"
-  | "invite"
-  | "test";
+  "verification" | "password-reset" | "password-changed" | "invite" | "test";
 
 export interface EmailPreviewRequest {
   template: EmailTemplate;
@@ -1664,6 +1680,7 @@ export interface AdminUser {
   suspension: UserSuspension | null;
   invite: UserInvite | null;
   has_password: boolean;
+  password_algorithm: PasswordAlgorithm | null;
   password_change_required: boolean;
   manageable: boolean;
   created_at: string;

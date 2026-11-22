@@ -10,7 +10,6 @@ import (
 	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/cache"
-	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/login"
 	"github.com/tubblelive/star/internal/mfa"
@@ -62,9 +61,14 @@ func loginUser(ctx fiber.Ctx) error {
 		return err
 	}
 
+	hasher := star.PasswordHasher()
 	user := findUserByIdentifier(ctx, request.Username)
+
 	if user == nil {
-		cryptography.SimulateVerifyHash(request.Password)
+		if err := hasher.SimulateVerify(ctx, request.Password); err != nil {
+			return err
+		}
+
 		slog.Warn("login attempt failed", "reason", "unknown login identifier")
 		audit.Log(ctx, audit.LoginFailed, audit.With("reason", "unknown_identifier"))
 		return fiber.NewError(401, "Invalid username or password")
@@ -72,7 +76,10 @@ func loginUser(ctx fiber.Ctx) error {
 
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
 	if account == nil || account.Password == nil {
-		cryptography.SimulateVerifyHash(request.Password)
+		if err := hasher.SimulateVerify(ctx, request.Password); err != nil {
+			return err
+		}
+
 		slog.Warn("login attempt failed", "reason", "no internal account")
 		audit.Log(ctx, audit.LoginFailed, audit.By(user), audit.With("reason", "no_password"))
 		return fiber.NewError(401, "Invalid username or password")
@@ -83,7 +90,15 @@ func loginUser(ctx fiber.Ctx) error {
 		return err
 	}
 
-	success := cryptography.VerifyHash(request.Password, *account.Password)
+	success, err := hasher.Verify(ctx, request.Password, *account.Password)
+	if err != nil {
+		if releaseErr := star.Database.ReleaseLoginAttempt(ctx, user.ID); releaseErr != nil {
+			slog.Error("failed to release login attempt", "user", user.ID, "err", releaseErr)
+		}
+
+		return err
+	}
+
 	if !success {
 		slog.Warn("login attempt failed", "reason", "invalid password")
 		audit.Log(ctx, audit.LoginFailed, audit.By(user), audit.With("reason", "invalid_password"))
@@ -95,8 +110,33 @@ func loginUser(ctx fiber.Ctx) error {
 		return err
 	}
 
+	rehashPassword(ctx, star, account, request.Password)
+
 	// We have successfully passed first factor at this point
 	return continueLogin(ctx, star, user, account, "password")
+}
+
+func rehashPassword(ctx fiber.Ctx, star *state.StarServer, account *database.Account, plaintext string) {
+	hasher := star.PasswordHasher()
+	if account.PasswordAlg == hasher.Algorithm() && !hasher.NeedsRehash(*account.Password) {
+		return
+	}
+
+	hashed, err := hasher.Hash(ctx, plaintext)
+	if err != nil {
+		slog.Warn("failed to rehash password", "account", account.ID, "algorithm", hasher.Algorithm(), "err", err)
+		return
+	}
+
+	if err := star.Database.RehashPassword(ctx, account, hashed, hasher.Algorithm()); err != nil {
+		slog.Error("failed to store rehashed password", "account", account.ID, "err", err)
+		return
+	}
+
+	slog.Info("password rehashed", "account", account.ID, "from", account.PasswordAlg, "to", hasher.Algorithm())
+
+	account.Password = &hashed
+	account.PasswordAlg = hasher.Algorithm()
 }
 
 func continueLogin(ctx fiber.Ctx, star *state.StarServer, user *database.User, account *database.Account, method string) error {
@@ -213,13 +253,21 @@ func loginFlowPassword(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	if cryptography.VerifyHash(sanitized, *account.Password) {
+	hasher := star.PasswordHasher()
+	unchanged, err := hasher.Verify(ctx, sanitized, *account.Password)
+
+	if err != nil {
+		return err
+	} else if unchanged {
 		return fiber.NewError(400, "Your new password must be different from your current password")
 	}
 
-	hashed, alg := cryptography.HashString(sanitized)
+	hashed, err := hasher.Hash(ctx, sanitized)
+	if err != nil {
+		return err
+	}
 
-	completed, err := star.Database.CompleteRequiredPasswordChange(ctx, loginFlow, hashed, alg)
+	completed, err := star.Database.CompleteRequiredPasswordChange(ctx, loginFlow, hashed, hasher.Algorithm())
 	if err != nil {
 		return err
 	} else if !completed {

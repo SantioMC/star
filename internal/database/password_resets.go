@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tubblelive/star/internal/cryptography"
+	"github.com/tubblelive/star/internal/password"
 	"github.com/vinovest/sqlx"
 )
 
@@ -72,7 +73,7 @@ func (db *Database) IssuePasswordReset(ctx context.Context, reset *PasswordReset
 	return issued > 0, err
 }
 
-func (db *Database) CompletePasswordReset(ctx context.Context, reset *PasswordReset, hashed string, alg cryptography.Algorithm) (bool, error) {
+func (db *Database) CompletePasswordReset(ctx context.Context, reset *PasswordReset, hashed string, alg password.Algorithm) (bool, error) {
 	tx, err := db.DB().BeginTxx(ctx, nil)
 	if err != nil {
 		return false, err

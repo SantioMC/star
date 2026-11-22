@@ -10,7 +10,6 @@ import (
 	"github.com/tubblelive/star/internal/audit"
 	"github.com/tubblelive/star/internal/birthday"
 	"github.com/tubblelive/star/internal/cache"
-	"github.com/tubblelive/star/internal/cryptography"
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/export"
 	"github.com/tubblelive/star/internal/openid"
@@ -240,7 +239,12 @@ func registerUser(ctx fiber.Ctx) error {
 		return err
 	}
 
-	hashed, alg := cryptography.HashString(password)
+	hasher := star.PasswordHasher()
+	hashed, err := hasher.Hash(ctx, password)
+
+	if err != nil {
+		return err
+	}
 
 	if star.Database.EmailClaimed(ctx, request.Email) {
 		return fiber.NewError(400, "username or email already taken")
@@ -269,7 +273,7 @@ func registerUser(ctx fiber.Ctx) error {
 		Email:       &request.Email,
 		Name:        &username,
 		Password:    &hashed,
-		PasswordAlg: alg,
+		PasswordAlg: hasher.Algorithm(),
 		CreatedAt:   created,
 	}
 
@@ -365,7 +369,12 @@ func createRegularUser(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	hashed, alg := cryptography.HashString(sanitized)
+	hasher := star.PasswordHasher()
+	hashed, err := hasher.Hash(ctx, sanitized)
+
+	if err != nil {
+		return err
+	}
 
 	account := &database.Account{
 		ID:                     database.CreateID(database.AccountKey),
@@ -374,7 +383,7 @@ func createRegularUser(ctx fiber.Ctx) error {
 		Email:                  &email.Email,
 		Name:                   &user.Name,
 		Password:               &hashed,
-		PasswordAlg:            alg,
+		PasswordAlg:            hasher.Algorithm(),
 		PasswordChangeRequired: data.RequirePasswordChange,
 		CreatedAt:              created,
 	}
@@ -412,14 +421,18 @@ func changePassword(ctx fiber.Ctx) error {
 		return err
 	}
 
+	hasher := star.PasswordHasher()
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
+
 	if account != nil && account.Password != nil {
 		if data.OldPassword == nil {
 			return fiber.NewError(401, "The old password was not specified")
 		}
 
-		success := cryptography.VerifyHash(*data.OldPassword, *account.Password)
-		if !success {
+		success, err := hasher.Verify(ctx, *data.OldPassword, *account.Password)
+		if err != nil {
+			return err
+		} else if !success {
 			return fiber.NewError(401, "The old password is incorrect")
 		}
 	}
@@ -429,12 +442,15 @@ func changePassword(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	hashed, alg := cryptography.HashString(sanitized)
+	hashed, err := hasher.Hash(ctx, sanitized)
+	if err != nil {
+		return err
+	}
 
 	if account != nil {
 		// Update if we have an internal account
 		account.Password = &hashed
-		account.PasswordAlg = alg
+		account.PasswordAlg = hasher.Algorithm()
 		account.PasswordChangeRequired = false
 
 		if err := star.Database.UpdateAccount(ctx, account); err != nil {
@@ -454,7 +470,7 @@ func changePassword(ctx fiber.Ctx) error {
 			Email:       &email.Email,
 			Name:        &user.Name,
 			Password:    &hashed,
-			PasswordAlg: alg,
+			PasswordAlg: hasher.Algorithm(),
 			CreatedAt:   time.Now(),
 		}
 
@@ -896,7 +912,12 @@ func adminSetPassword(ctx fiber.Ctx) error {
 		return fiber.NewError(400, err.Error())
 	}
 
-	hashed, alg := cryptography.HashString(sanitized)
+	hasher := star.PasswordHasher()
+	hashed, err := hasher.Hash(ctx, sanitized)
+
+	if err != nil {
+		return err
+	}
 
 	account := star.Database.GetInternalAccountByUserID(ctx, user.ID)
 	if account == nil {
@@ -912,7 +933,7 @@ func adminSetPassword(ctx fiber.Ctx) error {
 			Email:       address,
 			Name:        &user.Name,
 			Password:    &hashed,
-			PasswordAlg: alg,
+			PasswordAlg: hasher.Algorithm(),
 			CreatedAt:   time.Now(),
 		}
 
@@ -921,7 +942,7 @@ func adminSetPassword(ctx fiber.Ctx) error {
 		}
 	} else {
 		account.Password = &hashed
-		account.PasswordAlg = alg
+		account.PasswordAlg = hasher.Algorithm()
 
 		if err := star.Database.UpdateAccount(ctx, account); err != nil {
 			return err

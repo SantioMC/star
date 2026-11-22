@@ -5,12 +5,14 @@
     import BirthdayField from "@/components/birthday-field.svelte";
     import Button from "@/components/button.svelte";
     import Card from "@/components/card.svelte";
+    import Icon from "@/components/icon.svelte";
     import Input from "@/components/input.svelte";
     import Modal from "@/components/modal.svelte";
     import Notice from "@/components/notice.svelte";
     import RoleSelector from "@/components/role-selector.svelte";
     import { Label } from "@/components/ui/label";
     import { hasPermission } from "@/index";
+    import { PASSWORD_ALGORITHMS } from "@/passwords";
     import { getResource } from "@/resource.svelte";
     import { formatTime, titleCase } from "@/utils";
     import { onMount } from "svelte";
@@ -36,6 +38,8 @@
 
     let rolesModal = $state<Modal>();
 
+    let configuredAlgorithm = $state<star.PasswordAlgorithm | null>(null);
+
     const resetForm = (data: star.AdminUser) => {
         username = data.username;
         firstName = data.first_name ?? "";
@@ -49,6 +53,13 @@
     onMount(async () => {
         const requirements = await star.getRegisterRequirements();
         birthdayTracked = requirements?.birthday_tracked ?? false;
+    });
+
+    onMount(async () => {
+        if (!hasPermission("admin:settings:read")) return;
+
+        const status = await star.getPasswordAlgorithmStatus();
+        configuredAlgorithm = status?.algorithm ?? null;
     });
 
     const updateUser = async (event: Event) => {
@@ -230,6 +241,50 @@
                 </div>
             {/if}
         </form>
+    </Card>
+
+    <Card
+        title="Password"
+        icon="password"
+        description="How this user's password is stored. Passwords hashed with an outdated algorithm are rehashed the next time the user signs in."
+    >
+        <dl
+            class="mt-6 grid gap-px overflow-hidden rounded-lg border border-background-200 bg-background-200 sm:grid-cols-2"
+        >
+            <div class="flex flex-col gap-1 bg-background-100 p-4">
+                <dt class="text-sm text-muted select-none">Hashing algorithm</dt>
+                <dd>
+                    {#if user.password_algorithm}
+                        {PASSWORD_ALGORITHMS[user.password_algorithm]?.label ??
+                            user.password_algorithm}
+                    {:else}
+                        <span class="text-muted">No password set</span>
+                    {/if}
+                </dd>
+            </div>
+
+            <div class="flex flex-col gap-1 bg-background-100 p-4">
+                <dt class="text-sm text-muted select-none">Migration</dt>
+                <dd>
+                    {#if !user.password_algorithm}
+                        <span class="text-muted">Not applicable</span>
+                    {:else if !configuredAlgorithm}
+                        <span class="text-muted">Unknown</span>
+                    {:else if user.password_algorithm === configuredAlgorithm}
+                        <span class="flex items-center gap-2">
+                            <Icon icon="check" class="text-emerald-300" />
+                            Up to date
+                        </span>
+                    {:else}
+                        <span class="flex items-center gap-2">
+                            <Icon icon="clock" class="text-amber-300" />
+                            Moves to {PASSWORD_ALGORITHMS[configuredAlgorithm].label}
+                            at next sign in
+                        </span>
+                    {/if}
+                </dd>
+            </div>
+        </dl>
     </Card>
 
     <Modal bind:this={rolesModal} button>

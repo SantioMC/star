@@ -111,7 +111,7 @@ func (s *Settings) GetLockoutPolicy() LockoutPolicy {
 }
 
 func (s *Settings) GetPasswordSettings() *password.PasswordSetttings {
-	var settings password.PasswordSetttings
+	settings := password.DefaultSettings
 
 	if err := json.Unmarshal([]byte(s.PasswordSettings), &settings); err != nil {
 		slog.Error("failed to unmarshal password settings", "err", err)
@@ -119,6 +119,10 @@ func (s *Settings) GetPasswordSettings() *password.PasswordSetttings {
 	}
 
 	return &settings
+}
+
+func (s *Settings) GetPasswordHasher() cryptography.PasswordHasher {
+	return cryptography.NewPasswordHasher(s.GetPasswordSettings().Algorithm)
 }
 
 func (db *Database) GetSettings(ctx context.Context) (*Settings, error) {

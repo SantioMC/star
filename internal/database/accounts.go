@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/tubblelive/star/internal/cryptography"
+	"github.com/tubblelive/star/internal/password"
 	"github.com/vinovest/sqlx"
 )
 
@@ -17,9 +17,9 @@ type Account struct {
 	ID   string `json:"id"`
 	Type string `json:"type"`
 
-	Password               *string                `json:"password"`
-	PasswordAlg            cryptography.Algorithm `json:"password_alg" db:"password_alg"`
-	PasswordChangeRequired bool                   `json:"password_change_required" db:"password_change_required"`
+	Password               *string            `json:"password"`
+	PasswordAlg            password.Algorithm `json:"password_alg" db:"password_alg"`
+	PasswordChangeRequired bool               `json:"password_change_required" db:"password_change_required"`
 
 	UserID     string    `json:"user_id" db:"user_id"`
 	ProviderID *string   `json:"provider_id" db:"provider_id"`
@@ -28,6 +28,11 @@ type Account struct {
 	Email      *string   `json:"email" db:"account_email"`
 	Avatar     *string   `json:"avatar" db:"account_avatar"`
 	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+}
+
+type PasswordAlgorithmCount struct {
+	Algorithm password.Algorithm `json:"algorithm"`
+	Count     int                `json:"count"`
 }
 
 func (db *Database) GetAccountsByUserID(ctx context.Context, userID string) []Account {
@@ -324,6 +329,33 @@ func (db *Database) RemoveProviderAccount(ctx context.Context, account *Account,
 	}
 
 	return true, tx.Commit()
+}
+
+func (db *Database) RehashPassword(ctx context.Context, account *Account, hashed string, alg password.Algorithm) error {
+	_, err := db.DB().ExecContext(
+		ctx,
+		`UPDATE accounts SET password = $3, password_alg = $4 WHERE id = $1 AND password = $2`,
+		account.ID,
+		account.Password,
+		hashed,
+		alg,
+	)
+
+	return err
+}
+
+func (db *Database) GetPasswordAlgorithmCounts(ctx context.Context) ([]PasswordAlgorithmCount, error) {
+	return list[PasswordAlgorithmCount](
+		ctx,
+		db.DB(),
+		`
+		SELECT password_alg AS algorithm, COUNT(*) AS count
+		FROM accounts
+		WHERE type = 'internal' AND password IS NOT NULL
+		GROUP BY password_alg
+		ORDER BY count DESC
+		`,
+	)
 }
 
 func (db *Database) GetAccountsCount(ctx context.Context) (int, error) {

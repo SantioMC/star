@@ -30,7 +30,13 @@ func seedUser(ctx context.Context, star *state.StarServer) error {
 	}
 
 	password := cryptography.CreateSecureString(24)
-	hashed, algorithm := cryptography.HashString(password)
+	hasher := star.PasswordHasher()
+	hashed, err := hasher.Hash(ctx, password)
+
+	if err != nil {
+		return err
+	}
+
 	adminEmail := "admin@star.internal"
 	account := &database.Account{
 		ID:                     database.CreateID(database.AccountKey),
@@ -38,7 +44,7 @@ func seedUser(ctx context.Context, star *state.StarServer) error {
 		Type:                   "internal",
 		Email:                  &adminEmail,
 		Password:               &hashed,
-		PasswordAlg:            algorithm,
+		PasswordAlg:            hasher.Algorithm(),
 		PasswordChangeRequired: true,
 		CreatedAt:              time.Now(),
 	}

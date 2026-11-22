@@ -5,6 +5,7 @@ import (
 
 	"github.com/tubblelive/star/internal/database"
 	"github.com/tubblelive/star/internal/database/models"
+	"github.com/tubblelive/star/internal/password"
 	"github.com/tubblelive/star/internal/picture"
 )
 
@@ -66,6 +67,7 @@ type AdminUser struct {
 	Suspension             *database.UserSuspension `json:"suspension"`
 	Invite                 *database.UserInvite     `json:"invite"`
 	HasPassword            bool                     `json:"has_password"`
+	PasswordAlgorithm      *password.Algorithm      `json:"password_algorithm"`
 	PasswordChangeRequired bool                     `json:"password_change_required"`
 	Manageable             bool                     `json:"manageable"`
 	CreatedAt              time.Time                `json:"created_at"`
@@ -102,9 +104,14 @@ func TransformAdminUser(
 	reach int,
 ) AdminUser {
 	var primaryEmail *string
+	var passwordAlgorithm *password.Algorithm
 
 	if email != nil {
 		primaryEmail = &email.Email
+	}
+
+	if account != nil && account.Password != nil {
+		passwordAlgorithm = &account.PasswordAlg
 	}
 
 	weight := database.DefaultRoleWeight
@@ -126,7 +133,8 @@ func TransformAdminUser(
 		Lockout:                TransformLockout(attempts),
 		Suspension:             suspension,
 		Invite:                 invite,
-		HasPassword:            account != nil && account.Password != nil,
+		HasPassword:            passwordAlgorithm != nil,
+		PasswordAlgorithm:      passwordAlgorithm,
 		PasswordChangeRequired: account != nil && account.PasswordChangeRequired,
 		Manageable:             weight <= reach,
 		CreatedAt:              user.CreatedAt,
