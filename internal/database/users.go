@@ -78,7 +78,11 @@ func (db *Database) SearchUsers(ctx context.Context, query string, userType User
 		db.DB(),
 		`
 		SELECT * FROM users
-		WHERE name ILIKE '%' || $1 || '%' AND ($2 = '' OR type = $2)
+		WHERE id IN (
+			SELECT id FROM users WHERE name ILIKE '%' || $1 || '%'
+			UNION
+			SELECT user_id FROM user_emails WHERE email ILIKE '%' || $1 || '%'
+		) AND ($2 = '' OR type = $2)
 		ORDER BY created_at DESC
 		LIMIT $3 OFFSET $4
 		`,
