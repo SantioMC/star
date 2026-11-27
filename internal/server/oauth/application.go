@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -34,7 +35,7 @@ func Application(ctx fiber.Ctx) error {
 
 	redirectURI := ctx.Query("redirect_uri")
 	if redirectURI != "" && !AllowedRedirectURI(application, redirectURI) {
-		return fiber.NewError(400, "The redirect_uri specified is not allowed for this application")
+		return fiber.NewError(400, fmt.Sprintf("The redirect_uri specified is not allowed for this application: %s", redirectURI))
 	}
 
 	requested := strings.Fields(ctx.Query("scope"))

@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"fmt"
 	"log/slog"
 	"net/url"
 	"slices"
@@ -84,7 +85,7 @@ func Authorize(ctx fiber.Ctx) error {
 
 	if !AllowedRedirectURI(application, redirectURI) {
 		slog.Warn("invalid redirect_uri specified for app uri", "uri", redirectURI)
-		return authorizationError(ctx, "The redirect_uri specified is not allowed for this application")
+		return authorizationError(ctx, fmt.Sprintf("The redirect_uri specified is not allowed for this application: %s", redirectURI))
 	}
 
 	state := ctx.Query("state")
